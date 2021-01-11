@@ -33,13 +33,21 @@ local({
     # GDPNow
     df =
         getDataFred('GDPNOW', 'fee39d223f04001b55afc3dcc53effc3', .returnVintages = TRUE) %>%
-        dplyr::mutate(., varname = 'gdp', fcname = 'gdpnow')
-        
-  
+        dplyr::mutate(., varname = 'gdp', fcname = 'gdpnow') %>%
+        dplyr::filter(., obsDate >= .$vintageDate - months(3))
+
         
     ef$forecasts$gdp$gdpnow <<- df      
 })
 ```
+
+## St. Louis Fed
+```{r}
+
+```
+
+# NYFED
+
 
 ## Philadelphia Fed
 ```{r}
@@ -288,10 +296,10 @@ local({
               tidyr::pivot_longer(everything(), names_to = 'forecastDate') %>%
               dplyr::mutate(., forecastDate = econforecasting::strdateToDate(forecastDate)) %>%
               dplyr::filter(., forecastDate >= as.Date(x$date, origin = lubridate::origin)) %>%
-            dplyr::mutate(., vintageDate = as.Date(x$date, origin = lubridate::origin))
+              dplyr::mutate(., vintageDate = as.Date(x$date, origin = lubridate::origin))
           }) %>%
-      dplyr::bind_rows(.) %>%
-      dplyr::mutate(., varname = 'gdp', fcname = 'cbo')
+        dplyr::bind_rows(.) %>%
+        dplyr::mutate(., varname = 'gdp', fcname = 'cbo')
     
     ef$forecasts$gdp$cbo <<- df
 })

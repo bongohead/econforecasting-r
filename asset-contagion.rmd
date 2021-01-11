@@ -1,0 +1,260 @@
+# Set Constants
+```{r}
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting-rpkg'
+CONSTANTS_PATH = 'D:/Onedrive/__Projects/econforecasting/constants.r'
+START_DATE = NULL # NULL to do since 2000;+
+```
+
+
+# Initialize
+```{r}
+library(tidyverse)
+library(devtools)
+library(jsonlite)
+library(lubridate)
+library(DBI)
+library(RPostgres)
+library(data.table)
+library(roll)
+
+setwd(DIR)
+source(CONSTANTS_PATH)
+
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
+```
+
+
+# Scrape data
+```{r}
+local({
+  
+	conn =
+		dbConnect(
+		RPostgres::Postgres(),
+		dbname = const$DB_DATABASE,
+		host = const$DB_SERVER,
+		port = 5432,
+		user = const$DB_USERNAME,
+		password = const$DB_PASSWORD
+		)  
+	  
+	acFundDf =
+		conn %>%
+		DBI::dbGetQuery(., 'SELECT * FROM ac_fund') %>%
+		as_tibble(.) %>%
+		dplyr::arrange(., id) # Fund 1 must always have ID lower than fund 2
+	
+	
+	rawDataDfs =
+		acFundDf %>%
+		purrr::transpose(.) %>%
+		setNames(., lapply(., function(x) x$ticker)) %>%
+		lapply(., function(x) {
+			
+			url =
+				paste0(
+					'https://query1.finance.yahoo.com/v7/finance/download/', x$ticker,
+					'?period1=946598400',
+					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+					'&interval=1d',
+					'&events=history&includeAdjustedClose=true'
+				)
+			
+			fread(url) %>%
+				.[, c('Date', 'Adj Close')]	%>%
+				setnames(., new = c('date', 'price')) %>%
+				.[, lag := shift(price, 1)] %>%
+				.[, return := (price/lag - 1) * 100] %>%
+				.[, -c('price', 'lag')] %>%
+				.[2:nrow(.), ] %>%
+				{if (!is.null(START_DATE)) dplyr::filter(., date >= as.Date(START_DATE)) else .}
+				return(.)
+			
+			})
+	
+	# Takes data frame of date, return, i.return
+	# 1.27 seconds vs .3 seconds for roll_cor
+	# calculateCorr30 = function(df) {
+	# 	sapply(30:nrow(df), function(endRow)
+	# 		df[(endRow-30):endRow] %>%
+	# 			{cor(.[[2]], .[[3]])}
+	# 		)
+	# }
+	# microbenchmark(calculateCorr30(df), times = 10)
+	# microbenchmark(roll::roll_cor(df[[2]], df[[3]], width = 30))
+
+	seriesAllDt =
+		# Get all combinations of tickers
+		lapply(1:(length(acFundDf$ticker) - 1), function(n)
+			lapply((n+1):length(acFundDf$ticker), function(m) list(ticker1 = acFundDf$ticker[[n]], ticker2 = acFundDf$ticker[[m]]))
+			) %>%
+		unlist(., recursive = FALSE) %>%
+		# .[1:20] %>%
+		# Calculate correlations
+		purrr::imap_dfr(., function(x, i) {
+			
+			if (i %% 100 == 0) message(i)
+			
+			# Join raw data tables together
+			dataDt =
+				rawDataDfs[[x$ticker1]][rawDataDfs[[x$ticker2]], nomatch = 0, on = 'date']	
+
+			seriesDt =
+				dataDt %>%	
+				# Calculate correlation starting with day 30
+				.[, '30' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 30)] %>%
+				.[, '90' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 90)] %>%
+				.[, '180' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 180)] %>%
+				.[, -c('return', 'i.return')] %>%
+				data.table::melt(
+					.,
+					id.vars = c('date'), variable.name = 'roll', value.name = 'value', variable.factor = FALSE,
+					na.rm = TRUE
+					) %>%
+				.[, roll := as.numeric(roll)] %>%
+				.[, method := 'p'] %>%
+				.[, ticker1 := x$ticker1] %>%
+				.[, ticker2 := x$ticker2]
+			
+			return(seriesDt)
+		})
+	
+	seriesAllRes =
+		seriesAllDt %>%
+		split(., by = c('roll', 'method', 'ticker1', 'ticker2')) %>%
+		lapply(., function(x) {
+		
+			fundSeriesMapDf =
+				tibble(
+					fk_fund1 = dplyr::filter(acFundDf, ticker == x$ticker1[[1]])$id,
+					fk_fund2 = dplyr::filter(acFundDf, ticker == x$ticker2[[1]])$id,
+					method = x$method[[1]],
+					roll = x$roll[[1]],
+					obs_start = min(x$date),
+					obs_end = max(x$date),
+					obs_count = nrow(x),
+					last_updated = Sys.Date()
+					) #%>%
+				#dplyr::mutate(., nk = paste0(fk_fund1, '.', fk_fund2, '.', method, '.', window))
+			
+			seriesDf = x %>% .[, -c('roll', 'method', 'ticker1', 'ticker2')]
+			
+			list(
+				fundSeriesMapDf = fundSeriesMapDf,
+				seriesDf = seriesDf
+			)
+		})
+	
+	
+	fundSeriesMapDf = purrr::map_dfr(seriesAllRes, ~.$fundSeriesMapDf)
+	seriesDf = purrr::map_dfr(seriesAllRes, ~.$seriesDf)
+	
+	query =
+		paste0(
+			'INSERT INTO ac_fund_series_map (', paste0(colnames(fundSeriesMapDf), collapse = ','), ')\n',
+			'VALUES\n',
+			fundSeriesMapDf %>%
+				dplyr::mutate_all(., ~ as.character(.)) %>%
+				purrr::transpose(.) %>%
+				lapply(., function(x) paste0(x, collapse = "','") %>% paste0("('", ., "')")) %>%
+				paste0(., collapse = ', '),'\n',
+			'ON CONFLICT (id) DO UPDATE SET last_updated = EXCLUDED.last_updated\n',
+			'RETURNING id;'
+		)
+
+	idResults = DBI::dbGetQuery(conn, query)
+	
+	
+	# Verify that inserted length is the same length as seriesAllRes
+	if (length(idResults$id) != length(seriesAllRes)) stop('Error')
+	
+	seriesDf =
+		seriesAllRes %>%
+		unname(.) %>%
+		purrr::imap_dfr(., function(x, i)
+			x$seriesDf[, fk_id := as.integer(idResults$id[[i]])]
+			) %>%
+		.[, value := round(value, 4)] %>%
+		.[, date := as.character(date)]
+	
+
+	# If df too big, use batch CSV
+	if (nrow(seriesDf) >= 1e6) {
+		message(Sys.time())
+		
+		tempPath = file.path(tempdir(), 'ac_series_data.csv')
+		
+		fwrite(seriesDf %>% .[,], tempPath)
+		
+		# Upload via SFTP
+		RCurl::ftpUpload(
+			what = tempPath,
+			to = const$SFTP_PATH
+			)
+		
+		unlink(tempPath)
+		
+		message(Sys.time())
+		
+		# TRUNCATE ac_series RESTART IDENTITY CASCADE;
+		query =
+			paste0(
+				'COPY ac_series (date, value, fk_id)\n',
+				'FROM \'/home/charles/ac_series_data.csv\' CSV HEADER;'
+			)
+		
+		sqlRes = DBI::dbGetQuery(conn, query)
+		message('Finished Bulk Insert: ', Sys.time())
+
+	} else {
+		
+		# Split into 100k row pieces
+		seriesInsertDfs =
+			seriesDf %>%
+			.[, splitIndex := floor(1:nrow(seriesDf)/.1e6)] %>%
+			split(., by = 'splitIndex', keep.by = FALSE)
+	
+	
+		purrr::imap(seriesInsertDfs, function(seriesInsertDf, i) {
+	
+			if (i %% 50 == 0) message(i)
+	
+			query =
+				paste0(
+					'INSERT INTO ac_series (date, value, fk_id)\n',
+					'VALUES\n',
+					seriesInsertDf %>%
+						.[, value := round(value, 4)] %>%
+						.[, date := as.character(date)] %>%
+						purrr::transpose(.) %>%
+						lapply(., function(x) paste0(x, collapse = "','") %>% paste0("('", ., "')")) %>%
+						paste0(., collapse = ', '),';'
+				)
+	
+			message(Sys.time())
+			res = DBI::dbGetQuery(conn, query)
+			message(Sys.time())
+	
+		})
+	}
+	
+
+
+				const y = x;
+			y.fk_fund1 = x.fk_fund2;
+			y.fk_fund2 = x.fk_fund1;
+			y.order1 = x.order2;
+			y.order2 = x.order1;
+			return y;
+		});
+		const acSeries2 = acSeries0.concat(acSeries1);
+		const acSeries = groupBy(acSeries2, 'date');
+		dfd.resolve(acSeries);
+
+
+
+})
+```
+
