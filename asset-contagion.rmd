@@ -3,7 +3,7 @@
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting-rpkg'
 CONSTANTS_PATH = 'D:/Onedrive/__Projects/econforecasting/constants.r'
-START_DATE = NULL # NULL to do since 2000;+
+RESET_ALL = TRUE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
 ```
 
 
@@ -26,7 +26,7 @@ devtools::document(PACKAGE_DIR)
 ```
 
 
-# Scrape data
+# Get data
 ```{r}
 local({
   
@@ -38,14 +38,13 @@ local({
 		port = 5432,
 		user = const$DB_USERNAME,
 		password = const$DB_PASSWORD
-		)  
+		)
 	  
 	acFundDf =
 		conn %>%
 		DBI::dbGetQuery(., 'SELECT * FROM ac_fund') %>%
 		as_tibble(.) %>%
 		dplyr::arrange(., id) # Fund 1 must always have ID lower than fund 2
-	
 	
 	rawDataDfs =
 		acFundDf %>%
@@ -56,7 +55,7 @@ local({
 			url =
 				paste0(
 					'https://query1.finance.yahoo.com/v7/finance/download/', x$ticker,
-					'?period1=946598400',
+					'?period1=1262304000', # 12/31/2009
 					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
 					'&interval=1d',
 					'&events=history&includeAdjustedClose=true'
@@ -69,11 +68,21 @@ local({
 				.[, return := (price/lag - 1) * 100] %>%
 				.[, -c('price', 'lag')] %>%
 				.[2:nrow(.), ] %>%
-				{if (!is.null(START_DATE)) dplyr::filter(., date >= as.Date(START_DATE)) else .}
 				return(.)
 			
 			})
 	
+
+	
+	conn <<- conn
+	acFundDf <<- acFundDf
+	rawDataDfs <<- rawDataDfs
+})
+```
+
+# Calculate correlations
+```{r}
+local({
 	# Takes data frame of date, return, i.return
 	# 1.27 seconds vs .3 seconds for roll_cor
 	# calculateCorr30 = function(df) {
@@ -148,9 +157,65 @@ local({
 		})
 	
 	
-	fundSeriesMapDf = purrr::map_dfr(seriesAllRes, ~.$fundSeriesMapDf)
-	seriesDf = purrr::map_dfr(seriesAllRes, ~.$seriesDf)
+	fundSeriesMapDf = purrr::map_dfr(seriesAllRes, ~.$fundSeriesMapDf) %>% dplyr::mutate(., usage = 'reg')
+
+	seriesAllRes <<- seriesAllRes
+	fundSeriesMapDf <<- fundSeriesMapDf
+})
+```
+
+# Calculate correlation index
+```{r}
+local({
 	
+	indexDf =
+		seriesAllRes %>%
+		purrr::keep(., ~.$fundSeriesMap[[1, 'roll']] == 90) %>%
+		purrr::imap_dfr(., ~.$seriesDf) %>%
+		.[, list(value = mean(value), count = .N), by = 'date'] %>%
+		.[, -c('count')] %>%
+		.[, value := round(value, 4)] %>%
+		.[, usage := 'reg']
+	
+	# Consider filtering by dates where all obs available
+	indexDf %>% ggplot(.) + geom_line(aes(x = date, y = value))
+	
+	
+	indexDf <<- indexDf
+})
+```
+
+
+# Send to SQL
+```{r}
+local({
+	
+	if (RESET_ALL == TRUE) {
+		DBI::dbGetQuery(conn, 'TRUNCATE ac_fund_series_map RESTART IDENTITY CASCADE')
+		DBI::dbGetQuery(conn, 'TRUNCATE ac_series')
+		DBI::dbGetQuery(conn, 'TRUNCATE ac_index')
+	}
+	
+	# Update ac_index
+	query =
+		paste0(
+			'INSERT INTO ac_index (', paste0(colnames(indexDf), collapse = ','), ')\n',
+			'VALUES\n',
+			indexDf %>%
+				dplyr::mutate_all(., ~ as.character(.)) %>%
+				purrr::transpose(.) %>%
+				lapply(., function(x) paste0(x, collapse = "','") %>% paste0("('", ., "')")) %>%
+				paste0(., collapse = ', '),'\n',
+			'ON CONFLICT ON CONSTRAINT ac_index_usage_date DO UPDATE SET value = EXCLUDED.value;'
+		)
+	
+	DBI::dbGetQuery(conn, query)
+	
+
+
+	
+
+	# Update last_udpated if uniqueness constraint conflict
 	query =
 		paste0(
 			'INSERT INTO ac_fund_series_map (', paste0(colnames(fundSeriesMapDf), collapse = ','), ')\n',
@@ -160,7 +225,7 @@ local({
 				purrr::transpose(.) %>%
 				lapply(., function(x) paste0(x, collapse = "','") %>% paste0("('", ., "')")) %>%
 				paste0(., collapse = ', '),'\n',
-			'ON CONFLICT (id) DO UPDATE SET last_updated = EXCLUDED.last_updated\n',
+			'ON CONFLICT ON CONSTRAINT ac_fund_series_map_usage_method_roll_fk_fund1_fk_fund2 DO UPDATE SET last_updated = EXCLUDED.last_updated\n',
 			'RETURNING id;'
 		)
 
@@ -170,6 +235,12 @@ local({
 	# Verify that inserted length is the same length as seriesAllRes
 	if (length(idResults$id) != length(seriesAllRes)) stop('Error')
 	
+	# Get last date with series info for RESET_ALL = F
+	lastDate =
+		conn %>%
+    	DBI::dbGetQuery(., 'SELECT MAX(date) FROM ac_series') %>%
+		.[[1, 1]]
+
 	seriesDf =
 		seriesAllRes %>%
 		unname(.) %>%
@@ -177,10 +248,13 @@ local({
 			x$seriesDf[, fk_id := as.integer(idResults$id[[i]])]
 			) %>%
 		.[, value := round(value, 4)] %>%
-		.[, date := as.character(date)]
+		.[, date := as.character(date)] %>% {
+			if (RESET_ALL == TRUE) .
+			else .[date > lastDate]
+		}
 	
 
-	# If df too big, use batch CSV
+	# If DF too big, use batch CSV
 	if (nrow(seriesDf) >= 1e6) {
 		message(Sys.time())
 		
@@ -198,7 +272,6 @@ local({
 		
 		message(Sys.time())
 		
-		# TRUNCATE ac_series RESTART IDENTITY CASCADE;
 		query =
 			paste0(
 				'COPY ac_series (date, value, fk_id)\n',
@@ -214,7 +287,7 @@ local({
 		seriesInsertDfs =
 			seriesDf %>%
 			.[, splitIndex := floor(1:nrow(seriesDf)/.1e6)] %>%
-			split(., by = 'splitIndex', keep.by = FALSE)
+			split(., by = 'splitIndex', keep.by = FALSE) %>% unname(.)
 	
 	
 		purrr::imap(seriesInsertDfs, function(seriesInsertDf, i) {
@@ -240,20 +313,6 @@ local({
 		})
 	}
 	
-
-
-				const y = x;
-			y.fk_fund1 = x.fk_fund2;
-			y.fk_fund2 = x.fk_fund1;
-			y.order1 = x.order2;
-			y.order2 = x.order1;
-			return y;
-		});
-		const acSeries2 = acSeries0.concat(acSeries1);
-		const acSeries = groupBy(acSeries2, 'date');
-		dfd.resolve(acSeries);
-
-
 
 })
 ```
