@@ -1,7 +1,8 @@
 # Set Constants
 ```{r}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting-rpkg'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting'
+DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 ```
 
 
@@ -11,8 +12,15 @@ library(tidyverse)
 library(devtools)
 library(jsonlite)
 library(lubridate)
+library(httr)
+library(rvest)
 
 setwd(DIR)
+
+if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
+dir.create(DL_DIR, recursive = TRUE)
+
+source(file.path(DIR, 'constants.r'))
 
 devtools::load_all(path = PACKAGE_DIR)
 devtools::document(PACKAGE_DIR)
@@ -25,33 +33,96 @@ ef = list(
 ```
 
 
-# - GDP Forecasts -
-## GDPNow
+# Historical Data
+```{r}
+local({
+  
+  histDf =
+    tribble(
+      ~ varname, ~ fredId,
+      'gdp', 'A191RL1Q225SBEA',
+      'effr', 'EFFR',
+      't10y', 'DGS10',
+      't30y', 'DGS30',
+      't05y', 'DGS5',
+      't02y', 'DGS2',
+      't01y', 'DGS1',
+      't06m', 'DGS6MO',
+      't03m', 'DGS3MO',
+      't01m', 'DGS1MO',
+      't20y', 'DGS20',
+      't07y', 'DGS7'
+      )
+  
+  df =
+    histDf %>%
+    purrr::transpose(.) %>%
+    lapply(., function(x)
+        econforecasting::getDataFred(x$fredId, CONST$FRED_API_KEY, .returnVintages = FALSE)
+      )
+
+
+  
+})
+```
+
+# GDP Forecasts
+## Atlanta Fed
 ```{r}
 local({
     ##### GDP #####
     # GDPNow
     df =
-        getDataFred('GDPNOW', 'fee39d223f04001b55afc3dcc53effc3', .returnVintages = TRUE) %>%
-        dplyr::mutate(., varname = 'gdp', fcname = 'gdpnow') %>%
+        getDataFred('GDPNOW', CONST$FRED_API_KEY, .returnVintages = TRUE) %>%
+        dplyr::mutate(., varname = 'gdp', fcname = 'atl') %>%
         dplyr::filter(., obsDate >= .$vintageDate - months(3))
 
         
-    ef$forecasts$gdp$gdpnow <<- df      
+    ef$forecasts$gdp$atl <<- df
 })
 ```
 
 ## St. Louis Fed
 ```{r}
-
+local({
+  
+    df =
+      getDataFred('STLENI', CONST$FRED_API_KEY, .returnVintages = TRUE) %>%
+      dplyr::mutate(., varname = 'gdp', fcname = 'stl') %>%
+      dplyr::filter(., obsDate >= .$vintageDate - months(3))
+    
+    ef$forecasts$gdp$stl <<- df
+})
 ```
 
-# NYFED
+## New York Fed
+```{r}
+local({
+  
+  file = file.path(DL_DIR, 'nyf.xlsx')
+  
+  httr::GET(
+    'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx?la=en',
+    httr::write_disk(file, overwrite = TRUE)
+    )
+  
+  df =
+    readxl::read_excel(file, sheet = 'Forecasts By Quarter', skip = 13) %>%
+    dplyr::rename(., vintageDate = 1) %>%
+    dplyr::mutate(., vintageDate = as.Date(vintageDate)) %>%
+    tidyr::pivot_longer(., -vintageDate, names_to = 'obsDate', values_to = 'value') %>%
+    na.omit(.) %>%
+    dplyr::mutate(., obsDate = econforecasting::strdateToDate(obsDate), varname = 'gdp', fcname = 'nyf')
+  
+  ef$forecasts$gdp$nyf <<- df
+})
+```
 
 
 ## Philadelphia Fed
 ```{r}
 local({
+  
     # Scrape vintage dates
     vintageDf =
         httr::GET('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/spf-release-dates.txt?la=en&hash=B0031909EE9FFE77B26E57AC5FB39899') %>%
@@ -68,14 +139,17 @@ local({
             vintageDate = str_replace_all(str_sub(X3, 1, 10), '[[:blank:]*]', '')
         )
 
-    tmp = tempfile()
-    httr::GET('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/data-files/files/median_rgdp_growth.xlsx?la=en&hash=2B40FE7EB334544A4637EEA940615DD5', httr::write_disk(tmp))
+    file = file.path(DL_DIR, 'spf.xlsx')
+    httr::GET(
+      'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/data-files/files/median_rgdp_growth.xlsx?la=en&hash=2B40FE7EB334544A4637EEA940615DD5',
+      httr::write_disk(file, overwrite = TRUE)
+      )
     
     dataDf =
-        readxl::read_excel(tmp, na = '#N/A') %>%
+        readxl::read_excel(file, na = '#N/A') %>%
         dplyr::transmute(
             .,
-            releaseDate = as.Date(paste0(YEAR, '-', str_pad(as.numeric(QUARTER) * 3 - 2, pad = 0, 2), '-01')),
+            releaseDate = econforecasting::strdateToDate(paste0(YEAR, 'Q', QUARTER)),
             t0 = (DRGDP2),
             t1 = (DRGDP3),
             t2 = (DRGDP4),
@@ -91,12 +165,10 @@ local({
         na.omit(.) %>%
         dplyr::select(., -shift)
     
-    unlink(tmp)
 
     df =
         dplyr::inner_join(vintageDf, dataDf, by = 'releaseDate') %>% dplyr::select(., -releaseDate) %>%
         dplyr::mutate(., varname = 'gdp', fcname = 'spf')
-
 
     ef$forecasts$gdp$spf <<- df   
 })
@@ -108,7 +180,7 @@ local({
     
     orgsDf =
         tibble(
-            fcname = c('wsj', 'fnma', 'wfc', 'gsu'),
+            fcname = c('wsj', 'fnm', 'wfc', 'gsu'),
             fcnameFull = c('WSJ Consensus', 'Fannie Mae', 'Wells Fargo & Co.', 'UCLA Anderson Forecast')
         )
     
@@ -124,16 +196,22 @@ local({
     df =
         lapply(filesList, function(x) {
             message(x$date)
-            dest = file.path(tempdir(), 'wsj.xls')
+            dest = file.path(DL_DIR, 'wsj.xls')
             download.file(
                 paste0('https://online.wsj.com/public/resources/documents/', x$file),
                 destfile = dest,
                 mode = 'wb'
                 )
             
-            colStart = readxl::read_excel(dest, skip = 0) %>% colnames(.) %>% {str_detect(., coll('GDP'))} %>% which(., arr.ind = TRUE) %>% .[1]
+            colStart =
+              readxl::read_excel(dest, skip = 0) %>%
+              colnames(.) %>%
+              {str_detect(., coll('GDP'))} %>% which(., arr.ind = TRUE) %>% .[1]
             
-            colEnd = readxl::read_excel(dest, skip = 0) %>% colnames(.) %>% {str_detect(., coll('...')) == FALSE} %>% which(., arr.ind = TRUE) %>% .[. > colStart] %>% min(.) %>% {. - 1}
+            colEnd =
+              readxl::read_excel(dest, skip = 0) %>%
+              colnames(.) %>%
+              {str_detect(., coll('...')) == FALSE} %>% which(., arr.ind = TRUE) %>% .[. > colStart] %>% min(.) %>% {. - 1}
 
 
             df =
@@ -155,7 +233,7 @@ local({
                 # Added asterisks to deal with 2020-05 dataset
                 dplyr::mutate_at(., vars(-fcnameFull), function(x) as.numeric(str_replace_all(x, coll('*'), ''))) %>%
                 tidyr::pivot_longer(., -fcnameFull, names_to = 'forecastDate') %>%
-                # Get rid of ...16 coming frmo broken column names (see 2020-02 dataset)
+                # Get rid of ...16 coming from broken column names (see 2020-02 dataset)
                 dplyr::mutate(
                     .,
                     forecastDate =
@@ -199,62 +277,7 @@ local({
 ## CBO Forecasts
 ```{r}
 local({
-    
-    # urlDf =
-    #     httr::GET('https://www.cbo.gov/data/budget-economic-data#4') %>%
-    #     httr::content(., type = 'parsed') %>%
-    #     xml2::read_html(.) %>%
-    #     rvest::html_nodes('div .view-content') %>%
-    #     tail(., 1) %>%
-    #     rvest::html_nodes(., 'a') %>%
-    #     purrr::map_dfr(., function(x) tibble(name = rvest::html_text(x), url = rvest::html_attr(x, 'href'))) %>%
-    #     dplyr::transmute(
-    #         .,
-    #         name = 
-    #             paste0(
-    #                 str_sub(name, -4), '-',
-    #                 str_pad(match(str_sub(name, 1, 3), month.abb), 2, pad = '0'),
-    #                 '-01'
-    #                 ),
-    #         url
-    #     ) %>%
-    #     dplyr::mutate(., name = as.Date(name)) %>%
-    #     dplyr::filter(., name >= as.Date('2019-08-01'))
-    # 
-    # dest = file.path(tempdir(), 'cbo.zip')
-    # dest2 = file.path(tempdir(), 'cbo')
-    # 
-    # df =
-    #     urlDf %>%
-    #     purrr::transpose(.) %>%
-    #     lapply(., function(x) {
-    #         
-    #         download.file(x$url, dest)
-    #         if (dir.exists(dest2)) unlink(dest2, recursive = TRUE)
-    #         dir.create(dest2, recursive = TRUE)
-    #         unzip(dest, exdir = dest2)
-    #         
-    #         dest2 %>%
-    #             dir(., full.names = TRUE) %>%
-    #             dir(., full.names = TRUE) %>%
-    #             purrr::keep(., ~ str_detect(., coll('Quarterly'))) %>%
-    #             readr::read_csv(.) %>%
-    #             dplyr::mutate(
-    #                 .,
-    #                 gdp_pchg =
-    #                     {sapply(2:nrow(.), function(row)
-    #                         ((.[[row, 'real_gdp']]/.[[row - 1, 'real_gdp']])^4 - 1) * 100
-    #                         )} %>%
-    #                     c(NA, .)
-    #             ) %>%
-    #             dplyr::select(., date, gdp_pchg)
-    #         
-    #         }) %>%
-    #     dplyr::bind_rows(.)
-    # 
-    # unlink(dest, recursive = TRUE)
-    # unlink(dest2, recursive = TRUE)
-    
+
     urlDf =
         httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
         httr::content(., type = 'parsed') %>%
@@ -277,7 +300,7 @@ local({
         dplyr::filter(., date >= as.Date('2018-01-01'))
 
     
-    tempPath = file.path(tempdir(), 'cbo.xlsx')
+    tempPath = file.path(DL_DIR, 'cbo.xlsx')
     
     df =
       urlDf %>%
@@ -306,7 +329,64 @@ local({
 ```
 
 
+# FFR Forecast
 
+## Get Quandl Data
+```{r}
+local({
+  
+  df =
+    lapply(1:24, function(j)
+      read_csv(
+        paste0('https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF', j, '.csv?api_key=', CONST$QUANDL_API_KEY),
+        col_types = 'Ddddddddd'
+        ) %>%
+        dplyr::transmute(., vintageDate = Date, settle = Settle, j = j) %>%
+        dplyr::filter(., vintageDate >= as.Date('2006-01-01'))
+      ) %>%
+    dplyr::bind_rows(.) %>%
+    dplyr::transmute(
+      .,
+      vintageDate,
+      obsDate =
+        econforecasting::strdateToDate(paste0(year(date), 'M', month(date))) %>%
+        lubridate::add_with_rollback(., months(j - 1), roll_to_first = TRUE),
+      value = 100 - settle,
+      varname = 'ffr',
+      fcname = 'cme'
+      )
+  
+  # Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
+  # df %>% tidyr::pivot_wider(., names_from = j, values_from = settle) %>% dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>% View(.)
+
+})
+```
+
+
+# Inflation
+```{r}
+local({
+  
+  
+})
+```
+
+# Recession Probability
+```{r}
+local({
+  
+  
+})
+```
+
+
+# Insert SQL Data
+```{r}
+local({
+  
+  
+})
+```
 
 
 

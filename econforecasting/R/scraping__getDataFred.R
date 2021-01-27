@@ -20,13 +20,14 @@ getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE) 
             '&aggregation_method=avg'
         )
 
-    message(url)
+    # message(url)
 
     url %>%
         httr::GET(.) %>%
         httr::content(., as = 'parsed') %>%
         .$observations %>%
         purrr::map_dfr(., function(x) as_tibble(x)) %>%
+        dplyr::filter(., value != '.') %>%
         na.omit(.) %>%
         dplyr::transmute(
             .,

@@ -11,7 +11,7 @@ strdateToDate = function(strdates) {
             if (all(str_count(., 'Q') == 1))
                 paste0(
                     str_sub(., 1, 4), '-',
-                    str_pad(as.numeric(str_sub(., str_locate(., 'Q') + 1)) * 3 - 2, 2, pad = '0'), '-',
+                    str_pad(as.numeric(str_sub(., str_locate(., 'Q')[, 'start'] + 1)) * 3 - 2, 2, pad = '0'), '-',
                     '01'
                 ) %>%
                 as.Date(.)
@@ -20,7 +20,7 @@ strdateToDate = function(strdates) {
             else if (all(str_count(., 'M') == 1))
                 paste0(
                     str_sub(., 1, 4), '-',
-                    str_pad(as.numeric(str_sub(., str_locate(., 'M') + 1)), 2, pad = '0'), '-',
+                    str_pad(as.numeric(str_sub(., str_locate(., 'M')[, 'start'] + 1, nchar(.))), 2, pad = '0'), '-',
                     '01'
                 ) %>%
                 as.Date(.)

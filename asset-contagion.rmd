@@ -1,9 +1,10 @@
 # Set Constants
 ```{r}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
+TMP_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting-rpkg'
 CONSTANTS_PATH = 'D:/Onedrive/__Projects/econforecasting/constants.r'
-RESET_ALL = TRUE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
+RESET_ALL = FALSE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
 ```
 
 
@@ -26,7 +27,8 @@ devtools::document(PACKAGE_DIR)
 ```
 
 
-# Get data
+
+# Get Data
 ```{r}
 local({
   
@@ -49,7 +51,7 @@ local({
 	rawDataDfs =
 		acFundDf %>%
 		purrr::transpose(.) %>%
-		setNames(., lapply(., function(x) x$ticker)) %>%
+		setNames(., lapply(., function(x) paste0(x$usage, '.', x$ticker))) %>%
 		lapply(., function(x) {
 			
 			url =
@@ -71,7 +73,6 @@ local({
 				return(.)
 			
 			})
-	
 
 	
 	conn <<- conn
@@ -80,7 +81,7 @@ local({
 })
 ```
 
-# Calculate correlations
+# Calculate Correlations
 ```{r}
 local({
 	# Takes data frame of date, return, i.return
@@ -95,50 +96,60 @@ local({
 	# microbenchmark(roll::roll_cor(df[[2]], df[[3]], width = 30))
 
 	seriesAllDt =
-		# Get all combinations of tickers
-		lapply(1:(length(acFundDf$ticker) - 1), function(n)
-			lapply((n+1):length(acFundDf$ticker), function(m) list(ticker1 = acFundDf$ticker[[n]], ticker2 = acFundDf$ticker[[m]]))
-			) %>%
-		unlist(., recursive = FALSE) %>%
-		# .[1:20] %>%
-		# Calculate correlations
-		purrr::imap_dfr(., function(x, i) {
-			
-			if (i %% 100 == 0) message(i)
-			
-			# Join raw data tables together
-			dataDt =
-				rawDataDfs[[x$ticker1]][rawDataDfs[[x$ticker2]], nomatch = 0, on = 'date']	
-
-			seriesDt =
-				dataDt %>%	
-				# Calculate correlation starting with day 30
-				.[, '30' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 30)] %>%
-				.[, '90' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 90)] %>%
-				.[, '180' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 180)] %>%
-				.[, -c('return', 'i.return')] %>%
-				data.table::melt(
-					.,
-					id.vars = c('date'), variable.name = 'roll', value.name = 'value', variable.factor = FALSE,
-					na.rm = TRUE
-					) %>%
-				.[, roll := as.numeric(roll)] %>%
-				.[, method := 'p'] %>%
-				.[, ticker1 := x$ticker1] %>%
-				.[, ticker2 := x$ticker2]
-			
-			return(seriesDt)
-		})
+		# Split by usage
+		acFundDf %>%
+		dplyr::group_by(usage) %>%
+		dplyr::group_split(.) %>%
+		setNames(., map(., ~ .$usage[[1]])) %>%
+		purrr::imap(., function(acFundDfByUsage, usage) 
+			# Get all combinations of tickers
+			lapply(1:(length(acFundDfByUsage$ticker) - 1), function(n)
+				lapply((n+1):length(acFundDfByUsage$ticker), function(m)
+					list(ticker1 = acFundDfByUsage$ticker[[n]], ticker2 = acFundDfByUsage$ticker[[m]])
+					)
+				) %>%
+			unlist(., recursive = FALSE) %>%
+			# Calculate correlations
+			purrr::imap_dfr(., function(x, i) {
+				
+				if (i %% 100 == 0) message(i)
+				# Join raw data tables together
+				dataDt =
+					rawDataDfs[[paste0(usage, '.', x$ticker1)]][rawDataDfs[[paste0(usage, '.', x$ticker2)]], nomatch = 0, on = 'date']	
+	
+				seriesDt =
+					dataDt %>%	
+					# Calculate correlation starting with day 30
+					.[, '30' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 30)] %>%
+					.[, '90' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 90)] %>%
+					.[, '180' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 180)] %>%
+					.[, -c('return', 'i.return')] %>%
+					data.table::melt(
+						.,
+						id.vars = c('date'), variable.name = 'roll', value.name = 'value', variable.factor = FALSE,
+						na.rm = TRUE
+						) %>%
+					.[, usage := usage] %>%
+					.[, roll := as.numeric(roll)] %>%
+					.[, method := 'p'] %>%
+					.[, ticker1 := x$ticker1] %>%
+					.[, ticker2 := x$ticker2]
+				
+				return(seriesDt)
+			})
+		) %>%
+		dplyr::bind_rows(.)
 	
 	seriesAllRes =
 		seriesAllDt %>%
-		split(., by = c('roll', 'method', 'ticker1', 'ticker2')) %>%
+		split(., by = c('usage', 'roll', 'method', 'ticker1', 'ticker2')) %>%
 		lapply(., function(x) {
 		
 			fundSeriesMapDf =
 				tibble(
-					fk_fund1 = dplyr::filter(acFundDf, ticker == x$ticker1[[1]])$id,
-					fk_fund2 = dplyr::filter(acFundDf, ticker == x$ticker2[[1]])$id,
+					usage = x$usage[[1]],
+					fk_fund1 = dplyr::filter(acFundDf, ticker == x$ticker1[[1]], usage == x$usage[[1]])$id,
+					fk_fund2 = dplyr::filter(acFundDf, ticker == x$ticker2[[1]], usage == x$usage[[1]])$id,
 					method = x$method[[1]],
 					roll = x$roll[[1]],
 					obs_start = min(x$date),
@@ -148,7 +159,7 @@ local({
 					) #%>%
 				#dplyr::mutate(., nk = paste0(fk_fund1, '.', fk_fund2, '.', method, '.', window))
 			
-			seriesDf = x %>% .[, -c('roll', 'method', 'ticker1', 'ticker2')]
+			seriesDf = x %>% .[, -c('roll', 'method', 'ticker1', 'ticker2', 'usage')]
 			
 			list(
 				fundSeriesMapDf = fundSeriesMapDf,
@@ -157,7 +168,7 @@ local({
 		})
 	
 	
-	fundSeriesMapDf = purrr::map_dfr(seriesAllRes, ~.$fundSeriesMapDf) %>% dplyr::mutate(., usage = 'reg')
+	fundSeriesMapDf = purrr::map_dfr(seriesAllRes, ~.$fundSeriesMapDf) 
 
 	seriesAllRes <<- seriesAllRes
 	fundSeriesMapDf <<- fundSeriesMapDf
@@ -171,11 +182,10 @@ local({
 	indexDf =
 		seriesAllRes %>%
 		purrr::keep(., ~.$fundSeriesMap[[1, 'roll']] == 90) %>%
-		purrr::imap_dfr(., ~.$seriesDf) %>%
-		.[, list(value = mean(value), count = .N), by = 'date'] %>%
+		purrr::imap_dfr(., ~ .$seriesDf[, 'usage' := .$fundSeriesMap$usage[[1]]]) %>%
+		.[, list(value = mean(value), count = .N), by = c('date', 'usage')] %>%
 		.[, -c('count')] %>%
-		.[, value := round(value, 4)] %>%
-		.[, usage := 'reg']
+		.[, value := round(value, 4)] 
 	
 	# Consider filtering by dates where all obs available
 	indexDf %>% ggplot(.) + geom_line(aes(x = date, y = value))
@@ -316,4 +326,135 @@ local({
 
 })
 ```
+
+
+# S&P 500 (In Devleopment)
+```{r eval=FALSE, include=FALSE}
+local({
+	
+	dir = file.path(TMP_DIR, 'sp500')
+	if (dir.exists(dir)) unlink(dir, recursive = TRUE)
+    dir.create(dir, recursive = TRUE)
+
+	# Get list of S&P 500 stocks
+	sp500StockList =
+		httr::GET('https://en.wikipedia.org/wiki/List_of_S%26P_500_companies#Selected_changes_to_the_list_of_S&P_500_components') %>%
+	    httr::content(., as = 'parsed') %>%
+	    rvest::html_node(., '#constituents') %>% rvest::html_table(., header = TRUE, fill = FALSE) %>%
+		dplyr::transmute(., ticker = str_replace(Symbol, coll('.'), '-'), longname = Security, sector = .$'GICS Sector') %>%
+		as_tibble(.) %>%
+		dplyr::arrange(., sector, ticker) %>%
+		dplyr::mutate(., order = 0:(nrow(.) - 1), filepath = file.path(dir, paste0(order, '.csv')))
+
+
+	rawDataDfs =
+		sp500StockList %>%
+		purrr::transpose(.) %>%
+		setNames(., lapply(., function(x) x$ticker)) %>%
+		lapply(., function(x) {
+			
+			#message(x$ticker)
+
+			if (x$order %% 100 == 0) message(x$order)
+
+			url =
+				paste0(
+					'https://query1.finance.yahoo.com/v7/finance/download/', x$ticker,
+					'?period1=', as.numeric(as.POSIXct(Sys.Date() - lubridate::days(50))), # Enough to get last 30 market days
+					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+					'&interval=1d',
+					'&events=history&includeAdjustedClose=true'
+				)
+
+			httr::RETRY(
+				verb = 'GET',
+		    	url = url,
+				httr::write_disk(x$filepath)
+			)
+			
+			df =
+				data.table::fread(x$filepath) %>%
+				.[, c('Date', 'Adj Close')]	%>%
+				setnames(., new = c('date', 'price'))
+			
+			# Quit if last row is empty (occurs when company has been aquired but not yet removed from wikipedia list of stocks)
+			if (!is.numeric(df[[nrow(df), 'price']])) return(NA)
+			
+			df %>%
+				.[, lag := shift(price, 1)] %>%
+				.[, return := (price/lag - 1) * 100] %>%
+				.[, -c('price', 'lag')] %>%
+				.[(nrow(.) - 29):nrow(.), ] %>%
+				return(.)
+			}) %>%
+		# Reject all NA results (see above)
+		purrr::keep(., ~ is.data.table(.))
+	
+	unlink(dir, recursive = TRUE)
+
+
+	seriesAllDt =
+		# Get all combinations of tickers
+		lapply(1:(length(sp500StockList$ticker) - 1), function(n)
+			lapply((n+1):length(sp500StockList$ticker), function(m)
+				list(ticker1 = sp500StockList$ticker[[n]], ticker2 = sp500StockList$ticker[[m]]))
+			) %>%
+		unlist(., recursive = FALSE) %>%
+		# Only keep if data was available
+		purrr::keep(., ~ .$ticker1 %in% names(rawDataDfs) && .$ticker2 %in% names(rawDataDfs)) %>%
+		purrr::imap(., function(x, i) {
+			
+			if (i %% 5000 == 0) message(i)
+
+			# Join raw data tables together
+			dataDt = rawDataDfs[[x$ticker1]][rawDataDfs[[x$ticker2]], nomatch = 0, on = 'date']
+
+			seriesDt =
+				dataDt %>%
+				# Calculate correlation starting with day 30
+				.[, '30' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 30)] %>%
+				.[, -c('return', 'i.return')] %>%
+				data.table::melt(
+					.,
+					id.vars = c('date'), variable.name = 'roll', value.name = 'value', variable.factor = FALSE,
+					na.rm = TRUE
+					) %>%
+				.[, ticker1 := x$ticker1] %>%
+				.[, ticker2 := x$ticker2]
+			return(seriesDt)
+		}) %>%
+		dplyr::bind_rows(.)
+
+
+	seriesAllRes =
+		seriesAllDt %>%
+		split(., by = c('ticker1', 'ticker2')) %>%
+		lapply(., function(x) {
+
+			fundSeriesMapDf =
+				tibble(
+					ticker1 = x$ticker1,
+					order1 = dplyr::filter(sp500StockList, ticker == x$ticker1[[1]])$order,
+					category1 = dplyr::filter(sp500StockList, ticker == x$ticker1[[1]])$sector,
+					ticker2 = x$ticker2,
+					order2 = dplyr::filter(sp500StockList, ticker == x$ticker2[[1]])$order,
+					category2 = dplyr::filter(sp500StockList, ticker == x$ticker1[[1]])$sector,
+					last_updated = Sys.Date()
+					)
+
+			seriesDf = x %>% .[, -c('ticker1', 'ticker2')]
+
+			list(
+				fundSeriesMapDf = fundSeriesMapDf,
+				seriesDf = seriesDf
+			)
+		})
+
+	fundSeriesMapDf = purrr::map_dfr(seriesAllRes, ~.$fundSeriesMapDf) %>% dplyr::mutate(., usage = 'sp500')
+	
+
+
+})
+```
+
 
