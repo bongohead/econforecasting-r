@@ -2,9 +2,9 @@
 ```{r}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 TMP_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting-rpkg'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting'
 CONSTANTS_PATH = 'D:/Onedrive/__Projects/econforecasting/constants.r'
-RESET_ALL = FALSE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
+RESET_ALL = TRUE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
 ```
 
 
@@ -35,11 +35,11 @@ local({
 	conn =
 		dbConnect(
 		RPostgres::Postgres(),
-		dbname = const$DB_DATABASE,
-		host = const$DB_SERVER,
+		dbname = CONST$DB_DATABASE,
+		host = CONST$DB_SERVER,
 		port = 5432,
-		user = const$DB_USERNAME,
-		password = const$DB_PASSWORD
+		user = CONST$DB_USERNAME,
+		password = CONST$DB_PASSWORD
 		)
 	  
 	acFundDf =
@@ -57,7 +57,7 @@ local({
 			url =
 				paste0(
 					'https://query1.finance.yahoo.com/v7/finance/download/', x$ticker,
-					'?period1=1262304000', # 12/31/2009
+					'?period1=1388534400', # 12/31/2013
 					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
 					'&interval=1d',
 					'&events=history&includeAdjustedClose=true'
@@ -175,7 +175,7 @@ local({
 })
 ```
 
-# Calculate correlation index
+# Calculate Correlation Index
 ```{r}
 local({
 	
@@ -220,10 +220,6 @@ local({
 		)
 	
 	DBI::dbGetQuery(conn, query)
-	
-
-
-	
 
 	# Update last_udpated if uniqueness constraint conflict
 	query =
@@ -261,7 +257,8 @@ local({
 		.[, date := as.character(date)] %>% {
 			if (RESET_ALL == TRUE) .
 			else .[date > lastDate]
-		}
+		} %>%
+		.[, usage := NULL]
 	
 
 	# If DF too big, use batch CSV
@@ -275,7 +272,7 @@ local({
 		# Upload via SFTP
 		RCurl::ftpUpload(
 			what = tempPath,
-			to = const$SFTP_PATH
+			to = CONST$SFTP_PATH
 			)
 		
 		unlink(tempPath)

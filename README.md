@@ -11,6 +11,13 @@ Start off with FFR & Treasury yield forecast
 ---
 # CHANGELOG
 
+## 2021-01-29 [v0.04]
+- Added historical data scraping code
+- Added code for fed funds rate
+- Fixed bug in data upload
+- Fixed bug in getDataFred()
+- Fixed bug in package description compilation
+
 ## 2021-01-13 [v0.03]
 - Added code for calculating asset contagion index
 - Added code for splitting RESET_ALL runs from update runs
