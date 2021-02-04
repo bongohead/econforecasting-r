@@ -221,7 +221,7 @@ local({
 	
 	DBI::dbGetQuery(conn, query)
 
-	# Update last_udpated if uniqueness constraint conflict
+	# Update last_updated if uniqueness constraint conflict
 	query =
 		paste0(
 			'INSERT INTO ac_fund_series_map (', paste0(colnames(fundSeriesMapDf), collapse = ','), ')\n',

@@ -1,7 +1,10 @@
-#' Load a Matrix
+#' Scrape data from FRED.
 #'
-#' @param infile Path to the input file
-#' @return A matrix of the infile
+#' @param seriesId (string) FRED ID of economic variable
+#' @param apiKey (string) User's FRED API Key
+#' @param .freq (string) One of 'd', 'm', 'q'. If NULL, returns highest available frequency.
+#' @param .returnVintages (boolean) If TRUE, returns all historic forecast values ('vintages').
+#' @return A data frame of forecasts
 #' @export
 
 getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE) {
@@ -16,7 +19,7 @@ getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE) 
             '&realtime_end=', Sys.Date(),
             '&obs_start=', '2000-01-01',
             '&obs_end=', Sys.Date(),
-            if(!is.null(.freq)) '&freq=' else '',
+            if(!is.null(.freq)) paste0('&frequency=', .freq) else '',
             '&aggregation_method=avg'
         )
 
