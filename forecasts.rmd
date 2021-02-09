@@ -3,6 +3,7 @@
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting'
 DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
+RESET_ALL = FALSE
 ```
 
 
@@ -39,7 +40,7 @@ local({
   
   df =
     tribble(
-      ~ fcname, ~ frequency, ~ fullname, ~ cmefi,
+      ~ fcname, ~ freq, ~ fullname, ~ cmefi,
       'atl', 'q', 'Atlanta Fed GDPNow', F,
       'stl', 'q', ' St. Louis Fed Economic News Index', F,
       'nyf', 'q', 'New York Fed Staff Nowcast', F,
@@ -49,7 +50,7 @@ local({
       'fnm', 'q', 'Fannie Mae', F,
       'gsu', 'q', 'Georgia State', F,
       'cbo', 'q', 'Congressional Budget Office', F,
-      'cme', 'q', 'CME Group Data', F,
+      'cme', 'q', 'Consensus Futures-Implied Forecast', T,
       'dns', 'm', 'CMEFI Interest Rate Model', T
       )
   
@@ -68,7 +69,7 @@ local({
     tribble(
       ~ varname, ~ fredId, ~ freq,
       'gdp', 'A191RL1Q225SBEA', 'q',
-      'effr', 'EFFR', 'd',
+      'ffr', 'EFFR', 'd',
       'sofr', 'SOFR', 'd',
       't10y', 'DGS10', 'd',
       't30y', 'DGS30', 'd',
@@ -629,37 +630,82 @@ local({
 ```
 
 
-### Get Quandl CME Data
+### Get CME Data
 ```{r}
 local({
   
-  df =
-    lapply(1:24, function(j)
-      read_csv(
-        paste0('https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF', j, '.csv?api_key=', CONST$QUANDL_API_KEY),
-        col_types = 'Ddddddddd'
-        ) %>%
-        dplyr::transmute(., vintageDate = Date, settle = Settle, j = j) %>%
-        dplyr::filter(., vintageDate >= as.Date('2006-01-01'))
-      ) %>%
-    dplyr::bind_rows(.) %>%
-    dplyr::transmute(
-      .,
-      vintageDate,
-      # Consider the forecasted period the vintageDate + j
-      obsDate =
-        econforecasting::strdateToDate(paste0(year(vintageDate), 'M', month(vintageDate))) %>%
-        lubridate::add_with_rollback(., months(j - 1), roll_to_first = TRUE),
-      value = 100 - settle,
-      varname = 'ffr',
-      fcname = 'cme'
-      )
-  
+	# First get from Quandl
+	df =
+		lapply(1:24, function(j)
+			read_csv(
+				paste0(
+					'https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF', j,
+					'.csv?api_key=', CONST$QUANDL_API_KEY
+					),
+				col_types = 'Ddddddddd'
+				) %>%
+				dplyr::transmute(., vintageDate = Date, settle = Settle, j = j) %>%
+				dplyr::filter(., vintageDate >= as.Date('2006-01-01'))
+			) %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::transmute(
+		.,
+			vintageDate,
+		# Consider the forecasted period the vintageDate + j
+		obsDate =
+			econforecasting::strdateToDate(paste0(year(vintageDate), 'M', month(vintageDate))) %>%
+			lubridate::add_with_rollback(., months(j - 1), roll_to_first = TRUE),
+		value = 100 - settle,
+		varname = 'ffr',
+		fcname = 'cme'
+		)
+	
+	
+	df2 =
+		tribble(
+			~ varname, ~ cmeId,
+			'ffr', '305',
+			'sofr', '8462',
+			'sofr', '8463'
+		) %>%
+		purrr::transpose(.) %>%
+		purrr::map_dfr(., function(var) {
+			httr::GET(
+				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_=')
+				) %>%
+				httr::content(., as = 'parsed') %>%
+				.$quotes %>%
+				purrr::map_dfr(., function(x) {
+					if (x$priorSettle == '-') return()
+					tibble(
+						obsDate = lubridate::ymd(x$expirationDate),
+						value = 100 - as.numeric(x$priorSettle),
+						varname = var$varname
+						)
+					})
+			}) %>% 
+		# Now average out so that there's only one value for each (varname, obsDate) combo
+		dplyr::group_by(varname, obsDate) %>%
+		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+		dplyr::arrange(., obsDate) %>%
+		# Get rid of forecasts for old observations
+		dplyr::filter(., obsDate >= lubridate::floor_date(Sys.Date(), 'month')) %>%
+		# Assume vintagedate is the same date as the last Quandl obs
+		dplyr::mutate(., vintageDate = max(df$vintageDate), fcname = 'cme')
+	
+	
+	# Now combine, replacing df2 with df1 if necessary
+	combinedDf =
+		dplyr::full_join(df, df2, by = c('fcname', 'vintageDate', 'obsDate', 'varname')) %>%
+		# Use quandl data if available, otherwise use other data
+		dplyr::mutate(., value = ifelse(!is.na(value.x), value.x, value.y)) %>%
+		dplyr::select(., -value.x, -value.y)
+
   # Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
   # df %>% tidyr::pivot_wider(., names_from = j, values_from = settle) %>% dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>% View(.)
   
   
-  ef$forecast$cme <<- df
+	ef$forecast$cme <<- combinedDf
 })
 ```
 
@@ -688,12 +734,18 @@ local({
 		)
 	
 	
+	if (RESET_ALL == TRUE) {
+		DBI::dbGetQuery(conn, 'TRUNCATE fc_forecastnames CASCADE')
+		DBI::dbGetQuery(conn, 'TRUNCATE fc_history')
+		DBI::dbGetQuery(conn, 'TRUNCATE fc_forecast')
+	}
+	
 	# Insert fc_forecastnames
 	query =
 	  econforecasting::createInsertQuery(
 	    ef$forecastnames,
 	    'fc_forecastnames',
-	    'ON CONFLICT ON CONSTRAINT fc_forecastnames_fcname DO UPDATE SET frequency = EXCLUDED.frequency, fullname = EXCLUDED.fullname, cmefi = EXCLUDED.cmefi'
+	    'ON CONFLICT ON CONSTRAINT fc_forecastnames_fcname DO UPDATE SET freq = EXCLUDED.freq, fullname = EXCLUDED.fullname, cmefi = EXCLUDED.cmefi'
 	    )
 	res = DBI::dbGetQuery(conn, query)
 	
