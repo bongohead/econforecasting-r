@@ -11,6 +11,9 @@ Start off with FFR & Treasury yield forecast
 ---
 # CHANGELOG
 
+## 2021-02-08 [v0.08]
+- Added monthly aggregation for daily-data forecasts
+
 ## 2021-02-03 [v0.05] (Prepping Forecasts For Website Display)
 - Added dynamic Nelson-Siegel interest rate decomposition & forecasting model
 - Added code to allow for SPF pulling for more variables

@@ -4,7 +4,7 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 TMP_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting'
 CONSTANTS_PATH = 'D:/Onedrive/__Projects/econforecasting/constants.r'
-RESET_ALL = TRUE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
+RESET_ALL = FALSE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
 ```
 
 

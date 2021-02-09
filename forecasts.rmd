@@ -69,6 +69,7 @@ local({
       ~ varname, ~ fredId, ~ freq,
       'gdp', 'A191RL1Q225SBEA', 'q',
       'effr', 'EFFR', 'd',
+      'sofr', 'SOFR', 'd',
       't10y', 'DGS10', 'd',
       't30y', 'DGS30', 'd',
       't05y', 'DGS5', 'd',
@@ -113,6 +114,58 @@ local({
   ef$history$fred <<- df
 })
 ```
+
+## Add latest monthly average for daily data if unavailable
+```{r}
+local({
+    
+    newMonthlyAverages =
+        # Get all daily varnames
+        ef$history$fred %>%
+        dplyr::filter(., freq == 'd') %>%
+        .$varname %>% unique(.) %>%
+        # Check which ones have no monthly data for the current month
+        lapply(., function(vname) {
+            
+            thisMonthDataMonthly =
+                dplyr::filter(
+                    ef$history$fred,
+                    freq == 'm' & varname == vname &
+                        lubridate::month(obsDate) == lubridate::month(Sys.Date()) &
+                        lubridate::year(obsDate) == lubridate::year(Sys.Date())
+                    )
+            
+            thisMonthDataDaily =            
+                dplyr::filter(
+                    ef$history$fred,
+                    freq == 'd' & varname == vname &
+                        lubridate::month(obsDate) == lubridate::month(Sys.Date()) &
+                        lubridate::year(obsDate) == lubridate::year(Sys.Date())
+                    )
+
+            
+            # If (1) No monthly data for current month
+            # (2) But have some daily data for current month
+            if(nrow(thisMonthDataMonthly) == 0 && nrow(thisMonthDataDaily) >= 1) {
+            # Then create monthly observation by averaging daily values for this month
+                thisMonthDataDaily %>%
+                    dplyr::summarize(., value = mean(value)) %>%
+                    dplyr::mutate(
+                        .,
+                        varname = vname,
+                        obsDate = lubridate::floor_date(Sys.Date(), 'month'),
+                        freq = 'm'
+                        ) %>%
+                    return(.)
+            } else return(NA)
+        }) %>%
+        dplyr::bind_rows(.)
+    
+    
+    ef$history$newMonthlyAverages <<- newMonthlyAverages
+})
+```
+
 
 ## Aggregation
 ```{r}
