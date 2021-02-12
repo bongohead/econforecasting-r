@@ -40,18 +40,18 @@ local({
   
   df =
     tribble(
-      ~ fcname, ~ freq, ~ fullname, ~ cmefi,
-      'atl', 'q', 'Atlanta Fed GDPNow', F,
-      'stl', 'q', ' St. Louis Fed Economic News Index', F,
-      'nyf', 'q', 'New York Fed Staff Nowcast', F,
-      'spf', 'q', 'Philadelphia Fed Survey of Professional Forecasts', F,
-      'wsj', 'q', 'WSJ Consensus Survey', F,
-      'wfc', 'q', 'Wells Fargo', F,
-      'fnm', 'q', 'Fannie Mae', F,
-      'gsu', 'q', 'Georgia State', F,
-      'cbo', 'q', 'Congressional Budget Office', F,
-      'cme', 'q', 'Consensus Futures-Implied Forecast', T,
-      'dns', 'm', 'CMEFI Interest Rate Model', T
+      ~ fcname, ~ freq, ~ fullname, ~ cmefi, ~ shortname,
+      'atl', 'q', 'Atlanta Fed GDPNow', F, 'GDPNow',
+      'stl', 'q', 'St. Louis Fed Economic News Index', F, 'St. Louis Fed',
+      'nyf', 'q', 'New York Fed Staff Nowcast', F, 'New York Fed',
+      'spf', 'q', 'Philadelphia Fed Survey of Professional Forecasters', F, 'Survey of Forecasters',
+      'wsj', 'q', 'Wall Street Journal Consensus Survey', F, 'Wall Street Journal',
+      'wfc', 'q', 'Wells Fargo', F, 'Wells Fargo',
+      'fnm', 'q', 'Fannie Mae', F, 'Fannie Mae',
+      'gsu', 'q', 'Georgia State University', F, 'Georgia State',
+      'cbo', 'q', 'Congressional Budget Office', F, 'CBO',
+      'cme', 'm', 'CMEFI Consensus Interest Rate Model', T, 'Baseline',
+      'dns', 'm', 'CMEFI Consensus Interest Rate Model', T, 'Baseline'
       )
   
   ef$forecastnames <<- df
@@ -745,7 +745,7 @@ local({
 	  econforecasting::createInsertQuery(
 	    ef$forecastnames,
 	    'fc_forecastnames',
-	    'ON CONFLICT ON CONSTRAINT fc_forecastnames_fcname DO UPDATE SET freq = EXCLUDED.freq, fullname = EXCLUDED.fullname, cmefi = EXCLUDED.cmefi'
+	    'ON CONFLICT ON CONSTRAINT fc_forecastnames_fcname DO UPDATE SET freq = EXCLUDED.freq, fullname = EXCLUDED.fullname, cmefi = EXCLUDED.cmefi, shortname = EXCLUDED.shortname'
 	    )
 	res = DBI::dbGetQuery(conn, query)
 	
