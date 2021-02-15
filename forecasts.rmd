@@ -557,7 +557,7 @@ local({
 				httr::content(., as = 'parsed') %>%
 				.$quotes %>%
 				purrr::map_dfr(., function(x) {
-					if (x$priorSettle == '-') return()
+					if (x$priorSettle %in% c('0.00', '-')) return() # Whack bug in CME website
 					tibble(
 						obsDate = lubridate::ymd(x$expirationDate),
 						value = 100 - as.numeric(x$priorSettle),
@@ -572,7 +572,8 @@ local({
 		# Get rid of forecasts for old observations
 		dplyr::filter(., obsDate >= lubridate::floor_date(Sys.Date(), 'month')) %>%
 		# Assume vintagedate is the same date as the last Quandl obs
-		dplyr::mutate(., vintageDate = max(df$vintageDate), fcname = 'cme')
+		dplyr::mutate(., vintageDate = max(df$vintageDate), fcname = 'cme') %>%
+		dplyr::filter(., value != 100) 
 	
 	
 	# Now combine, replacing df2 with df1 if necessary

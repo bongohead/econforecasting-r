@@ -11,6 +11,9 @@ Start off with FFR & Treasury yield forecast
 ---
 # CHANGELOG
 
+## 2021-02-13 [v0.09]
+- Added mortgage models
+
 ## 2021-02-09 [v0.08]
 - Added monthly aggregation for daily-data forecasts
 - Added SOFR web scraping
