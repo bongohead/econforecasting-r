@@ -13,6 +13,7 @@ Start off with FFR & Treasury yield forecast
 
 ## 2021-02-13 [v0.09]
 - Added mortgage models
+- Added misc stationary transform functions for structural modeling
 
 ## 2021-02-09 [v0.08]
 - Added monthly aggregation for daily-data forecasts

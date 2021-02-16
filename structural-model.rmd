@@ -1,0 +1,107 @@
+# Set Constants
+```{r}
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting'
+DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
+RESET_ALL = FALSE
+```
+
+
+# Initialize
+```{r}
+library(tidyverse)
+library(devtools)
+library(jsonlite)
+library(lubridate)
+library(httr)
+library(rvest)
+library(DBI)
+
+setwd(DIR)
+
+if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
+dir.create(DL_DIR, recursive = TRUE)
+
+source(file.path(DIR, 'constants.r'))
+
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
+
+ef = list(
+  history = list(),
+  forecast = list()
+)
+```
+
+
+# Get Historical Data
+
+## From FRED
+```{r}
+local({
+  
+	histDf =
+		tribble(
+			~ fullname, ~ varname, ~ fredId, ~ freq,
+			'Real GDP', 'gdp', 'A191RL1Q225SBEA', 'q',
+			'Effective Federal Funds Rate', 'ffr', 'EFFR', 'd',
+			'Secured Overnight Financing Rate', 'sofr', 'SOFR', 'd',
+			'10-Year Treasury Yield', 't10y', 'DGS10', 'd',
+			'30-Year Treasury Yield', 't30y', 'DGS30', 'd',
+			'5-Year Treasury Yield', 't05y', 'DGS5', 'd',
+			'2-Year Treasury Yield', 't02y', 'DGS2', 'd',
+			'1-Year Treasury Yield', 't01y', 'DGS1', 'd',
+			'6-Month Treasury Yield', 't06m', 'DGS6MO', 'd',
+			'3-Month Treasury Yield', 't03m', 'DGS3MO', 'd',
+			'1-Month Treasury Yield', 't01m', 'DGS1MO', 'd',
+			'20-Year Treasury Yield', 't20y', 'DGS20', 'd',
+			'7-Year Treasury Yield', 't07y', 'DGS7', 'd',
+			'Mortgage 15-Year', 'mort15y', 'MORTGAGE15US', 'm',
+			'Mortgage 30-Year', 'mort30y', 'MORTGAGE30US', 'm',
+			'5/1-Year Mortgage Rate', 'mort5yr', 'MORTGAGE5US', 'm',
+			'Housing Starts', 'hstarts', 'HOUST', 'm'
+			) %>%
+		dplyr::select(., -fullname)
+  
+  df =
+    histDf %>%
+    purrr::transpose(.) %>%
+    setNames(., lapply(., function(x) x$varname)) %>%
+    lapply(., function(x) {
+      message('Getting data ... ', x$varname)
+      econforecasting::getDataFred(x$fredId, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = FALSE) %>%
+        dplyr::mutate(., varname = x$varname, freq = 'q') %>%
+        {if (x$freq %in% c('d', 'm'))
+          dplyr::bind_rows(
+            .,
+            econforecasting::getDataFred(x$fredId, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = FALSE) %>%
+              dplyr::mutate(., varname = x$varname, freq = 'm')
+            )
+          else .
+        } %>%
+        {if (x$freq %in% c('d'))
+          dplyr::bind_rows(
+            .,
+            econforecasting::getDataFred(x$fredId, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = FALSE) %>%
+              dplyr::mutate(., varname = x$varname, freq = 'd')
+            )
+          else .
+        }
+    }) %>%
+    dplyr::bind_rows(.) %>%
+    dplyr::filter(., obsDate >= as.Date('2000-01-01'))
+
+
+  ef$history$fred <<- df
+})
+```
+
+## De-seasonalize
+```{r}
+local({
+	
+	getDataFred('MEDLISPRIUS', CONST$FRED_API_KEY) %>% {ts(.$value, start = c(year(.$obsDate[1]), month(.$obsDate[1])), freq = 12)} %>% seasonal::seas(.) %>% predict(.) %>% as_tibble(.) %>% plot(.)
+
+})
+```
+
