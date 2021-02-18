@@ -52,7 +52,8 @@ local({
       'cbo', 'q', 'Congressional Budget Office', F, 'CBO',
       'cme', 'm', 'CMEFI Consensus Interest Rate Model', T, 'Baseline',
       'dns', 'm', 'CMEFI Consensus Interest Rate Model', T, 'Baseline',
-      'mrt', 'm', 'CMEFI Consensus Interest Rate Model', T, 'Baseline'
+      'mrt', 'm', 'CMEFI Consensus Interest Rate Model', T, 'Baseline',
+      'cle', 'm', 'CMEFI Consensus Inflations Market', T, 'Baseline'
       )
   
   ef$forecastnames <<- df
@@ -85,7 +86,8 @@ local({
 			'Mortgage 15-Year', 'mort15y', 'MORTGAGE15US', 'm',
 			'Mortgage 30-Year', 'mort30y', 'MORTGAGE30US', 'm',
 			'5/1-Year Mortgage Rate', 'mort5yr', 'MORTGAGE5US', 'm',
-			'Housing Starts', 'hstarts', 'HOUST', 'm'
+			'Housing Starts', 'hstarts', 'HOUST', 'm',
+			'CPI-U', 'cpi', 'CPIAUCSL', 'm'
 			) %>%
 		dplyr::select(., -fullname)
   
@@ -119,6 +121,30 @@ local({
 
 
   ef$history$fred <<- df
+})
+```
+
+## Add CPI
+```{r}
+local({
+	
+	mDf =
+		ef$history$fred %>%
+		dplyr::filter(., varname == 'cpi' & freq == 'm') %>%
+		dplyr::arrange(., obsDate) %>%
+		dplyr::mutate(., value = ma(apchg(value), 3)) %>%
+		dplyr::mutate(., varname = 'inf') %>% 
+		na.omit(.)
+	
+	qDf =
+		mDf %>%
+		dplyr::mutate(., obsDate = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'Q', lubridate::quarter(obsDate)))) %>%
+		dplyr::group_by(., obsDate) %>%
+		dplyr::summarize(., value = mean(value)) %>%
+		dplyr::mutate(., varname = 'inf', freq = 'q')
+	
+	
+	ef$history$cpi <<- dplyr::bind_rows(mDf, qDf)
 })
 ```
 
@@ -511,11 +537,56 @@ local({
 
 
 ## Models
+
+### EINF Model
+```{r}
+local({
+	
+  file = file.path(DL_DIR, paste0('inf.xls'))
+  
+  download.file('https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls', file, mode = 'wb')
+  
+  df =
+	readxl::read_excel(file, sheet = 'Expected Inflation') %>%
+  	dplyr::rename(., vintageDate = 'Model Output Date') %>%
+  	tidyr::pivot_longer(., -vintageDate, names_to = 'ttm', values_to = 'yield') %>%
+  	dplyr::mutate(
+  		.,
+  		vintageDate = as.Date(vintageDate), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
+  		) %>%
+  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
+  	dplyr::right_join(., tibble(ttm = 1:360), by = 'ttm') %>%
+  	dplyr::arrange(., ttm) %>%
+  	dplyr::mutate(
+  		.,
+  		yield = zoo::na.spline(yield),
+  		vintageDate = unique(na.omit(vintageDate)),
+  		curDate = floor_date(Sys.Date(), 'months'),
+  		cumReturn = (1 + yield)^(ttm/12),
+  		yttmAheadCumReturn = dplyr::lead(cumReturn, 1)/cumReturn,
+  		yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/1) - 1) * 100,
+  		obsDate = add_with_rollback(curDate, months(ttm - 1))
+  		) %>%
+  	dplyr::transmute(
+  		.,
+		obsDate,
+  		vintageDate,
+		fcname = 'cle',
+		varname = 'inf',
+  		value = yttmAheadAnnualizedYield,
+  		) %>%
+  	na.omit(.)
+	
+  ef$forecast$cle <<- df
+})
+```
+
 ### CME Model
 ```{r}
 local({
   
 	# First get from Quandl
+	message('Getting Quandl data ...')
 	df =
 		lapply(1:24, function(j)
 			read_csv(
@@ -526,7 +597,7 @@ local({
 				col_types = 'Ddddddddd'
 				) %>%
 				dplyr::transmute(., vintageDate = Date, settle = Settle, j = j) %>%
-				dplyr::filter(., vintageDate >= as.Date('2006-01-01'))
+				dplyr::filter(., vintageDate >= as.Date('2010-01-01'))
 			) %>%
 		dplyr::bind_rows(.) %>%
 		dplyr::transmute(
@@ -585,9 +656,37 @@ local({
 
   # Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
   # df %>% tidyr::pivot_wider(., names_from = j, values_from = settle) %>% dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>% View(.)
+	
+	
+	## Add monthly interpolation
+	message('Adding monthly interpolation ...')
+
+	finalDf =
+		combinedDf %>%
+		dplyr::group_by(vintageDate, varname) %>%
+		dplyr::group_split(.) %>%
+		lapply(., function(x) {
+			x %>%
+				# Join on missing obs dates
+				dplyr::right_join(
+					.,
+					tibble(obsDate = seq(from = .$obsDate[[1]], to = tail(.$obsDate, 1), by = '1 month')) %>%
+						dplyr::mutate(n = 1:nrow(.)),
+					by = 'obsDate'
+					) %>%
+				dplyr::arrange(obsDate) %>%
+				dplyr::mutate(
+					.,
+					value = zoo::na.spline(value),
+					vintageDate = head(vintageDate, 1),
+					varname = head(varname, 1),
+					fcname = head(fcname, 1),
+					)		
+			}) %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::select(., -n)
   
-  
-	ef$forecast$cme <<- combinedDf
+	ef$forecast$cme <<- finalDf
 })
 ```
 
@@ -850,8 +949,6 @@ local({
 })
 ```
 
-
-
 ## Aggregation
 ```{r}
 local({
@@ -881,6 +978,7 @@ local({
 		DBI::dbGetQuery(conn, 'TRUNCATE fc_forecastnames CASCADE')
 		DBI::dbGetQuery(conn, 'TRUNCATE fc_history')
 		DBI::dbGetQuery(conn, 'TRUNCATE fc_forecast')
+		DBI::dbGetQuery(conn, 'TRUNCATE fc_forecast_last_vintage')
 	}
 	
 	# Insert fc_forecastnames
@@ -911,6 +1009,22 @@ local({
 	    forecastDf,
 	    'fc_forecast',
 	    'ON CONFLICT ON CONSTRAINT fc_forecast_fcname_vintage_date_obs_date_varname DO UPDATE SET value = EXCLUDED.value'
+	    )
+	res = DBI::dbGetQuery(conn, query)
+	
+	
+	# Insert fc_forecast_last_vintage
+	forecastLastVintageDf =
+		ef$forecastDf %>%
+		dplyr::group_by(fcname) %>% 
+		dplyr::filter(., vintageDate == max(vintageDate)) %>%
+		dplyr::ungroup(.) %>%
+		dplyr::rename(., obs_date = obsDate, vintage_date = vintageDate)
+	query =
+	  econforecasting::createInsertQuery(
+	    forecastLastVintageDf,
+	    'fc_forecast_last_vintage',
+	    'ON CONFLICT ON CONSTRAINT fc_forecast_last_vintage_fcname_obs_date_varname DO UPDATE SET value = EXCLUDED.value, vintage_date = EXCLUDED.vintage_date'
 	    )
 	res = DBI::dbGetQuery(conn, query)
 
