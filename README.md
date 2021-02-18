@@ -1,12 +1,6 @@
-Start off with FFR & Treasury yield forecast
-- Concensus Forecasts
-	- Futures Rate Forecast
-	- 
+# ABOUT
+This project contains the code for data scraping, data cleaning, and modeling used to generate forecasts shown on [econforecasting.com](https://econforecasting.com).
 
-- Econforecasting.com scenario forecasts
-	- Median forecast
-	- Better-than-expected growth
-	- Below-expectations growth
 
 ---
 # CHANGELOG
@@ -14,6 +8,10 @@ Start off with FFR & Treasury yield forecast
 ## 2021-02-13 [v0.09]
 - Added mortgage models
 - Added misc stationary transform functions for structural modeling
+- Added addLags() function
+- Added historical data aggregation for SEMs
+- Added expected inflation models
+- Added prep for Kalman smoothing & interpolation
 
 ## 2021-02-09 [v0.08]
 - Added monthly aggregation for daily-data forecasts
