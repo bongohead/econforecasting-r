@@ -827,6 +827,7 @@ local({
 	    tidyr::pivot_wider(., names_from = varname, values_from = value) %>%
 	    dplyr::select(., -freq) %>%
 	    dplyr::filter(., obsDate >= as.Date('2010-01-01')) %>%
+		na.omit(.) %>%
 	    dplyr::transmute(., t30y, mortprem30y = mort30y - t30y, mortprem15y = mort15y - t10y) %>%
 	    vars::VAR(., p = 1) %>%
 	    predict(., n.ahead = 72) %>%

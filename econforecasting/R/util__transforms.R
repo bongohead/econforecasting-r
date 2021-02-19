@@ -66,7 +66,7 @@ lma2 = function(x) {
 
 
 apchg = function(x, .periods = 12) {
-    ((x/dplyr::lag(x, 1))^.periodsx - 1) * 100
+    ((x/dplyr::lag(x, 1))^.periods - 1) * 100
 }
 
 unapchg = function(x, .periods = 12, .h) {
