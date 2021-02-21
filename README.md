@@ -5,6 +5,13 @@ This project contains the code for data scraping, data cleaning, and modeling us
 ---
 # CHANGELOG
 
+## 2021-02-20 [v0.10]
+- Added import spreadsheet
+- Added GDP subcomponents
+- Added structure for SEM
+- Added deseasonalization information
+- Added first monthly interpolation calculations
+
 ## 2021-02-13 [v0.09]
 - Added mortgage models
 - Added misc stationary transform functions for structural modeling

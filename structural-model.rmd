@@ -41,6 +41,21 @@ ef = list(
 ```{r}
 local({
   
+	# Run in console to get list of GDP subcomponents
+	# httr::GET('https://fred.stlouisfed.org/release/tables?rid=53&eid=14961#snid=14966') %>%
+	# 	httr::content(.) %>%
+	# 	rvest::html_nodes('#release-elements-tree tbody tr') %>%
+	# 	map_dfr(., function(x)
+	# 		tibble(
+	# 			a =
+	# 				x %>% rvest::html_nodes('td') %>% .[3] %>%
+	# 				html_text(.) %>% str_replace_all(., '\n', '') %>% trimws(.),
+	# 			fred =
+	# 				x %>% rvest::html_nodes('td') %>% .[3] %>%
+	# 				rvest::html_nodes('span a') %>% rvest::html_attr('href') %>% str_replace(., '/series/', '')
+	# 			)
+	# 		)
+	
 	df =
 		CONST$PARAMS %>%
 		purrr::transpose(.) %>%
@@ -169,9 +184,34 @@ local({
 })
 ```
 
+
 # Nowcast
 
 ## Get monthly versions of quarterly factors
+```{r}
+local({
+	
+
+	
+	
+})
+```
+
+Get monthly versions of GDP subcomponents ->
+	Using DFM on some, SEM on others. Divide by 3 to get "monthly" dlog estimates -> loop through each quarter, adjust all monthly dlog values such that all dlog values must sumn correctly. ((1+m1+x)(1+m2+x)(1+m3+x) = (1+q)) => Solve for x. Get all base values
+	
+-> after monthly calcs, can 
+	
+	dlog.gdp = dlog.pce * pce_1/gdp_1 + dlog.gpdi * gpdi/gpdi_1 + dlog.exports * exports1/gdp + dlog.gvt * gvt/gdp
+dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(pdinr ~ (pce) + ma2(ue) + ma2(vsales) + ma2(spy) + lma2(loanscc), data = .) %>% summary(.)
+
+
+
+dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(gdp ~ pce + ue + vsales, data = .) %>% residuals(.) %>% dplyr::bind_cols( dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')), resids = .) %>% dplyr::transmute(., obsDate,  gdp = gdp * 400, pce = pce * 400, ue, resids = resids * 400) %>% View(.)
+
+
+
+-> first estim ate components of GDP monthly
 ```{r}
 local({
 	
