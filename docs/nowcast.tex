@@ -3,16 +3,89 @@
 \usepackage{amsmath}
 \usepackage{xcolor}
 \usepackage{geometry}
-
+\usepackage[parfill]{parskip}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\graphicspath{ {.} }
 \newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
+\definecolor{econgreen}{RGB}{55, 91, 1}
 
+\geometry{left=2.6cm, right = 2.6cm, top = 3cm, bottom = 3cm}
 
-\geometry{margin=2.6cm}
+\fancypagestyle{plain}{
+	\let\oldheadrule\headrule% Copy \headrule into \oldheadrule
+	\renewcommand{\headrule}{\color{econgreen}\oldheadrule}
+	\lhead{\small{\textcolor{black}{\leftmark}}}
+	%\chead{}
+	\rhead{\small{\textcolor{black}{\thepage}}}
+	\lfoot{}
+	\cfoot{}
+	\rfoot{}
+	\renewcommand{\headrulewidth}{0.5pt}
+	%\renewcommand{\footrulewidth}{0.5pt}
+}\pagestyle{plain}
 \begin{document}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{titlepage}
+\thispagestyle{empty}
+\newgeometry{left=5cm, top=5cm} %defines the geometry for the titlepage
+\pagecolor{econgreen}
+\noindent
+\includegraphics[width=2cm]{cmefi_short.png} \\[-1em]
+\color{white}
+\makebox[0pt][l]{\rule{1.3\textwidth}{1pt}}
+\par
+\noindent
+%\textbf{\textsf{A Macroeconomic Nowcasting Model}} 
+%\vskip5cm
+{\Huge \textsf{A Macroeconomic Nowcasting Model}}
+\vskip\baselineskip
+\noindent
+\textsf{March 2021}
+\restoregeometry % restores the geometry
+\nopagecolor% Use this to restore the color pages to white
+\end{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
+\section{Motivation}
+\textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
+
+This delay is particularly salient during times of high volatility. During the first few months of the COVID-19 pandemic in the United States, many companies attempted to use high-frequency indicators to attempt nowcasts of the state of the macroeconomy. For example, JP Morgan forecasts in March 13 predicted Q2 GDP growth of -3\%; the estimate was revised down to -14\% by March 21, -25\% by March 25, and -40\% by April 10. Yet many of the models were ad-hoc and only able to use a small number of predictive indicators, such as jobless claims or traffic data.
+
+\textbf{Nowcasting is about deciphering key information about the state of the economy before official data is released.} Because of the fundamentally urgent nature of nowcasting, it is important that nowcast models exploit any latest, high-frequency data available. Nowcasts should be able to generate constantly rolling forecasts, updating these numbers in response to any new data releases.
+
+
+
+
+For example, suppose the date is early March, and the variable we want to predict is Q1 GDP. The simplest way to predict Q1 GDP would be to use historical quarterly data from various economic variables. But this data would only be up to Q4 of last year, and would fail to capture the critically important predictive power that could be provided by monthly and daily data released throughout January and February.
+
+Suppose instead, we used monthly data as our predictors of Q1 GDP. Again, we will soon run in to a problem. As an example, imagine that we had imported 20 monthly data series. Suppose 5 of these series ended in December, 10 ended in January, and 5 ended in March. 
+
+\begin{figure}[H]
+\includegraphics[scale=.7]{nowcast-time-2}
+\centering
+\end{figure}
+
+Traditional modeling methods would require us to either throw out variables or throw out months - for example, we could truncate all our data series at January and lose out the information provided by the 5 February data points. Alternatively, we could completely remove the 15 variables with data releasing before March. Both methods are unappealing.
+
+In this paper, we will utilize a methodology that will allow us to use the information from all variables at any dates. This model will give an updated forecast in response to any new data releases. Additionally, the model can be generalized to nowcast any time series variable, not just GDP. The methodology for the model will be described in the next section.
 \section{Methodology}
 
+\subsection{Data}
+We begin by importing monthly data from the St. Louis Federal Reserve Database (FRED). Let $N$ refer to the number of different monthly variables.
+
+\subsection{Time Periods}
+The imported monthly data will have ragged edges - i.e., some monthly data will be available for later months than others.
+
+We will let $T$ denote the number of dates for which data is available for all data series. $\tau$ will denote the number of dates for which data is available for at least one data series. $T*$ will denote number of dates up to the end-of-quarter month of the $\tau$ date. For example, suppose date $\tau$ occurs on February. The end-of-quarter month, $T^*$, will be March (since Q1 runs through the end of March). 
+
+In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \dots, T^*$, where dates $T + 1$ through $\tau$ are the dates for which only some data are available, and dates $\tau + 1$ through $T^*$ are the dates for which no data is available up to the next quarter-ending month.
+\begin{figure}[H]
+\includegraphics[scale=.7]{nowcast-time}
+\centering
+\end{figure}
 \subsection{Factor VAR}
 
 We model the factors as following a vector-autoregressive (VAR) process, i.e., 
@@ -147,49 +220,96 @@ As before we can estimate $A$ with the standard OLS estimator.
 \end{align*}
 
 
-\subsection{Kalman Filter}
+\subsection{State-Space Setup}
 Now, combining our equations for the DFM and the VAR, we have the below system.
 \begin{align*}
 z_t = B z_{t-1} + Cx + v_t\\
 y_t = A z_t + w_t
 \end{align*}
-Since we have estimated our values $B$, $C$, and $A$ in our previous two steps, this system is now fully specified and in state-space form. The first equation is our state (or transition) equation. The second equation is our measurement equation. 
 
-For Kalman filtration, we also require an assumed distribution on $v_t$ and $w_t$. We assume that $v_t$ is distributed normally with mean 0 and constant covariance calculated by taking the average covariance is.
+This system is now fully specified and in state-space form. The first equation is our state (or transition) equation. The second equation is our measurement equation. 
+
+We use our estimated values $B$, $C$, and $A$ calculated in our previous two sections. To run the Kalman Filter, we will want to create the actual data matrices for $z_t$ and $y_t$. $z_t$ can be constructed as before, using data for factors from time 1 through $T$. However, unlike in the previous two sections, we will want to create $y_t$ matrices not for just time periods 1 through $T$, but now for time periods $1$ through $\tau$. Elements in $y_t$ may be set to any value for missing observations; the process of Kalmam filtration will render this choice irrelevant.
+
+Specifically, we construct the matrices below.
+\begin{align*}
+z_t
+=
+\begin{bmatrix}
+	\vv{f1}_{t}\\
+	\vv{f2}_{t}\\
+	\vdots \\
+	\vv{fR}_{t}
+\end{bmatrix}, \forall t \in 1, \dots, T\\
+y_t
+=
+\begin{bmatrix}
+	\text{$\vv{ue}_{t}$ if available, otherwise 0}\\
+	\text{$\vv{pce}_{t}$ if available, otherwise 0}\\
+	\vdots \\
+	\text{$\vv{claims}_{t}$ if available, otherwise 0}\\
+\end{bmatrix}, \forall t \in 1, \dots, \tau
+\end{align*}
+
+For Kalman filtration, we also require an assumed distribution on $v_t$ and $w_t$. We assume that $v_t$ is distributed normally with mean 0 and constant diagonal covariance matrix denoted $Q$, with diagonal entries calculated by taking the average squared values of the residuals of the VAR.
+
+We also assume $w_t$ is distributed normally with mean $0$. However, we no longer specify the covariance matrix as constant, but as the time-dependent matrices $R_t$. For $t \in 1, \dots, T+1$, we let $R_t$ be a diagonal covariance matrix with diagonal entries calcualted by taking the average squared values of the residuals of the DFM. For $t \in T+1, \dots, \tau$, we let the diagonal elements of $R_t$ be equal to infinity if the corresponding element of $y_t$ is missing for that time period; and equal to the average squared value of the residual if otherwise.
+\begin{align*}
+	v_t \sim \mathcal{N}(0, Q)\\
+	w_t \sim \mathcal{N}(0, R_t)
+\end{align*}
 
 We begin with the unconditional mean of $\widehat{Z}_{0|-1} = 0$ and unconditional variance of VAR $\Sigma_{0|-1} = 0$.
 
-\section{Test}
+\section{Kalman Filtration}
+Now that our state-space model is fully specified, we can begin the Kalman filter recursions.
 \begin{align*}
-	z_t = B z_{t-1} + v_t.  \tag{state equation}\\
-	y_t = H z_{t} + w_t. \tag{measurement equation}
-\end{align*}
-Let $v_t$ be distributed with variance $Q$, $w_t$ be distributed with variance $R$. Let $R$ be time-dependent with $R_t$ set as 0 for vintages where data is unavailable.
-
-\begin{align*}
-	\vv{z}_{1|0} = B \vv{z}_{0|0}\\
-	\vv{CovZ}_{1|0} = B \vv{CovZ}_{0|0}B' + Q\\
-	\vv{y}_{1|0} = H \vv{z}_{1|0}\\
-	\vv{CovY}_{1|0} = H \vv{CovZ}_{1|0} H' + R
+	z_t = B z_{t-1} + Cx + v_t\\
+	y_t = A z_t + w_t\\
+	v_t \sim \mathcal{N}(0, Q)\\
+	w_t \sim \mathcal{N}(0, R_t)
 \end{align*}
 
+To solve this programmatically, we will need the previously estimated matrices $A$, $B$, and $C$; the matrices $z_t$ from 1 through $T$; the matrices $y_t$ from 1 through $\tau$; the covariance matrix $Q$; and finally, the covariance matrices $R_t$ from 1 through $\tau$.
+
+We initialize the Kalman filter with the following standard assumptions. 
 \begin{align*}
-	P_{1} = \vv{CovZ}_{1|0} H' \vv{CovY}_{1|0}\\
-	\vv{z}_{1|1} = \vv{z}_{1|0} + P_1 (\vv{y}_1 - \vv{y}_{1|0})\\
-	\vv{Covz}_{1|1} = \vv{z}_{1|0} - P_1 \vv{CovY}_{1|0} P'_1
+	\vv{z}_{0|0} = 0\\
+	\vv{CovZ} = 0
 \end{align*}
 
-Forecasting step:
+Now for $t = 1, \dots, \tau$, we iterate through the Kalman filter recursions and iteratively calculate the values below.
 \begin{align*}
-	P_{1} = \vv{CovZ}_{1|0} H' \vv{CovY}^{-1}_{1|0}\\
-	\vv{z}_{1|1} = \vv{z}_{1|0} + P_1 (\vv{y}_1 - \vv{y}_{1|0})\\
-	\vv{Covz}_{1|1} = \vv{z}_{1|0} - P_1 \vv{CovY}_{1|0} P'_1
+	\vv{z}_{t|t-1} &= B \vv{z}_{t-1|t-1} + C\\
+	\vv{CovZ}_{t|t-1} &= B \vv{CovZ}_{t-1|t-1} + Q\\
+	\vv{y}_{t|t-1} &= A \vv{z}_{t|t-1}\\
+	\vv{CovY}_{t|t-1} &= A \vv{CovZ}_{t|t-1} A' + R_t\\
+	P_t &= \vv{CovZ}_{t|t-1} A' \vv{CovY}^{-1}_{t|t-1}\\
+	\vv{z}_{t|t} &= \vv{z}_{t|t-1} + P_t (\vv{y}_t - \vv{y}_{t|t-1})\\
+	\vv{CovZ}_{t|t} &= \vv{CovZ}_{t|t-1} - P_t (\vv{CovY}_{t|t-1}) P'_t
 \end{align*}
+Note that the during recursions $T + 1, \dots \tau$, the infinite values in the $R_t$ matrix will cause infinite values in the $\vv{CovY}_{t|t-1}$ matrix. This may prevent standard computational methods from computing the inverse of the matrix needed in the step for calculation of $\vv{CovZ}_{t|t}$. Alternative methods, such as a Cholesky decomposition before inversion, can be used to subvert this problem.
 
+The Kalman filter allows us to recover all the time $t$ conditional state matrices $z_{t|t}$ that have been adjusted for information from the monthly datasets. However, of more interest to us is the value of the state matrices when conditioned on all data available at time $\tau$, $z_{t|\tau}$. This can be recovered by using the Kalman smoother.
 
-diag(c(5, 10, 20, .5, .3, Inf, Inf)) %>% chol(.) %>% chol2inv(.)
+Recursively iterating over $t = \tau - 1, \dots, 1$, we calculate the following values. 
+\begin{align*}
+	S_{t} &= \vv{CovZ}_{t|t} B' \vv{CovZ}^{-1}_{t + 1|t}\\
+	\vv{z}_{t|\tau} &= \vv{z}_{t|t} + S_t (\vv{z}_{t+1|\tau} - \vv{z}_{t + 1|t})\\
+	\vv{CovZ}_{t|\tau} &= \vv{CovZ}_{t|t} - S_t(\vv{CovZ}_{t + 1|t} - \vv{CovZ}_{t + 1|\tau})S'_t
+\end{align*}
+These values $\vv{z}_{t|\tau}$ will serve as our estimates of the state variables (i.e., the PCA factors) from time 1 through $\tau$.
 
+Finally, we want to forecast the the state vector $z_{t|\tau}$ for $t = \tau + 1, \dots, T^*$. This can be done through the typical Kalman filter forecasting step.
 
+Recursively iterating over $t = \tau + 1, \dots, T^*$, we calculate the following values.
+\begin{align*}
+	\vv{z}_{t|\tau} &= B \vv{z}_{t-1|\tau} + C\\
+	\vv{CovZ}_{t|\tau} &= B \vv{CovZ}_{t-1|\tau} B'+ Q\\
+	\vv{y}_{t|\tau} &= A \vv{z}_{t|\tau}\\
+	\vv{CovY}_{t|\tau} &= A \vv{CovZ}_{t|\tau} A' + R_0
+\end{align*}
+Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the Kalman smoother, we will now be able to obtain the full time series for the factors from time 1 through time $T^*$.
 
 
 \end{document}
