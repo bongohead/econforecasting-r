@@ -1,0 +1,195 @@
+\documentclass[11pt, letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{geometry}
+
+\newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
+
+
+\geometry{margin=2.6cm}
+\begin{document}
+
+
+\section{Methodology}
+
+\subsection{Factor VAR}
+
+We model the factors as following a vector-autoregressive (VAR) process, i.e., 
+\begin{align*}
+\underbrace{\begin{bmatrix}
+	\vv{f1}_{t}\\
+	\vv{f2}_{t}\\
+	\vdots \\
+	\vv{fR}_{t}
+\end{bmatrix}}_{z_t}
+=
+B
+\underbrace{\begin{bmatrix}
+	\vv{f1}_{t-1}\\
+	\vv{f2}_{t-1}\\
+	\vdots \\
+	\vv{fR}_{t-1}
+\end{bmatrix}}_{z_{t-1}}
++
+C
++
+\underbrace{\begin{bmatrix}
+v1_t\\
+v2_t\\
+\vdots\\
+vR_t
+\end{bmatrix}}_{v_t},\\
+\text{where $z_t$ is the $R \times 1$ matrix of time $t$ factors,}\\
+\text{$B$ is the $R \times R$ coefficient matrix,}\\
+\text{$C$ is the $R \times 1$ constant matrix,}\\
+\text{and $v_t$ is the $R \times 1$ matrix of errors for time $t$.}
+\end{align*}
+
+
+We wish to estimate the coefficient matrices $B$ and $C$. This can be done via OLS estimation. We first rewrite the data as the standard linear equation,
+\begin{align*}
+\underbrace{\begin{bmatrix}
+\vv{f1}_{2} & \vv{f2}_{2} & \dots & \vv{f6}_{2}\\
+\vv{f1}_{3} & \vv{f2}_{3} & \dots & \vv{f6}_{3}\\
+\vdots & \vdots & \vdots & \vdots \\
+\vv{f1}_{T} & \vv{f2}_{T} & \dots & \vv{f6}_{T}
+\end{bmatrix}}_{\Gamma}
+=
+\underbrace{\begin{bmatrix}
+1 & \vv{f1}_{1} & \vv{f2}_{1} & \dots & \vv{f6}_{1}\\
+1 & \vv{f1}_{2} & \vv{f2}_{2} & \dots & \vv{f6}_{2}\\
+\vdots & \vdots & \vdots & \vdots & \vdots \\
+1 & \vv{f1}_{T-1} & \vv{f2}_{T-1} & \dots & \vv{f6}_{T-1}
+\end{bmatrix}}_{\Psi}
+\underbrace{\begin{bmatrix}
+C'\\
+B'
+\end{bmatrix}}_{\Lambda}
+ +
+\underbrace{\begin{bmatrix}
+v1_2 & v2_2 & \dots & vR_2\\
+v1_3 & v2_3 & \dots & vR_3\\
+\vdots\\
+v1_T & v2_T & \dots & vR_T\\
+\end{bmatrix}}_{V},\\
+\text{where $\Gamma$ is the $T-1 \times R$ dependent data matrix,}\\
+\text{$\Psi$ is the $T-1 \times R+1$ independent data matrix,}\\
+\text{$\Lambda$ is the $R+1 \times R$ matrix of coefficient weightings,}\\
+\text{and $V$ is the $T-1 \times R$ matrix of residuals.}
+\end{align*}
+The coefficient matrix $\Lambda$ can be estimated by the standard OLS estimator.
+\begin{align*}
+\widehat{\Lambda} = (\Psi' \Psi)^{-1} (\Psi'\Gamma)
+\end{align*}
+It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which can then be transposed to derive our estimates of the original coefficient matrices B and C, $\widehat{B}$ and $\widehat{C}$.
+
+\subsection{Dynamic Factor Models}
+Now let us consider again the monthly covariates which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier.
+
+The factor models take the following form:
+\begin{align*}
+\underbrace{\begin{bmatrix}
+	\vv{ue}_t\\
+	\vv{pce}_t\\
+	\vdots \\
+	\vv{claims}_t
+\end{bmatrix}}_{y_t}
+=
+A
+\underbrace{\begin{bmatrix}
+	\vv{f1}_{t}\\
+	\vv{f2}_{t}\\
+	\vdots \\
+	\vv{fR}_{t}
+\end{bmatrix}}_{z_t}
++
+\underbrace{\begin{bmatrix}
+	w1_t\\
+	w2_t\\
+	\vdots\\
+	wN_t
+\end{bmatrix}}_{w_t},\\
+\text{where $y_t$ is the $N \times 1$ vector of monthly variables at time $t$,}\\
+\text{$A$ is the $N \times R$ coefficient matrix,}\\
+\text{$z_t$ is the $R \times 1$ vector of factors at time $t$,}\\
+\text{and $w_t$ is the $N \times 1$ vector of errors at time $t$.}\\
+\end{align*}
+We wish to estimate the coefficient matrix $A$. As before, we can do this by estimating this as an OLS equation, writing the data matrices as follows
+
+\begin{equation}
+\underbrace{\begin{bmatrix}
+\vv{ue}_{2} & \vv{pce}_{2} & \dots & \vv{claims}_{2}\\
+\vv{ue}_{3} & \vv{pce}_{3} & \dots & \vv{claims}_{3}\\
+\vdots & \vdots & \vdots & \vdots \\
+\vv{ue}_{T} & \vv{pce}_{T} & \dots & \vv{claims}_{T}\\
+\end{bmatrix}}_{\Phi}
+=
+\underbrace{\begin{bmatrix}
+\vv{f1}_{2} & \vv{f2}_{2} & \dots & \vv{f6}_{2}\\
+\vv{f1}_{3} & \vv{f2}_{3} & \dots & \vv{f6}_{3}\\
+\vdots & \vdots & \vdots & \vdots \\
+\vv{f1}_{T} & \vv{f2}_{T} & \dots & \vv{f6}_{T}\\
+\end{bmatrix}}_{\Omega}
+A'
+ +
+\underbrace{\begin{bmatrix}
+w1_2 & w2_2 & \dots & wR_2\\
+w1_3 & w2_3 & \dots & wR_3\\
+\vdots\\
+w1_T & w2_T & \dots & wR_T\\
+\end{bmatrix}}_{W}
+\end{equation}
+
+As before we can estimate $A$ with the standard OLS estimator.
+\begin{align*}
+\widehat{A}' = (\Omega' \Omega)^{-1} (\Omega'\Phi)
+\end{align*}
+
+
+\subsection{Kalman Filter}
+Now, combining our equations for the DFM and the VAR, we have the below system.
+\begin{align*}
+z_t = B z_{t-1} + Cx + v_t\\
+y_t = A z_t + w_t
+\end{align*}
+Since we have estimated our values $B$, $C$, and $A$ in our previous two steps, this system is now fully specified and in state-space form. The first equation is our state (or transition) equation. The second equation is our measurement equation. 
+
+For Kalman filtration, we also require an assumed distribution on $v_t$ and $w_t$. We assume that $v_t$ is distributed normally with mean 0 and constant covariance calculated by taking the average covariance is.
+
+We begin with the unconditional mean of $\widehat{Z}_{0|-1} = 0$ and unconditional variance of VAR $\Sigma_{0|-1} = 0$.
+
+\section{Test}
+\begin{align*}
+	z_t = B z_{t-1} + v_t.  \tag{state equation}\\
+	y_t = H z_{t} + w_t. \tag{measurement equation}
+\end{align*}
+Let $v_t$ be distributed with variance $Q$, $w_t$ be distributed with variance $R$. Let $R$ be time-dependent with $R_t$ set as 0 for vintages where data is unavailable.
+
+\begin{align*}
+	\vv{z}_{1|0} = B \vv{z}_{0|0}\\
+	\vv{CovZ}_{1|0} = B \vv{CovZ}_{0|0}B' + Q\\
+	\vv{y}_{1|0} = H \vv{z}_{1|0}\\
+	\vv{CovY}_{1|0} = H \vv{CovZ}_{1|0} H' + R
+\end{align*}
+
+\begin{align*}
+	P_{1} = \vv{CovZ}_{1|0} H' \vv{CovY}_{1|0}\\
+	\vv{z}_{1|1} = \vv{z}_{1|0} + P_1 (\vv{y}_1 - \vv{y}_{1|0})\\
+	\vv{Covz}_{1|1} = \vv{z}_{1|0} - P_1 \vv{CovY}_{1|0} P'_1
+\end{align*}
+
+Forecasting step:
+\begin{align*}
+	P_{1} = \vv{CovZ}_{1|0} H' \vv{CovY}^{-1}_{1|0}\\
+	\vv{z}_{1|1} = \vv{z}_{1|0} + P_1 (\vv{y}_1 - \vv{y}_{1|0})\\
+	\vv{Covz}_{1|1} = \vv{z}_{1|0} - P_1 \vv{CovY}_{1|0} P'_1
+\end{align*}
+
+
+diag(c(5, 10, 20, .5, .3, Inf, Inf)) %>% chol(.) %>% chol2inv(.)
+
+
+
+
+\end{document}
