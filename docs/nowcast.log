@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.22 (MiKTeX 21.2) (preloaded format=pdflatex 2021.2.21)  22 FEB 2021 19:20
+This is pdfTeX, Version 3.141592653-2.6-1.40.22 (MiKTeX 21.2) (preloaded format=pdflatex 2021.2.21)  23 FEB 2021 14:32
 entering extended mode
 **./nowcast.tex
 (nowcast.tex
@@ -134,43 +134,104 @@ Package: iftex 2020/03/06 v1.0d TeX engine tests
 
 (C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/geometry\geometry.cfg
 ))
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/parskip\parskip.sty
+Package: parskip 2020-06-15 v2.0f non-zero parskip adjustments
+
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/kvoptions\kvoptions.s
+ty
+Package: kvoptions 2020-10-07 v3.14 Key value format for package options (HO)
+
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/generic/ltxcmds\ltxcmds.sty
+Package: ltxcmds 2020-05-10 v1.25 LaTeX kernel commands for general use (HO)
+)
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/generic/kvsetkeys\kvsetkeys
+.sty
+Package: kvsetkeys 2019/12/15 v1.18 Key value parser (HO)
+))
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/etoolbox\etoolbox.sty
+Package: etoolbox 2020/10/05 v2.5k e-TeX tools for LaTeX (JAW)
+\etb@tempcnta=\count268
+)) (C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/float\float.sty
+Package: float 2001/11/08 v1.3d Float enhancements (AL)
+\c@float@type=\count269
+\float@exts=\toks24
+\float@box=\box49
+\@float@everytoks=\toks25
+\@floatcapt=\box50
+)
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphicx.sty
+Package: graphicx 2020/09/09 v1.2b Enhanced LaTeX Graphics (DPC,SPQR)
+
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/graphics\graphics.sty
+Package: graphics 2020/08/30 v1.4c Standard LaTeX Graphics (DPC,SPQR)
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/graphics\trig.sty
+Package: trig 2016/01/03 v1.10 sin cos tan (DPC)
+)
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/graphics-cfg\graphics
+.cfg
+File: graphics.cfg 2016/06/04 v1.11 sample graphics configuration
+)
+Package graphics Info: Driver file: pdftex.def on input line 105.
+)
+\Gin@req@height=\dimen156
+\Gin@req@width=\dimen157
+)
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/fancyhdr\fancyhdr.sty
+Package: fancyhdr 2021/01/28 v4.0.1 Extensive control of page headers and foote
+rs
+\f@nch@headwidth=\skip52
+\f@nch@O@elh=\skip53
+\f@nch@O@erh=\skip54
+\f@nch@O@olh=\skip55
+\f@nch@O@orh=\skip56
+\f@nch@O@elf=\skip57
+\f@nch@O@erf=\skip58
+\f@nch@O@olf=\skip59
+\f@nch@O@orf=\skip60
+)
 (C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/l3backend\l3backend-p
 dftex.def
 File: l3backend-pdftex.def 2021-02-18 L3 backend support: PDF output (pdfTeX)
-\l__color_backend_stack_int=\count268
-\l__pdf_internal_box=\box49
+\l__color_backend_stack_int=\count270
+\l__pdf_internal_box=\box51
 ) (nowcast.aux)
 \openout1 = `nowcast.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 11.
-LaTeX Font Info:    ... okay on input line 11.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 11.
-LaTeX Font Info:    ... okay on input line 11.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 11.
-LaTeX Font Info:    ... okay on input line 11.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 11.
-LaTeX Font Info:    ... okay on input line 11.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 11.
-LaTeX Font Info:    ... okay on input line 11.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 11.
-LaTeX Font Info:    ... okay on input line 11.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 11.
-LaTeX Font Info:    ... okay on input line 11.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 28.
+LaTeX Font Info:    ... okay on input line 28.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 28.
+LaTeX Font Info:    ... okay on input line 28.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 28.
+LaTeX Font Info:    ... okay on input line 28.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 28.
+LaTeX Font Info:    ... okay on input line 28.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 28.
+LaTeX Font Info:    ... okay on input line 28.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 28.
+LaTeX Font Info:    ... okay on input line 28.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 28.
+LaTeX Font Info:    ... okay on input line 28.
 
 (C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/context/base/mkii\supp-pdf.
 mkii
 [Loading MPS to PDF converter (version 2006.09.02).]
-\scratchcounter=\count269
-\scratchdimen=\dimen156
-\scratchbox=\box50
-\nofMPsegments=\count270
-\nofMParguments=\count271
-\everyMPshowfont=\toks24
-\MPscratchCnt=\count272
-\MPscratchDim=\dimen157
-\MPnumerator=\count273
-\makeMPintoPDFobject=\count274
-\everyMPtoPDFconversion=\toks25
+\scratchcounter=\count271
+\scratchdimen=\dimen158
+\scratchbox=\box52
+\nofMPsegments=\count272
+\nofMParguments=\count273
+\everyMPshowfont=\toks26
+\MPscratchCnt=\count274
+\MPscratchDim=\dimen159
+\MPnumerator=\count275
+\makeMPintoPDFobject=\count276
+\everyMPtoPDFconversion=\toks27
+)
+(C:\Users\Charles\AppData\Local\Programs\MiKTeX\tex/latex/epstopdf-pkg\epstopdf
+-base.sty
+Package: epstopdf-base 2020-01-24 v2.11 Base part for package epstopdf
+Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
+85.
 )
 *geometry* driver: auto-detecting
 *geometry* detected driver: pdftex
@@ -181,14 +242,14 @@ mkii
 * layoutoffset:(h,v)=(0.0pt,0.0pt)
 * modes: 
 * h-part:(L,W,R)=(73.97733pt, 466.34035pt, 73.97733pt)
-* v-part:(T,H,B)=(73.97733pt, 647.01534pt, 73.97733pt)
+* v-part:(T,H,B)=(85.35826pt, 624.25346pt, 85.35826pt)
 * \paperwidth=614.295pt
 * \paperheight=794.96999pt
 * \textwidth=466.34035pt
-* \textheight=647.01534pt
+* \textheight=624.25346pt
 * \oddsidemargin=1.70734pt
 * \evensidemargin=1.70734pt
-* \topmargin=-35.29266pt
+* \topmargin=-23.91173pt
 * \headheight=12.0pt
 * \headsep=25.0pt
 * \topskip=11.0pt
@@ -206,18 +267,76 @@ mkii
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
+*geometry* verbose mode - [ newgeometry ] result:
+* driver: pdftex
+* paper: letterpaper
+* layout: <same size as paper>
+* layoutoffset:(h,v)=(0.0pt,0.0pt)
+* modes: 
+* h-part:(L,W,R)=(142.26378pt, 379.88603pt, 92.14519pt)
+* v-part:(T,H,B)=(142.26378pt, 557.30884pt, 95.39737pt)
+* \paperwidth=614.295pt
+* \paperheight=794.96999pt
+* \textwidth=379.88603pt
+* \textheight=557.30884pt
+* \oddsidemargin=69.99379pt
+* \evensidemargin=69.99379pt
+* \topmargin=32.99379pt
+* \headheight=12.0pt
+* \headsep=25.0pt
+* \topskip=11.0pt
+* \footskip=30.0pt
+* \marginparwidth=59.0pt
+* \marginparsep=10.0pt
+* \columnsep=10.0pt
+* \skip\footins=10.0pt plus 4.0pt minus 2.0pt
+* \hoffset=0.0pt
+* \voffset=0.0pt
+* \mag=1000
+* \@twocolumnfalse
+* \@twosidefalse
+* \@mparswitchfalse
+* \@reversemarginfalse
+* (1in=72.27pt=25.4mm, 1cm=28.453pt)
+
+<cmefi_short.png, id=1, 64.0794pt x 65.043pt>
+File: cmefi_short.png Graphic file (type png)
+<use cmefi_short.png>
+Package pdftex.def Info: cmefi_short.png  used on input line 35.
+(pdftex.def)             Requested size: 56.9055pt x 57.76202pt.
+
+Overfull \hbox (6.15279pt too wide) in paragraph at lines 39--43
+\OT1/cmss/m/n/24.88 A Macroe-co-nomic Now-cast-ing Model 
+ []
+
 [1
 
-{C:/Users/Charles/AppData/Local/MiKTeX/pdftex/config/pdftex.map}] [2]
-[3] (nowcast.aux) ) 
+
+{C:/Users/Charles/AppData/Local/MiKTeX/pdftex/config/pdftex.map} <./cmefi_short
+.png>]
+<nowcast-time-2.png, id=10, 505.89pt x 157.5486pt>
+File: nowcast-time-2.png Graphic file (type png)
+<use nowcast-time-2.png>
+Package pdftex.def Info: nowcast-time-2.png  used on input line 67.
+(pdftex.def)             Requested size: 354.12057pt x 110.28325pt.
+ [1
+
+ <./nowcast-time-2.png>]
+<nowcast-time.png, id=18, 574.3056pt x 106.9596pt>
+File: nowcast-time.png Graphic file (type png)
+<use nowcast-time.png>
+Package pdftex.def Info: nowcast-time.png  used on input line 86.
+(pdftex.def)             Requested size: 402.01118pt x 74.87119pt.
+ [2 <./nowcast-time.png>] [3] [4] [5]
+[6] (nowcast.aux) ) 
 Here is how much of TeX's memory you used:
- 2567 strings out of 479334
- 35354 string characters out of 2856134
- 362210 words of memory out of 3000000
- 20036 multiletter control sequences out of 15000+200000
- 409518 words of font info for 48 fonts, out of 3000000 for 9000
+ 3776 strings out of 479334
+ 53009 string characters out of 2856134
+ 386590 words of memory out of 3000000
+ 21194 multiletter control sequences out of 15000+200000
+ 410428 words of font info for 51 fonts, out of 3000000 for 9000
  1141 hyphenation exceptions out of 8191
- 68i,23n,74p,264b,246s stack positions out of 5000i,500n,10000p,200000b,50000s
+ 68i,23n,74p,589b,288s stack positions out of 5000i,500n,10000p,200000b,50000s
 <C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/
 public/amsfonts/cm/cmbx10.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/f
 onts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/Charles/AppData/Local/Progra
@@ -229,12 +348,15 @@ pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts
 /cm/cmr10.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/publi
 c/amsfonts/cm/cmr6.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/ty
 pe1/public/amsfonts/cm/cmr8.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX
-/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/Charles/AppData/Local/Prog
-rams/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy6.pfb><C:/Users/Charles/AppData/
-Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy8.pfb>
-Output written on nowcast.pdf (3 pages, 136163 bytes).
+/fonts/type1/public/amsfonts/cm/cmss10.pfb><C:/Users/Charles/AppData/Local/Prog
+rams/MiKTeX/fonts/type1/public/amsfonts/cm/cmss17.pfb><C:/Users/Charles/AppData
+/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/Char
+les/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy6.pfb><C:/
+Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy
+8.pfb>
+Output written on nowcast.pdf (7 pages, 196945 bytes).
 PDF statistics:
- 60 PDF objects out of 1000 (max. 8388607)
+ 89 PDF objects out of 1000 (max. 8388607)
  0 named destinations out of 1000 (max. 500000)
- 1 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 16 words of extra memory for PDF output out of 10000 (max. 10000000)
 

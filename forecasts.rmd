@@ -805,14 +805,14 @@ local({
     dplyr::bind_rows(.) %>%
     dplyr::mutate(
       .,
-      obsDate = add_with_rollback(curDate, months(ttm))
+      obsDate = add_with_rollback(curDate, months(ttm - 1))
       ) %>%
     dplyr::transmute(
       .,
       varname, obsDate, value = yttmAheadAnnualizedYield,
       fcname = 'dns', vintageDate = trainDf %>% .$obsDate %>% max(.)
       )
-
+  
   ef$forecast$dns <<- df
 })
 ```
