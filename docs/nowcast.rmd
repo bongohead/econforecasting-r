@@ -16,6 +16,7 @@ library(lubridate)
 library(httr)
 library(rvest)
 library(DBI)
+library(data.table)
 
 setwd(DIR)
 
@@ -178,7 +179,8 @@ local({
 						tidyr::pivot_wider(., names_from = varname)
 					)
 			)
-
+	
+# dplyr::inner_join(ef$h$wide$q$stat, ef$nc$fDf, by = 'obsDate') %>%  dplyr::filter(., obsDate >= as.Date('2010-01-01')) %>%	lm(pdinr ~ f1 + f2 + f3 + f4 + f5, data = .) %>% residuals(.) %>% {. * 400}
 	
 	ef$h$wide <<- wide	
 })
@@ -187,49 +189,26 @@ local({
 
 # Nowcast
 
-## Get monthly versions of quarterly factors
+## Get dates
 ```{r}
 local({
 	
+	pcaVarnames = CONST$PARAMS %>% dplyr::filter(., dfminput == TRUE) %>% .$varname
+	
+	fullPcaData =
+		ef$h$wide$m$stat %>%
+		dplyr::select(., obsDate, all_of(pcaVarnames)) %>%
+		dplyr::filter(., obsDate >= as.Date('2012-01-01'))
+	
+	bigTDates = fullPcaData %>% dplyr::filter(., !if_any(everything(), is.na)) %>% .$obsDate
+	bigTauDates = fullPcaData %>% dplyr::filter(., if_any(everything(), is.na)) %>% .$obsDate
 
 	
-	
+	ef$nc$pcaVarnames <<- pcaVarnames
+	ef$nc$bigTDates <<- bigTDates
+	ef$nc$bigTauDates <<- bigTauDates
 })
 ```
-
-Get monthly versions of GDP subcomponents ->
-	Using DFM on some, SEM on others. Divide by 3 to get "monthly" dlog estimates -> loop through each quarter, adjust all monthly dlog values such that all dlog values must sumn correctly. ((1+m1+x)(1+m2+x)(1+m3+x) = (1+q)) => Solve for x. Get all base values
-	
--> after monthly calcs, can 
-	
-	dlog.gdp = dlog.pce * pce_1/gdp_1 + dlog.gpdi * gpdi/gpdi_1 + dlog.exports * exports1/gdp + dlog.gvt * gvt/gdp
-dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(pdinr ~ (pce) + ma2(ue) + ma2(vsales) + ma2(spy) + lma2(loanscc), data = .) %>% summary(.)
-
-
-
-dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(gdp ~ pce + ue + vsales, data = .) %>% residuals(.) %>% dplyr::bind_cols( dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')), resids = .) %>% dplyr::transmute(., obsDate,  gdp = gdp * 400, pce = pce * 400, ue, resids = resids * 400) %>% View(.)
-
-
-
--> first estim ate components of GDP monthly
-```{r}
-local({
-	
-	lm(as.matrix(yDf) ~ ., data = xDf[, 1:6]) %>% residuals(.) %>% plot(.)
-	
-	ef$h$wide$q$base %>%
-    	dplyr::filter(., obsDate >= as.Date('2010-01-01')) %>% lm(gdp ~ pce + ue, data = .) %>% summary(.)
-})
-```
-
-
-
-```{r}
-local({
-fDf %>% dplyr::mutate(., quarter = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'Q', lubridate::quarter(obsDate)))) %>% dplyr::select(., -obsDate) %>% pivot_longer(., -quarter) %>% dplyr::group_by(quarter, name) %>% summarize(., value = mean(value)) %>% tidyr::pivot_wider(., names_from = name, values_from = value) %>% ungroup(.) %>% dplyr::inner_join(., ef$h$wide$q$stat[, c('obsDate', 'gdp')], by = c('quarter' = 'obsDate'))
-})
-```
-
 
 ## Extract factors
 ```{r}
@@ -237,8 +216,8 @@ local({
 	
 	xDf =
 		ef$h$wide$m$stat %>%
-		dplyr::filter(., obsDate >= as.Date('2010-01-01')) %>%
-		dplyr::select(., where(function(x) !any(is.na(x))))
+		dplyr::filter(., obsDate %in% ef$nc$bigTDates) %>%
+		dplyr::select(., obsDate, pcaVarnames)
 	
 	xMat =
 		xDf %>%
@@ -272,17 +251,215 @@ local({
 		.$factor
 	
 	
-	fDf =
+	zDf =
 		xDf[, 'obsDate'] %>%
 		dplyr::bind_cols(
 			.,
 			fHat[, 1:bigR] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:bigR))
 			)
 	
-	
-	ef$nc$fDf <<- fDf
+	ef$nc$bigR <<- bigR
+	ef$nc$pcaInputDf <<- xDf
+	ef$nc$zDf <<- zDf
 })
 ```
+
+## Run as VAR(1)
+```{r}
+local({
+	
+	inputDf =
+		ef$nc$zDf %>%
+    	econforecasting::addLags(., 1, TRUE) %>%
+		na.omit(.)
+	yMat = inputDf %>% dplyr::select(., -contains('.l'), -obsDate) %>% as.matrix(.)
+	xDf = inputDf %>% dplyr::select(., contains('.l')) %>% dplyr::bind_cols(constant = 1, .)
+	
+	# solve(t(xMat) %*% xMat) %*% (t(xMat) %*% yMat)
+	coefDf =
+		lm(yMat ~ . - 1, data = xDf) %>%
+		coef(.) %>%
+		as.data.frame(.) %>%
+		rownames_to_column(., 'coefname') %>%
+		as_tibble(.) 
+	
+	bMat = coefDf %>% dplyr::filter(., coefname != 'constant') %>% dplyr::select(., -coefname) %>% t(.)
+	cMat = coefDf %>% dplyr::filter(., coefname == 'constant') %>% dplyr::select(., -coefname) %>% t(.)
+	qMat =
+		lm(yMat ~ . - 1, data = xDf) %>%
+	    residuals(.) %>% 
+		as_tibble(.) %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
+		{purrr::reduce(., function(x, y) x + y)/length(.)}
+	
+	
+	ef$nc$qMat <<- qMat 
+	ef$nc$bMat <<- bMat
+	ef$nc$cMat <<- cMat
+})
+```
+
+## Run DFM on monthly variables included in PCA
+```{r}
+local({
+	
+	yMat = ef$nc$pcaInputDf %>% dplyr::select(., -obsDate) %>% as.matrix(.)
+	xDf = ef$nc$zDf %>% dplyr::select(., -obsDate)
+	
+	coefDf =
+		lm(yMat ~ . - 1, xDf) %>%
+		coef(.) %>%	
+		as.data.frame(.) %>%
+    	rownames_to_column(., 'coefname') %>%
+		as_tibble(.)
+	
+	aMat = coefDf %>% dplyr::select(., -coefname) %>% t(.)
+	
+	rMat0 =
+		lm(yMat ~ . - 1, data = xDf) %>%
+	    residuals(.) %>% 
+		as_tibble(.) %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
+		{purrr::reduce(., function(x, y) x + y)/length(.)}
+	
+	rMatDiag = tibble(varname = ef$nc$pcaVarnames, variance = diag(rMat0))
+
+	
+	rMats =
+		lapply(ef$nc$bigTauDates, function(d)
+			sapply(ef$nc$pcaVarnames, function(v)
+				ef$h$wide$m$stat %>%
+					dplyr::filter(., obsDate == (d)) %>%
+					.[[v]] %>% 
+					{if (is.na(.)) 1e20 else dplyr::filter(rMatDiag, varname == v)$variance}
+				) %>%
+				diag(.)
+			) %>%
+		c(lapply(1:length(ef$nc$bigTDates), function(x) rMat0), .)
+
+	ef$nc$rMats <<- rMats
+	ef$nc$aMat <<- aMat
+})
+```
+
+## Build state space variables
+```{r}
+local({
+	
+	bMat = ef$nc$bMat
+	cMat = ef$nc$cMat
+	aMat = ef$nc$aMat
+	rMats = ef$nc$rMats
+	qMat = ef$nc$qMat
+	yMats =
+		dplyr::bind_rows(
+			ef$nc$pcaInputDf,
+			ef$h$wide$m$stat %>%
+				dplyr::filter(., obsDate %in% ef$nc$bigTauDates) %>%
+				dplyr::select(., obsDate, pcaVarnames)
+			) %>%
+		dplyr::mutate(., across(-obsDate, function(x) ifelse(is.na(x), 0, x))) %>%
+		dplyr::select(., -obsDate) %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x) matrix(unlist(x), ncol = 1))
+
+	z0Cond0 = matrix(rep(0, ef$nc$bigR), ncol = 1)
+	sigmaZ0Cond0 = matrix(rep(0, ef$nc$bigR^2), ncol = ef$nc$bigR)
+		
+	zTCondTMinusOne = list()
+	zTCondT = list()
+	
+	sigmaZTCondTMinusOne = list()
+	sigmaZTCondT = list()
+	
+	yTCondTMinusOne = list()
+	sigmaYTCondTMinusOne = list()
+	
+	pT = list()
+
+	for (t in 1:length(c(ef$nc$bigTDates, ef$nc$bigTauDates))) {
+		message(t)
+		# Prediction Step
+		zTCondTMinusOne[[t]] = bMat %*% {if (t == 1) z0Cond0 else zTCondT[[t-1]]} + cMat
+		sigmaZTCondTMinusOne[[t]] = bMat %*% {if (t == 1) sigmaZ0Cond0 else sigmaZTCondT[[t-1]]} + qMat
+		yTCondTMinusOne[[t]] = aMat %*% zTCondTMinusOne[[t]]
+		sigmaYTCondTMinusOne[[t]] = aMat %*% sigmaZTCondTMinusOne[[t]] %*% t(aMat) + rMats[[t]]
+		
+		# Correction Step
+		pT[[t]] = sigmaZTCondTMinusOne[[t]] %*% t(aMat) %*%
+			{if (t %in% 1:length(ef$nc$bigTDates)) solve(sigmaYTCondTMinusOne[[t]]) else chol2inv(chol(sigmaYTCondTMinusOne[[t]]))}
+		zTCondT[[t]] = zTCondTMinusOne[[t]] + pT[[t]] %*% (yMats[[t]] - yTCondTMinusOne[[t]])
+		sigmaZTCondT[[t]] = sigmaZTCondTMinusOne[[t]] - (pT[[t]] %*% sigmaYTCondTMinusOne[[t]] %*% t(pT[[t]]))
+	}
+	
+	
+	kFitted =
+		zTCondT %>% purrr::map_dfr(., function(x) as.data.frame(x) %>% t(.) %>% as_tibble(.)) %>% dplyr::bind_cols(obsDate = c(ef$nc$bigTDates, ef$nc$bigTauDates), .) 
+	
+	
+	dplyr::bind_rows(dplyr::mutate(ef$nc$zDf, type = 'historical'), dplyr::mutate(kFitted, type = 'fitted')) %>% tidyr::pivot_longer(., -c('obsDate', 'type'), names_to = 'varname') %>% dplyr::filter(., varname == 'f1') %>% ggplot(.) + geom_line(aes(x = obsDate, y = value, color = type))
+})
+```
+
+
+
+Get monthly versions of GDP subcomponents ->
+	Using DFM on some, SEM on others. Divide by 3 to get "monthly" dlog estimates -> loop through each quarter, adjust all monthly dlog values such that all dlog values must sumn correctly. ((1+m1+x)(1+m2+x)(1+m3+x) = (1+q)) => Solve for x. Get all base values
+	
+-> after monthly calcs, can 
+	
+	dlog.gdp = dlog.pce * pce_1/gdp_1 + dlog.gpdi * gpdi/gpdi_1 + dlog.exports * exports1/gdp + dlog.gvt * gvt/gdp
+dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(pdinr ~ (pce) + ma2(ue) + ma2(vsales) + ma2(spy) + lma2(loanscc), data = .) %>% summary(.)
+
+-> convert to ma2
+
+
+
+dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(gdp ~ pce + ue + vsales, data = .) %>% residuals(.) %>% dplyr::bind_cols( dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')), resids = .) %>% dplyr::transmute(., obsDate,  gdp = gdp * 400, pce = pce * 400, ue, resids = resids * 400) %>% View(.)
+
+
+
+-> first estim ate components of GDP monthly
+
+
+```{r}
+local({
+	
+	lm(as.matrix(yDf) ~ ., data = xDf[, 1:6]) %>% residuals(.) %>% plot(.)
+	
+	ef$h$wide$q$base %>%
+    	dplyr::filter(., obsDate >= as.Date('2010-01-01')) %>% lm(gdp ~ pce + ue, data = .) %>% summary(.)
+})
+```
+
+## Get monthly versions of quarterly factors
+```{r}
+local({
+	
+	
+	coefDf =
+		dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>%
+		lm(pdinr ~ (pce) + ma2(ue) + ma2(vsales) + ma2(spy), data = .) %>%
+		coefficients(.) %>%
+		as.data.frame(.) %>%
+		tibble::rownames_to_column(.) %>%
+		as_tibble(.) %>%
+		setNames(., c('varname', 'coefficient'))
+	
+	
+})
+```
+
+
+```{r}
+local({
+fDf %>% dplyr::mutate(., quarter = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'Q', lubridate::quarter(obsDate)))) %>% dplyr::select(., -obsDate) %>% pivot_longer(., -quarter) %>% dplyr::group_by(quarter, name) %>% summarize(., value = mean(value)) %>% tidyr::pivot_wider(., names_from = name, values_from = value) %>% ungroup(.) %>% dplyr::inner_join(., ef$h$wide$q$stat[, c('obsDate', 'gdp')], by = c('quarter' = 'obsDate'))
+})
+```
+
+
 
 ##  
 ```{r}
