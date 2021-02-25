@@ -49,6 +49,25 @@
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 
+<<echo=F,results='hide',message=F, warning=F>>=
+    library(tidyverse)
+    library(xtable)
+
+    # Settings for PDF compilation
+    knitr::opts_chunk$set(
+      echo = F, results = 'asis',
+      fig.width = 10, fig.height = 4, out.width = '5in', out.height = '2in',
+      fig.pos = '!h', fig.align = 'center', warnings = F, message = F
+      )
+    options(xtable.include.rownames = F)
+    options(xtable.size = 'footnotesize')
+    options(xtable.table.placement = '!h')
+    
+    rds = readRDS('D:/Onedrive/__Projects/econforecasting/nowcast.rds')
+
+@
+
+
 \section{Motivation}
 \textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
 
@@ -73,11 +92,35 @@ Traditional modeling methods would require us to either throw out variables or t
 In this paper, we will utilize a methodology that will allow us to use the information from all variables at any dates. This model will give an updated forecast in response to any new data releases. Additionally, the model can be generalized to nowcast any time series variable, not just GDP. The methodology for the model will be described in the next section.
 \section{Methodology}
 
+\subsection{Overview}
+This paper utilizes a modified version of the two-step dynamic factor model utilized in Giannone et al (2008) and Doz et al (2011). In this model, we use principal components to extract a few fundamental factors describing the overall structure of the economy. These factors are then projected into the future using a vector autoregression; smoothing over missing input data is conducted by using the Kalman filter and smoother. Finally, we use a formula to 
+
 \subsection{Data}
-We begin by importing monthly data from the St. Louis Federal Reserve Database (FRED). Let $N$ refer to the number of different monthly variables.
+We begin by importing monthly data from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference.
+
+<<>>=
+	rds$CONST$PARAMS %>%
+    	dplyr::filter(., dfminput == TRUE) %>%
+    	dplyr::select(., fullname, stat) %>%
+    	setNames(., c('Variable', 'Stationary Form')) %>%
+    	xtable::xtable(., caption = 'Imported Monthly Data') %>%
+    	print(., size = 'scriptsize')
+@
+
+We additionally import quarterly data for GDP and its subcomponents.
+<<>>=
+	rds$CONST$PARAMS %>%
+    	dplyr::filter(., category == 'Output') %>%
+    	dplyr::select(., fullname, stat) %>%
+    	setNames(., c('Variable', 'Stationary Form')) %>%
+    	xtable::xtable(., caption = 'Imported Quarterly Data') %>%
+    	print(., size = 'scriptsize')
+@
+
+Most datasets have already been deseasonalized if necessary by their original source. We deseasonalize the remaining series by using the U.S. Census Bureau's seasonal adjustment package, X13-ARIMA-SEATS. We interface with it by using the \texttt{seasonal} package implementation in R (Sax and Eddelbuettel 2018).
 
 \subsection{Time Periods}
-The imported monthly data will have ragged edges - i.e., some monthly data will be available for later months than others.
+Now we will segment the data by time periods. The imported monthly data will have ragged edges - i.e., some monthly data will be available for later months than others.
 
 We will let $T$ denote the number of dates for which data is available for all data series. $\tau$ will denote the number of dates for which data is available for at least one data series. $T*$ will denote number of dates up to the end-of-quarter month of the $\tau$ date. For example, suppose date $\tau$ occurs on February. The end-of-quarter month, $T^*$, will be March (since Q1 runs through the end of March). 
 
@@ -86,9 +129,55 @@ In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \
 \includegraphics[scale=.7]{nowcast-time}
 \centering
 \end{figure}
-\subsection{Factor VAR}
 
-We model the factors as following a vector-autoregressive (VAR) process, i.e., 
+
+
+\subsection{Principal Components Analysis}
+It is known that a large number of macroeconomic time series are highly correlated; using such covariates as regressors could naturally lead to problems with collinearity and unstable estimates. In addition, it becomes computationally burdensome to analyze data with such a large number of highly correlated variables. Instead, we use principal components analysis (PCA) to shrink our dataset in a way that allows us to retain most of the information in our original data.
+
+Estimation of factors is derived following Stock and Watson (2008). We begin by taking our $T \times N$ data matrix of $N$ monthly covariates, from time 1 through $T$. The matrix, which we denote $X$, is normalized to mean 0 and variance 0 across all columns.
+
+The goal is to minimize the error $E$ below.
+\begin{align*}
+	X = F  \Lambda ' + E,\\
+	\text{where $X$ is the $T \times N$ data matrix,}\\
+	\text{$F$ is the $T \times N$ matrix of factors,}\\
+	\text{and $\Lambda$ is the weighting matrix.}\\
+\end{align*}
+
+Estimation of factors is derived following Stock and Watson (2008).
+\begin{align*}
+	\widehat{\Lambda} = \text{eigenvectors of } (X'X)\\
+	\widehat{F} = X \widehat{\Lambda}
+\end{align*}
+
+Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used.
+\begin{align*}
+	IC(R) = MSE + R \frac{N+T}{NT} log\left(\frac{NT}{N+T}\right)
+\end{align*}
+
+<<fig.caption = 'Factor Selection'>>=
+	rds$ef$nc$screeDf %>%
+    	ggplot(.) +
+    	geom_line(aes(x = factors, y = cum_pct_of_total)) +
+    	labs(x = 'Factors', y = 'Cumulative % of Total Variance Explained') + 
+    	ggthemes::theme_economist()
+@
+
+<<>>=
+	rds$ef$nc$screeDf %>%
+    	xtable::xtable(., caption = 'Factor Selection Process') %>%
+    	print(.)
+@
+
+Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{rds$ef$nc$bigR}$ factors.
+
+
+
+
+
+\subsection{Factor VAR}
+We model the factors as following a vector-autoregressive (VAR) process, following Stock and Watson (2016).
 \begin{align*}
 \underbrace{\begin{bmatrix}
 	\vv{f1}_{t}\\
@@ -310,6 +399,12 @@ Recursively iterating over $t = \tau + 1, \dots, T^*$, we calculate the followin
 	\vv{CovY}_{t|\tau} &= A \vv{CovZ}_{t|\tau} A' + R_0
 \end{align*}
 Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the Kalman smoother, we will now be able to obtain the full time series for the factors from time 1 through time $T^*$.
+
+<<>>=
+    for (i in 1:length(rds$ef$nc$kfPlots)) {
+    	print(rds$ef$nc$kfPlots[[i]])
+    }
+@
 
 
 \end{document}
