@@ -14,6 +14,10 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added PCA analysis
 - Added dynamic factor models
 - Added documentation for Kalman filters
+- Added many new PCA variable
+- Added FRED GET to RETRY
+- Added Bai-Ng information criteria for scree plot DFM
+- Added Yahoo Finance import
 
 ## 2021-02-13 [v0.09]
 - Added mortgage models

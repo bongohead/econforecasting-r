@@ -91,6 +91,54 @@ local({
 })
 ```
 
+## Yahoo Finance
+```{r}
+local({
+	
+	url =
+		paste0(
+			'https://query1.finance.yahoo.com/v7/finance/download/', '%5EGSPC',
+			'?period1=', '946598400', # 12/30/1999
+			'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+			'&interval=1d',
+			'&events=history&includeAdjustedClose=true'
+		)
+
+	df0 =
+		data.table::fread(url) %>%
+		.[, c('Date', 'Adj Close')]	%>%
+		setnames(., new = c('obsDate', 'value')) %>%
+		as_tibble(.)
+	
+	qDf = 
+		df0 %>%
+		dplyr::mutate(
+			.,
+			obsDate = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'Q', lubridate::quarter(obsDate)))
+			) %>%
+		dplyr::group_by(., obsDate) %>%
+		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+		dplyr::mutate(., freq = 'q')
+	
+	mDf =
+		df0 %>%
+		dplyr::mutate(
+			.,
+			obsDate = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'M', lubridate::month(obsDate)))
+			) %>%
+		dplyr::group_by(., obsDate) %>%
+		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+		dplyr::mutate(., freq = 'm')
+
+	df =
+		dplyr::bind_rows(mDf, qDf) %>%
+		dplyr::mutate(., varname = 'spy')
+
+	ef$h$source$yahoo <<- df
+})
+```
+
+
 ## Aggregate raw data
 ```{r}
 local({
@@ -178,7 +226,8 @@ local({
 				lapply(., function(y)
 					as_tibble(y) %>%
 						dplyr::select(., -freq, -transform) %>%
-						tidyr::pivot_wider(., names_from = varname)
+						tidyr::pivot_wider(., names_from = varname) %>%
+						dplyr::arrange(., obsDate)
 					)
 			)
 	
@@ -193,14 +242,14 @@ local({
 ```{r}
 local({
 	
-	quartersForward = 0
+	quartersForward = 1
 	
 	pcaVarnames = CONST$PARAMS %>% dplyr::filter(., dfminput == TRUE) %>% .$varname
 	
 	pcaVariablesDf =
 		ef$h$wide$m$stat %>%
 		dplyr::select(., obsDate, all_of(pcaVarnames)) %>%
-		dplyr::filter(., obsDate >= as.Date('2012-01-01'))
+		dplyr::filter(., obsDate >= as.Date('2010-01-01'))
 	
 	bigTDates = pcaVariablesDf %>% dplyr::filter(., !if_any(everything(), is.na)) %>% .$obsDate
 	bigTauDates = pcaVariablesDf %>% dplyr::filter(., if_any(everything(), is.na)) %>% .$obsDate
@@ -242,28 +291,60 @@ local({
 	
 	lambdaHat = eigen(t(xMat) %*% xMat) %>% .$vectors
 	fHat = (xMat) %*% lambdaHat
+	bigN = ncol(xMat)
+	bigT = nrow(xMat)
+	bigCSquared = min(bigN, bigT)
 	
 	# Total variance of data
 	totalVar = xMat %>% cov(.) %>% diag(.) %>% sum(.)
+	
+	# Calculate ICs from Bai and Ng (2002)
+	# Total SSE should be approx 0 due to normalization above;
+	# sapply(1:ncol(xMat), function(i)
+	# 	sapply(1:nrow(xMat), function(t)
+	# 		(xMat[i, 1] - matrix(lambdaHat[i, ], nrow = 1) %*% matrix(fHat[t, ], ncol = 1))^2
+	# 		) %>% sum(.)
+	# 	) %>%
+	# 	sum(.) %>%
+	# 	{./(ncol(xMat) %*% nrow(xMat))}
+	(xMat - (fHat %*% t(lambdaHat)))^1
+	
+	# Now test by R
+	mseByR =
+		sapply(1:bigN, function(r)
+			sum((xMat - (fHat[, 1:r, drop = FALSE] %*% t(lambdaHat)[1:r, , drop = FALSE]))^2)/(bigT * bigN)
+			)
+	
+
 	
 	# Explained variance of data
 	screeDf =
 		fHat %>% cov(.) %>% diag(.) %>%
 		{lapply(1:length(.), function(i)
 			tibble(
-				factor = i,
+				factors = i,
 				var_explained = .[i],
 				pct_of_total = .[i]/totalVar,
 				cum_pct_of_total = sum(.[1:i])/totalVar
 				)
 			)} %>%
-		dplyr::bind_rows(.)
+		dplyr::bind_rows(.) %>%
+		dplyr::mutate(., mse = mseByR) %>%
+		dplyr::mutate(
+			.,
+			ic1 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log((bigN * bigT)/(bigN + bigT)),
+			ic2 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log(bigCSquared),
+			ic3 = (mse) + factors * (log(bigCSquared)/bigCSquared)
+		)
 	
 	bigR =
+		# screeDf %>%
+		# dplyr::filter(cum_pct_of_total >= .50) %>%
+		# head(., 1) %>%
+		# .$factor
 		screeDf %>%
-		dplyr::filter(cum_pct_of_total >= .50) %>%
-		head(., 1) %>%
-		.$factor
+		dplyr::filter(., ic1 == min(ic1)) %>%
+		.$factors
 	
 	
 	zDf =
@@ -763,137 +844,210 @@ local({
 })
 ```
 
-## Detransform variables
+
+# Finalize Nowcasts
+
+## Aggregate
 ```{r}
 local({
 	
-	list(ef$nc$dfmMDf, ef$nc$cmefiDf) %>%
-		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate'))
+	dfM =
+		list(ef$nc$dfmMDf, ef$nc$cmefiDf) %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
 	
+	dfQ =
+		list(ef$nc$dfmQDf) %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
+
+
+	ef$ncpred0$wide$m$stat <<- dfM
+	ef$ncpred0$wide$q$stat <<- dfQ
 })
 ```
 
 
-
-Get monthly versions of GDP subcomponents ->
-	Using DFM on some, SEM on others. Divide by 3 to get "monthly" dlog estimates -> loop through each quarter, adjust all monthly dlog values such that all dlog values must sumn correctly. ((1+m1+x)(1+m2+x)(1+m3+x) = (1+q)) => Solve for x. Get all base values
-	
--> after monthly calcs, can 
-	
-	dlog.gdp = dlog.pce * pce_1/gdp_1 + dlog.gpdi * gpdi/gpdi_1 + dlog.exports * exports1/gdp + dlog.gvt * gvt/gdp
-dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(pdinr ~ (pce) + ma2(ue) + ma2(vsales) + ma2(spy) + lma2(loanscc), data = .) %>% summary(.)
-
--> convert to ma2
-
-
-
-dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>% lm(gdp ~ pce + ue + vsales, data = .) %>% residuals(.) %>% dplyr::bind_cols( dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')), resids = .) %>% dplyr::transmute(., obsDate,  gdp = gdp * 400, pce = pce * 400, ue, resids = resids * 400) %>% View(.)
-
-
-
--> first estim ate components of GDP monthly
-
-
+## Detransform
 ```{r}
 local({
 	
-	lm(as.matrix(yDf) ~ ., data = xDf[, 1:6]) %>% residuals(.) %>% plot(.)
-	
-	ef$h$wide$q$base %>%
-    	dplyr::filter(., obsDate >= as.Date('2010-01-01')) %>% lm(gdp ~ pce + ue, data = .) %>% summary(.)
-})
-```
-
-## Get monthly versions of quarterly factors
-```{r}
-local({
-	
-	
-	coefDf =
-		dplyr::filter(ef$h$wide$q$stat, obsDate >= as.Date('2010-01-01')) %>%
-		lm(pdinr ~ (pce) + ma2(ue) + ma2(vsales) + ma2(spy), data = .) %>%
-		coefficients(.) %>%
-		as.data.frame(.) %>%
-		tibble::rownames_to_column(.) %>%
-		as_tibble(.) %>%
-		setNames(., c('varname', 'coefficient'))
-	
-	
-})
-```
-
-
-```{r}
-local({
-fDf %>% dplyr::mutate(., quarter = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'Q', lubridate::quarter(obsDate)))) %>% dplyr::select(., -obsDate) %>% pivot_longer(., -quarter) %>% dplyr::group_by(quarter, name) %>% summarize(., value = mean(value)) %>% tidyr::pivot_wider(., names_from = name, values_from = value) %>% ungroup(.) %>% dplyr::inner_join(., ef$h$wide$q$stat[, c('obsDate', 'gdp')], by = c('quarter' = 'obsDate'))
-})
-```
-
-
-
-##  
-```{r}
-local({
-	# Aggregate factors by quarter and then 
-	quarterlyFDf =
-		fDf %>%
-		dplyr::mutate(
-			.,
-			quarter = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'Q', lubridate::quarter(obsDate)))
-			) %>%
-		dplyr::select(., -obsDate) %>%
-		pivot_longer(., -quarter) %>%
-		dplyr::group_by(quarter, name) %>%
-		dplyr::summarize(., value = mean(value)) %>%
-		tidyr::pivot_wider(., names_from = name, values_from = value) %>%
-		dplyr::ungroup(.)
-	
-	
-	
-	CONST$PARAMS %>% dplyr::filter(., freq == 'q') %>% .$varname %>% as.list(.) %>%
-		lapply(., function(x) {
-			inputDf =
-				ef$h$wide$q$stat[, c('obsDate', x)] %>%
-				dplyr::inner_join(., quarterlyFDf, by = c('obsDate' = 'quarter')) %>%
-				dplyr::mutate(., lag := lag(.[[x]], 1)) %>% 
-				na.omit(.)
+	dfM =
+		ef$ncpred0$wide$m$stat %>%
+		{lapply(colnames(.) %>% .[. != 'obsDate'], function(.varname) {
 			
-			yDf = inputDf %>% dplyr::select(., all_of(x))
-			xDf = inputDf %>% dplyr::select(., -c('obsDate', x))
-
-			lm(as.matrix(yDf) ~ ., data = xDf[, 1:5]) %>% residuals(.) %>% plot(.)
-			})
+			transform = dplyr::filter(CONST$PARAMS, varname == .varname)$stat
+			
+			fcDf = dplyr::select(., obsDate, .varname) %>% na.omit(.)
+				
+			histDf = tail(dplyr::filter(na.omit(ef$h$wide$m$base[, c('obsDate', .varname)]), obsDate < min(fcDf$obsDate)), 1)
+			
+			fcDf %>%
+				dplyr::mutate(
+					.,
+					!!.varname := 
+						{
+	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
+							else if (transform == 'base') .[[2]]
+							else stop('Err: ', .varname)
+							}
+						)
+			
+			})} %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
 	
-	lm(as.matrix(yDf) ~ ., data = xDf[, 1:5]) %>% residuals(.) %>% plot(.)
-
 	
+	dfQ =
+		ef$ncpred0$wide$q$stat %>%
+		{lapply(colnames(.) %>% .[. != 'obsDate'], function(.varname) {
+			
+			transform = dplyr::filter(CONST$PARAMS, varname == .varname)$stat
+			
+			fcDf = dplyr::select(., obsDate, .varname) %>% na.omit(.)
+				
+			histDf = tail(dplyr::filter(na.omit(ef$h$wide$q$base[, c('obsDate', .varname)]), obsDate < min(fcDf$obsDate)), 1)
+			
+			fcDf %>%
+				dplyr::mutate(
+					.,
+					!!.varname := 
+						{
+	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
+							else if (transform == 'base') .[[2]]
+							else stop('Err: ', .varname)
+							}
+						)
+			
+			})} %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
+	
+
+	ef$ncpred0$wide$m$base <<- dfM
+	ef$ncpred0$wide$q$base <<- dfQ
 })
 ```
 
-
-## Determine dates to be nowcasted & forecasted
+## Calculate GDP nowcast
 ```{r}
 local({
 	
-	ef$h$fred %>%
-		dplyr::group_by(varname) %>%
-		dplyr::filter(., obsDate == max(obsDate) & freq == 'm') %>%
-		dplyr::left_join(., dplyr::select(CONST$PARAMS, varname, key_input), by = 'varname') %>%
-		dplyr::filter(., key_input == TRUE) %>%
-		dplyr::ungroup(.)
+	dfQ =
+		ef$ncpred0$wide$q$base %>%
+		dplyr::transmute(
+			.,
+			obsDate,
+			govt = govtf + govts,
+			ex = exg + exs,
+			im = img + ims,
+			nx = ex - im,
+			pdin = pdinstruct + pdinequip + pdinip,
+			pdi = pdin + pdir + pceschange,
+			pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit,
+			pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother,
+			pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother,
+			pceg = pcegn + pcegd,
+			pce = pceg + pces,
+			gdp = pce + pdi + nx + govt
+		)
 	
-fDf %>% dplyr::mutate(., quarter = econforecasting::strdateToDate(paste0(lubridate::year(obsDate), 'Q', lubridate::quarter(obsDate)))) %>% dplyr::select(., -obsDate) %>% pivot_longer(., -quarter) %>% dplyr::group_by(quarter, name) %>% summarize(., value = mean(value)) %>% tidyr::pivot_wider(., names_from = name, values_from = value) %>% ungroup(.) %>% dplyr::inner_join(., ef$h$wide$q$stat[, c('obsDate', 'gdp')], by = c('quarter' = 'obsDate')) %>% dplyr::select(., -quarter) %>% lm(gdp ~ lma2(gdp) + ., data = .) %>% summary(.)
-
+	dfM =
+		ef$ncpred0$wide$m$base %>%
+		dplyr::transmute(
+			.,
+			obsDate,
+			psr = ps/pid
+		)
+	
+	ef$ncpred1$wide$m$base <<- dfM
+	ef$ncpred1$wide$q$base <<- dfQ
 })
 ```
 
-
-## De-seasonalize
+## Aggregate & calculate display format
 ```{r}
 local({
 	
-	getDataFred('MEDLISPRIUS', CONST$FRED_API_KEY) %>% {ts(.$value, start = c(year(.$obsDate[1]), month(.$obsDate[1])), freq = 12)} %>% seasonal::seas(.) %>% predict(.) %>% as_tibble(.) %>% plot(.)
+	wide = list()
+	
+	wide$m$base =
+		list(ef$ncpred0$wide$m$base, ef$ncpred1$wide$m$base) %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
 
+	wide$q$base =
+		list(ef$ncpred0$wide$q$base, ef$ncpred1$wide$q$base) %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
+
+	
+	wide$m$display =
+		wide$m$base %>%
+		{lapply(colnames(.) %>% .[. != 'obsDate'], function(.varname) {
+			
+			transform = dplyr::filter(CONST$PARAMS, varname == .varname)$display
+			fcDf = dplyr::select(., obsDate, .varname) %>% na.omit(.)
+			
+			histDf = tail(dplyr::filter(na.omit(ef$h$wide$m$base[, c('obsDate', .varname)]), obsDate < min(fcDf$obsDate)), 1)
+			
+			dplyr::bind_rows(histDf, fcDf) %>%
+				dplyr::mutate(
+					.,
+					!!.varname := 
+						{
+	                        if (transform == 'apchg') apchg(.[[2]], 12)
+							else if (transform == 'base') .[[2]]
+							else stop('Err: ', .varname)
+							}
+						) %>%
+				.[2:nrow(.), ]
+			
+			})} %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
+
+	
+	wide$q$display =
+		wide$q$base %>%
+		{lapply(colnames(.) %>% .[. != 'obsDate'], function(.varname) {
+			
+			transform = dplyr::filter(CONST$PARAMS, varname == .varname)$display
+			fcDf = dplyr::select(., obsDate, .varname) %>% na.omit(.)
+			
+			histDf = tail(dplyr::filter(na.omit(ef$h$wide$q$base[, c('obsDate', .varname)]), obsDate < min(fcDf$obsDate)), 1)
+			
+			dplyr::bind_rows(histDf, fcDf) %>%
+				dplyr::mutate(
+					.,
+					!!.varname := 
+						{
+	                        if (transform == 'apchg') apchg(.[[2]], 4)
+							else if (transform == 'base') .[[2]]
+							else stop('Err: ', .varname)
+							}
+						) %>%
+				.[2:nrow(.), ]
+			
+			})} %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'obsDate')) %>%
+		dplyr::arrange(., obsDate)
+
+	
+	ef$ncpred$wide <<- wide
 })
 ```
+
+## Save to RDS
+```{r}
+local({
+	
+	saveRDS(list(CONST = CONST, ef = ef), file = file.path(DIR, 'nowcast.rds'))
+	
+	
+})
+```
+
+
+
 
