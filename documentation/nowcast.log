@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.22 (MiKTeX 21.2) (preloaded format=pdflatex 2021.2.21)  24 FEB 2021 22:05
+This is pdfTeX, Version 3.141592653-2.6-1.40.22 (MiKTeX 21.2) (preloaded format=pdflatex 2021.2.21)  26 FEB 2021 20:28
 entering extended mode
 **./nowcast.tex
 (nowcast.tex
@@ -338,14 +338,17 @@ Overfull \hbox (6.15279pt too wide) in paragraph at lines 90--94
 <nowcast-time-2.png, id=10, 505.89pt x 157.5486pt>
 File: nowcast-time-2.png Graphic file (type png)
 <use nowcast-time-2.png>
-Package pdftex.def Info: nowcast-time-2.png  used on input line 121.
+Package pdftex.def Info: nowcast-time-2.png  used on input line 122.
 (pdftex.def)             Requested size: 354.12057pt x 110.28325pt.
  [1
 
  <./nowcast-time-2.png>]
-Overfull \hbox (50.04733pt too wide) in paragraph at lines 185--234
+Overfull \hbox (1.28691pt too wide) in paragraph at lines 185--234
  [][] 
  []
+
+
+LaTeX Warning: `!h' float specifier changed to `!ht'.
 
 [2] [3]
 <nowcast-time.png, id=29, 574.3056pt x 106.9596pt>
@@ -356,59 +359,103 @@ Package pdftex.def Info: nowcast-time.png  used on input line 247.
 <figure/unnamed-chunk-4-1.pdf, id=30, 722.7pt x 289.08pt>
 File: figure/unnamed-chunk-4-1.pdf Graphic file (type pdf)
 <use figure/unnamed-chunk-4-1.pdf>
-Package pdftex.def Info: figure/unnamed-chunk-4-1.pdf  used on input line 279.
+Package pdftex.def Info: figure/unnamed-chunk-4-1.pdf  used on input line 276.
 (pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
- [4 <./nowcast-time.png>] [5 <./figure/unnamed-chunk-4-1.pdf>] [6]
-[7] [8]
-<figure/unnamed-chunk-6-1.pdf, id=60, 722.7pt x 289.08pt>
-File: figure/unnamed-chunk-6-1.pdf Graphic file (type pdf)
-<use figure/unnamed-chunk-6-1.pdf>
-Package pdftex.def Info: figure/unnamed-chunk-6-1.pdf  used on input line 561.
+ [4 <./nowcast-time.png>]
+<figure/unnamed-chunk-4-2.pdf, id=37, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-4-2.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-4-2.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-4-2.pdf  used on input line 283.
 (pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
- [9]
-<figure/unnamed-chunk-6-2.pdf, id=64, 722.7pt x 289.08pt>
-File: figure/unnamed-chunk-6-2.pdf Graphic file (type pdf)
-<use figure/unnamed-chunk-6-2.pdf>
-Package pdftex.def Info: figure/unnamed-chunk-6-2.pdf  used on input line 568.
+<figure/unnamed-chunk-4-3.pdf, id=38, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-4-3.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-4-3.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-4-3.pdf  used on input line 290.
 (pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
-<figure/unnamed-chunk-6-3.pdf, id=65, 722.7pt x 289.08pt>
-File: figure/unnamed-chunk-6-3.pdf Graphic file (type pdf)
-<use figure/unnamed-chunk-6-3.pdf>
-Package pdftex.def Info: figure/unnamed-chunk-6-3.pdf  used on input line 575.
+<figure/unnamed-chunk-5-1.pdf, id=39, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-5-1.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-5-1.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-5-1.pdf  used on input line 305.
 (pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
- [10 <./figure/unnamed-chunk-6-1.pdf> <./figure/unnamed-chunk-6-2.pdf> <./figur
-e/unnamed-chunk-6-3.pdf>] (nowcast.aux) ) 
+ [5 <./figure/unnamed-chunk-4-1.pdf> <./figure/unnamed-chunk-4-2.pdf> <./figure
+/unnamed-chunk-4-3.pdf>] [6 <./figure/unnamed-chunk-5-1.pdf>]
+<figure/unnamed-chunk-8-1.pdf, id=71, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-8-1.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-8-1.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-8-1.pdf  used on input line 452.
+(pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
+ [7]
+<figure/unnamed-chunk-8-2.pdf, id=79, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-8-2.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-8-2.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-8-2.pdf  used on input line 459.
+(pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
+<figure/unnamed-chunk-8-3.pdf, id=80, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-8-3.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-8-3.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-8-3.pdf  used on input line 466.
+(pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
+ [8 <./figure/unnamed-chunk-8-1.pdf> <./figure/unnamed-chunk-8-2.pdf> <./figure
+/unnamed-chunk-8-3.pdf>]
+
+LaTeX Warning: `!h' float specifier changed to `!ht'.
+
+
+LaTeX Warning: `!h' float specifier changed to `!ht'.
+
+[9] [10] [11]
+<figure/unnamed-chunk-11-1.pdf, id=111, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-11-1.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-11-1.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-11-1.pdf  used on input line 720.
+
+(pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
+ [12]
+<figure/unnamed-chunk-11-2.pdf, id=116, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-11-2.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-11-2.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-11-2.pdf  used on input line 727.
+
+(pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
+<figure/unnamed-chunk-11-3.pdf, id=117, 722.7pt x 289.08pt>
+File: figure/unnamed-chunk-11-3.pdf Graphic file (type pdf)
+<use figure/unnamed-chunk-11-3.pdf>
+Package pdftex.def Info: figure/unnamed-chunk-11-3.pdf  used on input line 734.
+
+(pdftex.def)             Requested size: 361.3491pt x 144.53964pt.
+ [13 <./figure/unnamed-chunk-11-1.pdf> <./figure/unnamed-chunk-11-2.pdf> <./fig
+ure/unnamed-chunk-11-3.pdf>] (nowcast.aux) ) 
 Here is how much of TeX's memory you used:
- 3938 strings out of 479334
- 56235 string characters out of 2856134
- 389960 words of memory out of 3000000
- 21332 multiletter control sequences out of 15000+200000
- 412079 words of font info for 57 fonts, out of 3000000 for 9000
+ 3982 strings out of 479334
+ 57643 string characters out of 2856134
+ 395960 words of memory out of 3000000
+ 21369 multiletter control sequences out of 15000+200000
+ 412387 words of font info for 58 fonts, out of 3000000 for 9000
  1141 hyphenation exceptions out of 8191
  68i,23n,74p,589b,305s stack positions out of 5000i,500n,10000p,200000b,50000s
-<C:/Users/Charles/AppData/Local/Progra
-ms/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><C:/Users/Charles/AppData/L
-ocal/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/Charle
-s/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><C:/U
-sers/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmmi1
-0.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfon
-ts/cm/cmmi6.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/pub
-lic/amsfonts/cm/cmmi8.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts
-/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/Charles/AppData/Local/Programs/Mi
-KTeX/fonts/type1/public/amsfonts/cm/cmr6.pfb><C:/Users/Charles/AppData/Local/Pr
-ograms/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/Charles/AppData
-/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr9.pfb><C:/Users/Charle
-s/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmss10.pfb><C:/U
-sers/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmss1
-7.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfon
-ts/cm/cmsy10.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/pu
-blic/amsfonts/cm/cmsy6.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/font
-s/type1/public/amsfonts/cm/cmsy8.pfb><C:/Users/Charles/AppData/Local/Programs/M
-iKTeX/fonts/type1/public/amsfonts/cm/cmti10.pfb><C:/Users/Charles/AppData/Local
-/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
-Output written on nowcast.pdf (11 pages, 278380 bytes).
+<C:/Users/Charles/AppData/Local/Pro
+grams/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx10.pfb><C:/Users/Charles/AppDat
+a/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmbx12.pfb><C:/Users/Cha
+rles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmex10.pfb><C
+:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cm
+mi10.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/ams
+fonts/cm/cmmi6.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/
+public/amsfonts/cm/cmmi8.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fo
+nts/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/Charles/AppData/Local/Programs
+/MiKTeX/fonts/type1/public/amsfonts/cm/cmr6.pfb><C:/Users/Charles/AppData/Local
+/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr8.pfb><C:/Users/Charles/AppD
+ata/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmr9.pfb><C:/Users/Cha
+rles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmss10.pfb><C
+:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cm
+ss17.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1/public/ams
+fonts/cm/cmsy10.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/fonts/type1
+/public/amsfonts/cm/cmsy6.pfb><C:/Users/Charles/AppData/Local/Programs/MiKTeX/f
+onts/type1/public/amsfonts/cm/cmsy8.pfb><C:/Users/Charles/AppData/Local/Program
+s/MiKTeX/fonts/type1/public/amsfonts/cm/cmti10.pfb><C:/Users/Charles/AppData/Lo
+cal/Programs/MiKTeX/fonts/type1/public/amsfonts/cm/cmtt10.pfb>
+Output written on nowcast.pdf (14 pages, 319157 bytes).
 PDF statistics:
- 137 PDF objects out of 1000 (max. 8388607)
+ 192 PDF objects out of 1000 (max. 8388607)
  0 named destinations out of 1000 (max. 500000)
- 36 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 66 words of extra memory for PDF output out of 10000 (max. 10000000)
 
