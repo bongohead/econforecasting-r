@@ -315,7 +315,6 @@ local({
 			sum((xMat - (fHat[, 1:r, drop = FALSE] %*% t(lambdaHat)[1:r, , drop = FALSE]))^2)/(bigT * bigN)
 			)
 	
-
 	
 	# Explained variance of data
 	screeDf =
@@ -337,6 +336,15 @@ local({
 			ic3 = (mse) + factors * (log(bigCSquared)/bigCSquared)
 		)
 	
+	screePlot =
+		screeDf %>%
+    	ggplot(.) +
+    	geom_line(aes(x = factors, y = cum_pct_of_total)) +
+		geom_col(aes(x = factors, y = pct_of_total)) +
+    	labs(x = 'Factors', y = 'Cumulative % of Total Variance Explained') + 
+    	ggthemes::theme_fivethirtyeight()
+
+	
 	bigR =
 		# screeDf %>%
 		# dplyr::filter(cum_pct_of_total >= .50) %>%
@@ -354,11 +362,23 @@ local({
 			fHat[, 1:bigR] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:bigR))
 			)
 	
+
+	zPlots =
+		lapply(colnames(zDf) %>% .[. != 'obsDate'], function(x)
+			dplyr::select(zDf, obsDate, x) %>%
+				setNames(., c('obsDate', 'value')) %>%
+				ggplot() +
+				geom_line(aes(x = obsDate, y = value)) +
+				labs(x = NULL, y = NULL, title = paste0('Estimated PCA Factor ', str_sub(x, -1), ' Plot')) +
+				ggthemes::theme_fivethirtyeight()
+			)
 	
 	ef$nc$screeDf <<- screeDf
+	ef$nc$screePlot <<- screePlot
 	ef$nc$bigR <<- bigR
 	ef$nc$pcaInputDf <<- xDf
 	ef$nc$zDf <<- zDf
+	ef$nc$zPlots <<- zPlots
 })
 ```
 
@@ -381,6 +401,35 @@ local({
 		rownames_to_column(., 'coefname') %>%
 		as_tibble(.) 
 	
+	gofDf =
+		lm(yMat ~ . - 1, xDf) %>%
+		resid(.) %>%
+		as.data.frame(.) %>%
+		as_tibble(.) %>%
+		tidyr::pivot_longer(., everything(), names_to = 'varname') %>%
+		dplyr::group_by(., varname) %>%
+		dplyr::summarize(., MAE = mean(value), MSE = mean(value^2))
+
+	
+	varFittedPlots =
+		lm(yMat ~ . - 1, data = xDf) %>%
+    	fitted(.) %>%
+		as_tibble(.) %>%
+		dplyr::bind_cols(obsDate = inputDf$obsDate, ., type = 'Fitted Values') %>%
+		dplyr::bind_rows(., ef$nc$zDf %>% dplyr::mutate(., type = 'Data')) %>%
+		tidyr::pivot_longer(., -c('type', 'obsDate')) %>% 
+		as.data.table(.) %>%
+		split(., by = 'name') %>%
+		purrr::imap(., function(x, i)
+			ggplot(x) +
+				geom_line(aes(x = obsDate, y = value, group = type, linetype = type, color = type)) +
+				labs(
+					x = NULL, y = NULL, color = NULL, linetype = NULL,
+					title = paste0('Fitted values vs actual for factor ', i)
+					) +
+				ggthemes::theme_fivethirtyeight()
+			)
+	
 	bMat = coefDf %>% dplyr::filter(., coefname != 'constant') %>% dplyr::select(., -coefname) %>% t(.)
 	cMat = coefDf %>% dplyr::filter(., coefname == 'constant') %>% dplyr::select(., -coefname) %>% t(.)
 	qMat =
@@ -392,6 +441,9 @@ local({
 		{purrr::reduce(., function(x, y) x + y)/length(.)}
 	
 	
+	ef$nc$varFittedPlots <<- varFittedPlots
+	ef$nc$varGofDf <<- gofDf
+	ef$nc$varCoefDf <<- coefDf
 	ef$nc$qMat <<- qMat 
 	ef$nc$bMat <<- bMat
 	ef$nc$cMat <<- cMat
@@ -411,6 +463,15 @@ local({
 		as.data.frame(.) %>%
     	rownames_to_column(., 'coefname') %>%
 		as_tibble(.)
+	
+	gofDf =
+		lm(yMat ~ . - 1, xDf) %>%
+		resid(.) %>%
+		as.data.frame(.) %>%
+		as_tibble(.) %>%
+		tidyr::pivot_longer(., everything(), names_to = 'varname') %>%
+		dplyr::group_by(., varname) %>%
+		dplyr::summarize(., MAE = mean(value), MSE = mean(value^2))
 	
 	aMat = coefDf %>% dplyr::select(., -coefname) %>% t(.)
 	
@@ -437,6 +498,8 @@ local({
 			) %>%
 		c(lapply(1:length(ef$nc$bigTDates), function(x) rMat0), .)
 
+	ef$nc$dfmGofDf <<- gofDf
+	ef$nc$dfmCoefDf <<- coefDf
 	ef$nc$rMats <<- rMats
 	ef$nc$aMat <<- aMat
 })
@@ -556,15 +619,17 @@ local({
 	kfPlots =
 		lapply(colnames(ef$nc$zDf) %>% .[. != 'obsDate'], function(.varname)
 			dplyr::bind_rows(
-				dplyr::mutate(ef$nc$zDf, type = 'historical'),
-				dplyr::mutate(kFitted, type = 'fitted'),
-				dplyr::mutate(kForecast, type = 'forecast'),
-				dplyr::mutate(kSmooth, type = 'smoothed'),
+				dplyr::mutate(ef$nc$zDf, type = 'Data'),
+				dplyr::mutate(kFitted, type = 'Kalman Filtered'),
+				dplyr::mutate(kForecast, type = 'Forecast'),
+				dplyr::mutate(kSmooth, type = 'Kalman Smoothed'),
 				) %>%
 				tidyr::pivot_longer(., -c('obsDate', 'type'), names_to = 'varname') %>%
 				dplyr::filter(., varname == .varname) %>%
 				ggplot(.) +
-				geom_line(aes(x = obsDate, y = value, color = type))
+				geom_line(aes(x = obsDate, y = value, color = type), size = 1.5) + 
+				labs(x = NULL, y = NULL, color = NULL, title = paste0('Kalman smoothed values for ', .varname)) +
+				ggthemes::theme_fivethirtyeight()
 			)
 	
 	
@@ -1010,7 +1075,7 @@ local({
 	
 	wide$q$display =
 		wide$q$base %>%
-		{lapply(colnames(.) %>% .[. != 'obsDate'], function(.varname) {
+		{lapply(colnames(.) %>% .[. != 'obsDate'], function(.varname) {mn
 			
 			transform = dplyr::filter(CONST$PARAMS, varname == .varname)$display
 			fcDf = dplyr::select(., obsDate, .varname) %>% na.omit(.)

@@ -93,7 +93,8 @@
 {\Huge \textsf{A Macroeconomic Nowcasting Model}}
 \vskip\baselineskip
 \noindent
-\textsf{March 2021}
+\textsf{March 2021}\\
+\textsf{Charles Ye}
 \restoregeometry % restores the geometry
 \nopagecolor% Use this to restore the color pages to white
 \end{titlepage}
@@ -134,7 +135,7 @@ This paper utilizes a modified version of the two-step dynamic factor model util
 We begin by importing monthly data from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference.
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Wed Feb 24 22:05:36 2021
+% Fri Feb 26 20:27:59 2021
 \begin{table}[!h]
 \centering
 \begingroup\scriptsize
@@ -167,7 +168,6 @@ PCE & dlog \\
   Consumer Confidence (OECD) & base \\ 
   Industrial Production index & dlog \\ 
   New York Fed: Business Conditions Manufacturing Survey & base \\ 
-  Current General Business Activity; Diffusion Index for Texas & base \\ 
   Chicago Fed National Activity Index & base \\ 
    \hline
 \end{tabular}
@@ -178,7 +178,7 @@ PCE & dlog \\
 
 We additionally import quarterly data for GDP and its subcomponents.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Wed Feb 24 22:05:36 2021
+% Fri Feb 26 20:27:59 2021
 \begin{table}[!h]
 \centering
 \begingroup\scriptsize
@@ -187,27 +187,27 @@ We additionally import quarterly data for GDP and its subcomponents.
 Variable & Stationary Form \\ 
   \hline
 GDP & dlog \\ 
-  Personal Consumption Expenditures & dlog \\ 
-  Personal Consumption Expenditures: Goods & dlog \\ 
-  Personal Consumption Expenditures: Goods: Durable & dlog \\ 
-  Personal Consumption Expenditures: Goods: Durable: Motor Vehicles \& Parts & dlog \\ 
-  Personal Consumption Expenditures: Goods: Durable: Furnishings \& Durable Household Equipment & dlog \\ 
-  Personal Consumption Expenditures: Goods: Durable: Recreational Goods \& Services & dlog \\ 
-  Personal Consumption Expenditures: Goods: Durable: Other Durable Goods & dlog \\ 
-  Personal Consumption Expenditures: Goods: Nondurable Goods & dlog \\ 
-  Personal Consumption Expenditures: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Consumption & dlog \\ 
-  Personal Consumption Expenditures: Goods: Nondurable Goods: Clothing & dlog \\ 
-  Personal Consumption Expenditures: Goods: Nondurable Goods: Gasoline \& Energy Goods & dlog \\ 
-  Personal Consumption Expenditures: Goods: Nondurable Goods: Other Nondurable Goods & dlog \\ 
-  Personal Consumption Expenditures: Services & dlog \\ 
-  Personal Consumption Expenditures: Services: Housing \& Utilities & dlog \\ 
-  Personal Consumption Expenditures: Services: Health Care & dlog \\ 
-  Personal Consumption Expenditures: Services: Transportation & dlog \\ 
-  Personal Consumption Expenditures: Services: Recreation & dlog \\ 
-  Personal Consumption Expenditures: Services: Food Services \& Accomodations & dlog \\ 
-  Personal Consumption Expenditures: Services: Financial Services & dlog \\ 
-  Personal Consumption Expenditures: Services: Other Services & dlog \\ 
-  Personal Consumption Expenditures: Services: Nonprofit Services & dlog \\ 
+  Personal Consumption & dlog \\ 
+  Personal Consumptions: Goods & dlog \\ 
+  Personal Consumptions: Goods: Durable & dlog \\ 
+  Personal Consumptions: Goods: Durable: Motor Vehicles \& Parts & dlog \\ 
+  Personal Consumptions: Goods: Durable: Furnishings \& Durable Household Equipment & dlog \\ 
+  Personal Consumptions: Goods: Durable: Recreational Goods \& Services & dlog \\ 
+  Personal Consumptions: Goods: Durable: Other Durable Goods & dlog \\ 
+  Personal Consumptions: Goods: Nondurable Goods & dlog \\ 
+  Personal Consumptions: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Consumption & dlog \\ 
+  Personal Consumptions: Goods: Nondurable Goods: Clothing & dlog \\ 
+  Personal Consumptions: Goods: Nondurable Goods: Gasoline \& Energy Goods & dlog \\ 
+  Personal Consumptions: Goods: Nondurable Goods: Other Nondurable Goods & dlog \\ 
+  Personal Consumptions: Services & dlog \\ 
+  Personal Consumptions: Services: Housing \& Utilities & dlog \\ 
+  Personal Consumptions: Services: Health Care & dlog \\ 
+  Personal Consumptions: Services: Transportation & dlog \\ 
+  Personal Consumptions: Services: Recreation & dlog \\ 
+  Personal Consumptions: Services: Food Services \& Accomodations & dlog \\ 
+  Personal Consumptions: Services: Financial Services & dlog \\ 
+  Personal Consumptions: Services: Other Services & dlog \\ 
+  Personal Consumptions: Services: Nonprofit Services & dlog \\ 
   Gross Private Domestic Investment & dlog \\ 
   Gross Private Domestic Investment: Nonresidential Investment & dlog \\ 
   Gross Private Domestic Investment: Nonresidential Investment: Structures & dlog \\ 
@@ -269,10 +269,7 @@ Estimation of factors is derived following Stock and Watson (2008).
 	\widehat{F} = X \widehat{\Lambda}
 \end{align*}
 
-Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used.
-\begin{align*}
-	IC(R) = MSE + R \frac{N+T}{NT} log\left(\frac{NT}{N+T}\right)
-\end{align*}
+Once factors are derived, we perform a qualitative check of the factors. Typically the first factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The second and third factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
 
 
 
@@ -283,8 +280,37 @@ Once factors are derived, we select the optimal number of factors to use in pred
 
 
 
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-4-2} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-4-3} 
+
+}
+
+
+
+
+
+Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used. We include alternative specifications of the information criteria from Bai and Ng as a robustness check.
+\begin{align*}
+	IC(R) = MSE + R \frac{N+T}{NT} log\left(\frac{NT}{N+T}\right)
+\end{align*}
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-5-1} 
+
+}
+
+
+
+
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Wed Feb 24 22:05:36 2021
+% Fri Feb 26 20:28:00 2021
 \begin{table}[!h]
 \centering
 \begingroup\footnotesize
@@ -292,33 +318,32 @@ Once factors are derived, we select the optimal number of factors to use in pred
   \hline
 factors & var\_explained & pct\_of\_total & cum\_pct\_of\_total & mse & ic1 & ic2 & ic3 \\ 
   \hline
-  1 & 8.87 & 0.33 & 0.33 & 0.67 & 0.81 & 0.81 & 0.79 \\ 
-    2 & 5.46 & 0.20 & 0.53 & 0.47 & 0.74 & 0.76 & 0.71 \\ 
-    3 & 4.24 & 0.16 & 0.69 & 0.31 & 0.73 & 0.75 & 0.68 \\ 
-    4 & 2.05 & 0.08 & 0.76 & 0.23 & 0.79 & 0.82 & 0.72 \\ 
-    5 & 1.50 & 0.06 & 0.82 & 0.18 & 0.87 & 0.91 & 0.79 \\ 
-    6 & 1.17 & 0.04 & 0.86 & 0.14 & 0.97 & 1.02 & 0.87 \\ 
-    7 & 1.01 & 0.04 & 0.90 & 0.10 & 1.07 & 1.13 & 0.95 \\ 
-    8 & 0.56 & 0.02 & 0.92 & 0.08 & 1.19 & 1.25 & 1.05 \\ 
-    9 & 0.42 & 0.02 & 0.94 & 0.06 & 1.31 & 1.39 & 1.16 \\ 
-   10 & 0.36 & 0.01 & 0.95 & 0.05 & 1.44 & 1.52 & 1.27 \\ 
-   11 & 0.31 & 0.01 & 0.96 & 0.04 & 1.56 & 1.66 & 1.38 \\ 
-   12 & 0.23 & 0.01 & 0.97 & 0.03 & 1.69 & 1.79 & 1.49 \\ 
-   13 & 0.18 & 0.01 & 0.98 & 0.02 & 1.83 & 1.93 & 1.61 \\ 
-   14 & 0.13 & 0.00 & 0.98 & 0.02 & 1.96 & 2.08 & 1.73 \\ 
-   15 & 0.12 & 0.00 & 0.99 & 0.01 & 2.09 & 2.22 & 1.84 \\ 
-   16 & 0.10 & 0.00 & 0.99 & 0.01 & 2.23 & 2.36 & 1.96 \\ 
-   17 & 0.08 & 0.00 & 0.99 & 0.01 & 2.37 & 2.51 & 2.08 \\ 
-   18 & 0.06 & 0.00 & 0.99 & 0.00 & 2.50 & 2.65 & 2.20 \\ 
-   19 & 0.04 & 0.00 & 1.00 & 0.00 & 2.64 & 2.80 & 2.32 \\ 
-   20 & 0.03 & 0.00 & 1.00 & 0.00 & 2.78 & 2.94 & 2.44 \\ 
-   21 & 0.02 & 0.00 & 1.00 & 0.00 & 2.91 & 3.09 & 2.56 \\ 
-   22 & 0.02 & 0.00 & 1.00 & 0.00 & 3.05 & 3.24 & 2.69 \\ 
-   23 & 0.01 & 0.00 & 1.00 & 0.00 & 3.19 & 3.38 & 2.81 \\ 
-   24 & 0.01 & 0.00 & 1.00 & 0.00 & 3.33 & 3.53 & 2.93 \\ 
-   25 & 0.00 & 0.00 & 1.00 & 0.00 & 3.47 & 3.68 & 3.05 \\ 
-   26 & 0.00 & 0.00 & 1.00 & 0.00 & 3.61 & 3.82 & 3.17 \\ 
-   27 & 0.00 & 0.00 & 1.00 & 0.00 & 3.75 & 3.97 & 3.30 \\ 
+  1 & 8.67 & 0.33 & 0.33 & 0.66 & 0.80 & 0.81 & 0.79 \\ 
+    2 & 5.46 & 0.21 & 0.54 & 0.45 & 0.74 & 0.75 & 0.70 \\ 
+    3 & 3.87 & 0.15 & 0.69 & 0.31 & 0.73 & 0.76 & 0.68 \\ 
+    4 & 2.03 & 0.08 & 0.77 & 0.23 & 0.79 & 0.83 & 0.73 \\ 
+    5 & 1.50 & 0.06 & 0.83 & 0.17 & 0.88 & 0.92 & 0.80 \\ 
+    6 & 1.05 & 0.04 & 0.87 & 0.13 & 0.98 & 1.03 & 0.88 \\ 
+    7 & 0.98 & 0.04 & 0.91 & 0.09 & 1.09 & 1.14 & 0.97 \\ 
+    8 & 0.56 & 0.02 & 0.93 & 0.07 & 1.21 & 1.27 & 1.07 \\ 
+    9 & 0.42 & 0.02 & 0.94 & 0.06 & 1.33 & 1.41 & 1.18 \\ 
+   10 & 0.32 & 0.01 & 0.96 & 0.04 & 1.46 & 1.54 & 1.30 \\ 
+   11 & 0.28 & 0.01 & 0.97 & 0.03 & 1.59 & 1.68 & 1.41 \\ 
+   12 & 0.21 & 0.01 & 0.97 & 0.03 & 1.73 & 1.82 & 1.53 \\ 
+   13 & 0.15 & 0.01 & 0.98 & 0.02 & 1.86 & 1.97 & 1.65 \\ 
+   14 & 0.13 & 0.01 & 0.99 & 0.01 & 2.00 & 2.11 & 1.77 \\ 
+   15 & 0.10 & 0.00 & 0.99 & 0.01 & 2.14 & 2.26 & 1.89 \\ 
+   16 & 0.08 & 0.00 & 0.99 & 0.01 & 2.27 & 2.41 & 2.01 \\ 
+   17 & 0.06 & 0.00 & 0.99 & 0.01 & 2.41 & 2.56 & 2.14 \\ 
+   18 & 0.04 & 0.00 & 1.00 & 0.00 & 2.55 & 2.70 & 2.26 \\ 
+   19 & 0.03 & 0.00 & 1.00 & 0.00 & 2.69 & 2.85 & 2.38 \\ 
+   20 & 0.02 & 0.00 & 1.00 & 0.00 & 2.84 & 3.00 & 2.51 \\ 
+   21 & 0.02 & 0.00 & 1.00 & 0.00 & 2.98 & 3.15 & 2.63 \\ 
+   22 & 0.01 & 0.00 & 1.00 & 0.00 & 3.12 & 3.30 & 2.76 \\ 
+   23 & 0.01 & 0.00 & 1.00 & 0.00 & 3.26 & 3.45 & 2.88 \\ 
+   24 & 0.00 & 0.00 & 1.00 & 0.00 & 3.40 & 3.60 & 3.01 \\ 
+   25 & 0.00 & 0.00 & 1.00 & 0.00 & 3.54 & 3.75 & 3.13 \\ 
+   26 & 0.00 & 0.00 & 1.00 & 0.00 & 3.68 & 3.90 & 3.26 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -330,10 +355,8 @@ Choosing the IC-minimizing $R$ lets us choose $R = 3$ factors.
 
 
 
-
-
 \subsection{Factor VAR}
-We model the factors as following a vector-autoregressive (VAR) process, following Stock and Watson (2016).
+The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016).
 \begin{align*}
 \underbrace{\begin{bmatrix}
 	\vv{f1}_{t}\\
@@ -402,6 +425,54 @@ The coefficient matrix $\Lambda$ can be estimated by the standard OLS estimator.
 \end{align*}
 It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which can then be transposed to derive our estimates of the original coefficient matrices B and C, $\widehat{B}$ and $\widehat{C}$.
 
+The estimated coefficients in $B$ and $C$ are shown below.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Fri Feb 26 20:28:00 2021
+\begin{table}[!h]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{lrrrr}
+  \hline
+name & constant & f1.l1 & f2.l1 & f3.l1 \\ 
+  \hline
+f1 & 0.00 & 0.10 & 0.05 & -0.12 \\ 
+  f2 & 0.04 & 0.02 & 0.98 & -0.00 \\ 
+  f3 & -0.02 & -0.28 & 0.00 & 0.80 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Factor VAR Coefficients} 
+\end{table}
+
+
+
+Finally, we perform a qualitative check of the fitted values.
+
+
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-8-1} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-8-2} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-8-3} 
+
+}
+
+
+
+
+
+
+
 \subsection{Dynamic Factor Models}
 Now let us consider again the monthly covariates which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier.
 
@@ -463,6 +534,94 @@ As before we can estimate $A$ with the standard OLS estimator.
 \begin{align*}
 \widehat{A}' = (\Omega' \Omega)^{-1} (\Omega'\Phi)
 \end{align*}
+
+Estimated coefficients are the in-sample goodness-of-fit are shown below.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Fri Feb 26 20:28:00 2021
+\begin{table}[!h]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{lrrr}
+  \hline
+name & f1 & f2 & f3 \\ 
+  \hline
+mpce & -0.01 & 0.00 & -0.00 \\ 
+  mpceg & -0.01 & 0.00 & -0.00 \\ 
+  mpcegd & -0.01 & 0.00 & -0.01 \\ 
+  mpcegn & -0.00 & 0.00 & -0.00 \\ 
+  mpces & -0.01 & 0.00 & -0.00 \\ 
+  pid & 0.00 & -0.00 & 0.00 \\ 
+  hpi & 0.00 & 0.00 & -0.00 \\ 
+  ffr & -0.01 & 0.20 & 0.15 \\ 
+  t10y & -0.04 & -0.14 & 0.26 \\ 
+  t01y & -0.04 & -0.14 & 0.26 \\ 
+  vsales & -0.17 & 0.76 & 0.34 \\ 
+  ue & 0.04 & 0.00 & -0.00 \\ 
+  wei & -0.16 & -0.30 & 0.95 \\ 
+  spy & -0.00 & 0.00 & 0.00 \\ 
+  vix & 0.92 & -0.81 & -2.24 \\ 
+  loansre & 0.00 & 0.00 & 0.00 \\ 
+  loanscc & -0.00 & -0.00 & 0.01 \\ 
+  stlfsi & 0.10 & -0.02 & -0.15 \\ 
+  usd & 0.36 & 4.24 & -0.86 \\ 
+  uemean & -0.37 & -2.46 & 0.62 \\ 
+  advsales & -0.01 & -0.00 & -0.00 \\ 
+  kclfi & -0.04 & 0.42 & 0.15 \\ 
+  csent & -0.01 & 0.53 & 0.29 \\ 
+  ipi & -0.00 & -0.00 & -0.00 \\ 
+  sny & -2.15 & -0.42 & 4.21 \\ 
+  cfnai & -0.57 & 0.00 & -0.06 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Estimated DFM Coefficients} 
+\end{table}
+
+
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Fri Feb 26 20:28:00 2021
+\begin{table}[!h]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{lrr}
+  \hline
+varname & MAE & MSE \\ 
+  \hline
+advsales & 0.00 & 0.00 \\ 
+  cfnai & -0.07 & 0.23 \\ 
+  csent & 99.78 & 9957.21 \\ 
+  ffr & 0.59 & 0.60 \\ 
+  hpi & 0.00 & 0.00 \\ 
+  ipi & 0.00 & 0.00 \\ 
+  kclfi & -0.48 & 0.30 \\ 
+  loanscc & 0.01 & 0.00 \\ 
+  loansre & 0.00 & 0.00 \\ 
+  mpce & 0.00 & 0.00 \\ 
+  mpceg & 0.00 & 0.00 \\ 
+  mpcegd & 0.01 & 0.00 \\ 
+  mpcegn & 0.00 & 0.00 \\ 
+  mpces & 0.00 & 0.00 \\ 
+  pid & 0.00 & 0.00 \\ 
+  sny & 6.18 & 112.94 \\ 
+  spy & 0.01 & 0.00 \\ 
+  stlfsi & -0.26 & 0.19 \\ 
+  t01y & 2.27 & 5.25 \\ 
+  t10y & 2.27 & 5.25 \\ 
+  ue & -0.00 & 0.00 \\ 
+  uemean & 29.67 & 897.40 \\ 
+  usd & 103.78 & 10790.48 \\ 
+  vix & 17.97 & 340.06 \\ 
+  vsales & 15.97 & 256.04 \\ 
+  wei & 1.62 & 4.00 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{DFM Goodness of Fit} 
+\end{table}
+
+
+
+
 
 
 \subsection{State-Space Setup}
@@ -558,25 +717,32 @@ Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-6-1} 
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-11-1} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-6-2} 
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-11-2} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-6-3} 
+{\centering \includegraphics[width=5in,height=2in]{figure/unnamed-chunk-11-3} 
 
 }
 
 
+
+
+
+\section{Predicting GDP}
+Now that we have the smoothed factor values, we can use these in the dynamic factor model to nowcast our variables of interest.
+
+Work in progress...
 
 
 

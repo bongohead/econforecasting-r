@@ -42,7 +42,8 @@
 {\Huge \textsf{A Macroeconomic Nowcasting Model}}
 \vskip\baselineskip
 \noindent
-\textsf{March 2021}
+\textsf{March 2021}\\
+\textsf{Charles Ye}
 \restoregeometry % restores the geometry
 \nopagecolor% Use this to restore the color pages to white
 \end{titlepage}
@@ -151,17 +152,22 @@ Estimation of factors is derived following Stock and Watson (2008).
 	\widehat{F} = X \widehat{\Lambda}
 \end{align*}
 
-Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used.
+Once factors are derived, we perform a qualitative check of the factors. Typically the first factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The second and third factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
+
+<<>>=
+for (i in 1:length(rds$ef$nc$zPlots)) {
+	print(rds$ef$nc$zPlots[[i]])
+}
+@
+
+
+Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used. We include alternative specifications of the information criteria from Bai and Ng as a robustness check.
 \begin{align*}
 	IC(R) = MSE + R \frac{N+T}{NT} log\left(\frac{NT}{N+T}\right)
 \end{align*}
 
 <<fig.caption = 'Factor Selection'>>=
-	rds$ef$nc$screeDf %>%
-    	ggplot(.) +
-    	geom_line(aes(x = factors, y = cum_pct_of_total)) +
-    	labs(x = 'Factors', y = 'Cumulative % of Total Variance Explained') + 
-    	ggthemes::theme_economist()
+	rds$ef$nc$screePlot
 @
 
 <<>>=
@@ -174,10 +180,8 @@ Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{rds$ef$nc$bigR}$ facto
 
 
 
-
-
 \subsection{Factor VAR}
-We model the factors as following a vector-autoregressive (VAR) process, following Stock and Watson (2016).
+The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016).
 \begin{align*}
 \underbrace{\begin{bmatrix}
 	\vv{f1}_{t}\\
@@ -246,6 +250,26 @@ The coefficient matrix $\Lambda$ can be estimated by the standard OLS estimator.
 \end{align*}
 It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which can then be transposed to derive our estimates of the original coefficient matrices B and C, $\widehat{B}$ and $\widehat{C}$.
 
+The estimated coefficients in $B$ and $C$ are shown below.
+<<>>=
+	rds$ef$nc$varCoefDf %>%
+    	tidyr::pivot_longer(., -coefname) %>%
+    	tidyr::pivot_wider(., names_from = coefname) %>%
+    	xtable::xtable(., caption = 'Factor VAR Coefficients') %>%
+    	print(.)
+@
+
+
+Finally, we perform a qualitative check of the fitted values.
+<<>>=
+for (i in 1:length(rds$ef$nc$varFittedPlots)) {
+	print(rds$ef$nc$varFittedPlots[[i]])
+}
+@
+
+
+
+
 \subsection{Dynamic Factor Models}
 Now let us consider again the monthly covariates which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier.
 
@@ -307,6 +331,22 @@ As before we can estimate $A$ with the standard OLS estimator.
 \begin{align*}
 \widehat{A}' = (\Omega' \Omega)^{-1} (\Omega'\Phi)
 \end{align*}
+
+Estimated coefficients are the in-sample goodness-of-fit are shown below.
+<<>>= 
+rds$ef$nc$dfmCoefDf %>% tidyr::pivot_longer(., -coefname) %>% tidyr::pivot_wider(., names_from = coefname) %>%
+    	xtable::xtable(., caption = 'Estimated DFM Coefficients') %>%
+    	print(.)
+@
+
+<<>>=
+	rds$ef$nc$dfmGofDf %>%
+    	xtable::xtable(., caption = 'DFM Goodness of Fit') %>%
+    	print(.)
+@
+
+
+
 
 
 \subsection{State-Space Setup}
@@ -405,6 +445,13 @@ Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the 
     	print(rds$ef$nc$kfPlots[[i]])
     }
 @
+
+
+\section{Predicting GDP}
+Now that we have the smoothed factor values, we can use these in the dynamic factor model to nowcast our variables of interest.
+
+Work in progress...
+
 
 
 \end{document}

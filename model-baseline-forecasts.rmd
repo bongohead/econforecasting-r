@@ -159,7 +159,7 @@ local({
         .$varname %>% unique(.) %>%
         # Check which ones have no monthly data for the current month
         lapply(., function(vname) {
-            
+        	
             thisMonthDataMonthly =
                 dplyr::filter(
                     ef$history$fred,
@@ -190,8 +190,11 @@ local({
                         freq = 'm'
                         ) %>%
                     return(.)
-            } else return(NA)
+            } else {
+            	return(NA)	
+            } 
         }) %>%
+    	purrr::keep(., ~ !is.na(.)) %>%
         dplyr::bind_rows(.)
     
     
