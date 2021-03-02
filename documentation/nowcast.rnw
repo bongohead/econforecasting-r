@@ -71,6 +71,9 @@
 
 \tableofcontents
 \newpage
+\listoftables
+\listoffigures
+\newpage
 \section{Motivation}
 \textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
 
@@ -197,27 +200,27 @@ Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{rds$ef$nc$bigR}$ facto
 The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016). As before, $R$ will refer to the total number of factors we extracted in the previous section, and $f^i$ for $i = 1, \dots, R$. will refer to factor $i$.
 \begin{align*}
 \underbrace{\begin{bmatrix}
-	\vv{f^1}_{t}\\
-	\vv{f^2}_{t}\\
+	f^1_{t}\\
+	f^2_{t}\\
 	\vdots \\
-	\vv{f^R}_{t}
+	f^R_{t}
 \end{bmatrix}}_{z_t}
 =
 B
 \underbrace{\begin{bmatrix}
-	\vv{f^1}_{t-1}\\
-	\vv{f^2}_{t-1}\\
+	f^1_{t-1}\\
+	f^2_{t-1}\\
 	\vdots \\
-	\vv{f^R}_{t-1}
+	f^R_{t-1}
 \end{bmatrix}}_{z_{t-1}}
 +
 C
 +
 \underbrace{\begin{bmatrix}
-v1_t\\
-v2_t\\
+v^1_t\\
+v^2_t\\
 \vdots\\
-vR_t
+v^R_t
 \end{bmatrix}}_{v_t},\\
 \text{where $z_t$ is the $R \times 1$ matrix of time $t$ factors,}\\
 \text{$B$ is the $R \times R$ coefficient matrix,}\\
@@ -229,17 +232,17 @@ vR_t
 We wish to estimate the coefficient matrices $B$ and $C$. This can be done via OLS estimation. We first rewrite the data as the standard linear equation,
 \begin{align*}
 \underbrace{\begin{bmatrix}
-\vv{f^1}_{2} & \vv{f^2}_{2} & \dots & \vv{f^R}_{2}\\
-\vv{f^1}_{3} & \vv{f^2}_{3} & \dots & \vv{f^R}_{3}\\
+f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
 \vdots & \vdots & \vdots & \vdots \\
-\vv{f^1}_{T} & \vv{f^2}_{T} & \dots & \vv{f^R}_{T}
+f^1_{T} & f^2_{T} & \dots & f^R_{T}
 \end{bmatrix}}_{\Gamma}
 =
 \underbrace{\begin{bmatrix}
-1 & \vv{f^1}_{1} & \vv{f^2}_{1} & \dots & \vv{f^R}_{1}\\
-1 & \vv{f^1}_{2} & \vv{f^2}_{2} & \dots & \vv{f^R}_{2}\\
+1 & f^1_{1} & f^2_{1} & \dots & f^R_{1}\\
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
 \vdots & \vdots & \vdots & \vdots & \vdots \\
-1 & \vv{f^1}_{T-1} & \vv{f^2}_{T-1} & \dots & \vv{f^R}_{T-1}
+1 & f^1_{T-1} & f^2_{T-1} & \dots & f^R_{T-1}
 \end{bmatrix}}_{\Psi}
 \underbrace{\begin{bmatrix}
 C'\\
@@ -300,18 +303,18 @@ Now let us consider again the monthly covariates which were include in the princ
 The factor models take the following form:
 \begin{align*}
 \underbrace{\begin{bmatrix}
-	\vv{x^1}_t\\
-	\vv{x^2}_t\\
+	x^1_t\\
+	x^2_t\\
 	\vdots \\
-	\vv{x^N}_t
+	x^N_t
 \end{bmatrix}}_{y_t}
 =
 A
 \underbrace{\begin{bmatrix}
-	\vv{f^1}_{t}\\
-	\vv{f^2}_{t}\\
+	f^1_{t}\\
+	f^2_{t}\\
 	\vdots \\
-	\vv{f^R}_{t}
+	f^R_{t}
 \end{bmatrix}}_{z_t}
 +
 D 
@@ -332,17 +335,17 @@ We wish to estimate the coefficient matrices $A$ and $D$. As before, we can do t
 
 \begin{equation}
 \underbrace{\begin{bmatrix}
-\vv{x^1}_{2} & \vv{x^2}_{2} & \dots & \vv{x^N}_{2}\\
-\vv{x^1}_{3} & \vv{x^2}_{3} & \dots & \vv{x^N}_{3}\\
+x^1_{2} & x^2_{2} & \dots & x^N_{2}\\
+x^1_{3} & x^2_{3} & \dots & x^N_{3}\\
 \vdots & \vdots & \vdots & \vdots \\
-\vv{x^1}_{T} & \vv{x^2}_{T} & \dots & \vv{x^N}_{T}\\
+x^1_{T} & x^2_{T} & \dots & x^N_{T}\\
 \end{bmatrix}}_{\Phi}
 =
 \underbrace{\begin{bmatrix}
-1 & \vv{f^1}_{2} & \vv{f^2}_{2} & \dots & \vv{f^R}_{2}\\
-1 & \vv{f^1}_{3} & \vv{f^2}_{3} & \dots & \vv{f^R}_{3}\\
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+1 & f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
 \vdots & \vdots & \vdots & \vdots & \vdots \\
-1 & \vv{f^1}_{T} & \vv{f^2}_{T} & \dots & \vv{f^R}_{T}\\
+1 & f^1_{T} & f^2_{T} & \dots & f^R_{T}\\
 \end{bmatrix}}_{\Omega}
 \begin{bmatrix}
 D'\\
@@ -400,18 +403,18 @@ Specifically, we construct the matrices below.
 z_t
 =
 \begin{bmatrix}
-	\vv{f^1}_{t}\\
-	\vv{f^2}_{t}\\
+	f^1_{t}\\
+	f^2_{t}\\
 	\vdots \\
-	\vv{f^R}_{t}
+	f^R_{t}
 \end{bmatrix}, \forall t \in 1, \dots, T\\
 y_t
 =
 \begin{bmatrix}
-	\text{$\vv{x^1}_{t}$ if available, otherwise 0}\\
-	\text{$\vv{x^2}_{t}$ if available, otherwise 0}\\
+	\text{$x^1_{t}$ if available, otherwise 0}\\
+	\text{$x^2_{t}$ if available, otherwise 0}\\
 	\vdots \\
-	\text{$\vv{x^N}_{t}$ if available, otherwise 0}\\
+	\text{$x^N_{t}$ if available, otherwise 0}\\
 \end{bmatrix}, \forall t \in 1, \dots, \tau
 \end{align*}
 
