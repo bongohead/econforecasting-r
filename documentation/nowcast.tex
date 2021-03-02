@@ -106,6 +106,9 @@
 
 \tableofcontents
 \newpage
+\listoftables
+\listoffigures
+\newpage
 \section{Motivation}
 \textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
 
@@ -140,7 +143,7 @@ The model is run every weekday; this documentation will use actual data and esti
 We begin by importing monthly data from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference.
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:58 2021
+% Mon Mar 01 20:38:30 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -184,7 +187,7 @@ PCE & dlog \\
 
 We additionally import quarterly data for GDP and its subcomponents.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:58 2021
+% Mon Mar 01 20:38:30 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -255,7 +258,7 @@ In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \
 \end{figure}
 For our data, we set the dates as follows>
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:58 2021
+% Mon Mar 01 20:38:30 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -336,7 +339,7 @@ Once factors are derived, we select the optimal number of factors to use in pred
 
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:59 2021
+% Mon Mar 01 20:38:31 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -383,30 +386,30 @@ Choosing the IC-minimizing $R$ lets us choose $R = 3$ factors.
 
 
 \subsection{Factor VAR}
-The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016).
+The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016). As before, $R$ will refer to the total number of factors we extracted in the previous section, and $f^i$ for $i = 1, \dots, R$. will refer to factor $i$.
 \begin{align*}
 \underbrace{\begin{bmatrix}
-	\vv{f1}_{t}\\
-	\vv{f2}_{t}\\
+	f^1_{t}\\
+	f^2_{t}\\
 	\vdots \\
-	\vv{fR}_{t}
+	f^R_{t}
 \end{bmatrix}}_{z_t}
 =
 B
 \underbrace{\begin{bmatrix}
-	\vv{f1}_{t-1}\\
-	\vv{f2}_{t-1}\\
+	f^1_{t-1}\\
+	f^2_{t-1}\\
 	\vdots \\
-	\vv{fR}_{t-1}
+	f^R_{t-1}
 \end{bmatrix}}_{z_{t-1}}
 +
 C
 +
 \underbrace{\begin{bmatrix}
-v1_t\\
-v2_t\\
+v^1_t\\
+v^2_t\\
 \vdots\\
-vR_t
+v^R_t
 \end{bmatrix}}_{v_t},\\
 \text{where $z_t$ is the $R \times 1$ matrix of time $t$ factors,}\\
 \text{$B$ is the $R \times R$ coefficient matrix,}\\
@@ -418,17 +421,17 @@ vR_t
 We wish to estimate the coefficient matrices $B$ and $C$. This can be done via OLS estimation. We first rewrite the data as the standard linear equation,
 \begin{align*}
 \underbrace{\begin{bmatrix}
-\vv{f1}_{2} & \vv{f2}_{2} & \dots & \vv{f6}_{2}\\
-\vv{f1}_{3} & \vv{f2}_{3} & \dots & \vv{f6}_{3}\\
+f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
 \vdots & \vdots & \vdots & \vdots \\
-\vv{f1}_{T} & \vv{f2}_{T} & \dots & \vv{f6}_{T}
+f^1_{T} & f^2_{T} & \dots & f^R_{T}
 \end{bmatrix}}_{\Gamma}
 =
 \underbrace{\begin{bmatrix}
-1 & \vv{f1}_{1} & \vv{f2}_{1} & \dots & \vv{f6}_{1}\\
-1 & \vv{f1}_{2} & \vv{f2}_{2} & \dots & \vv{f6}_{2}\\
+1 & f^1_{1} & f^2_{1} & \dots & f^R_{1}\\
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
 \vdots & \vdots & \vdots & \vdots & \vdots \\
-1 & \vv{f1}_{T-1} & \vv{f2}_{T-1} & \dots & \vv{f6}_{T-1}
+1 & f^1_{T-1} & f^2_{T-1} & \dots & f^R_{T-1}
 \end{bmatrix}}_{\Psi}
 \underbrace{\begin{bmatrix}
 C'\\
@@ -436,10 +439,10 @@ B'
 \end{bmatrix}}_{\Lambda}
  +
 \underbrace{\begin{bmatrix}
-v1_2 & v2_2 & \dots & vR_2\\
-v1_3 & v2_3 & \dots & vR_3\\
+v^1_2 & v^2_2 & \dots & v^R_2\\
+v^1_3 & v^2_3 & \dots & v^R_3\\
 \vdots\\
-v1_T & v2_T & \dots & vR_T\\
+v^1_T & v^2_T & \dots & v^R_T\\
 \end{bmatrix}}_{V},\\
 \text{where $\Gamma$ is the $T-1 \times R$ dependent data matrix,}\\
 \text{$\Psi$ is the $T-1 \times R+1$ independent data matrix,}\\
@@ -454,7 +457,7 @@ It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which
 
 The estimated coefficients in $\widehat{B}$ and $\widehat{C}$ are shown below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:59 2021
+% Mon Mar 01 20:38:31 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -511,7 +514,7 @@ Finally, we perform a qualitative check of the fitted values and residuals.
 
 Goodness-of-fit statistics are shown below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:59 2021
+% Mon Mar 01 20:38:31 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -532,32 +535,32 @@ f1 & 0.90292071 & 8.50502097 \\
 
 
 \subsection{Dynamic Factor Models}
-Now let us consider again the monthly covariates which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier.
+Now let us consider again the monthly covariates which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier. As before, let $x^i_t$ refer to the time $t$ value for monthly variable $x^i$, where $i = 1, \dots, N$.
 
 The factor models take the following form:
 \begin{align*}
 \underbrace{\begin{bmatrix}
-	\vv{ue}_t\\
-	\vv{pce}_t\\
+	x^1_t\\
+	x^2_t\\
 	\vdots \\
-	\vv{claims}_t
+	x^N_t
 \end{bmatrix}}_{y_t}
 =
 A
 \underbrace{\begin{bmatrix}
-	\vv{f1}_{t}\\
-	\vv{f2}_{t}\\
+	f^1_{t}\\
+	f^2_{t}\\
 	\vdots \\
-	\vv{fR}_{t}
+	f^R_{t}
 \end{bmatrix}}_{z_t}
 +
 D 
 +
 \underbrace{\begin{bmatrix}
-	w1_t\\
-	w2_t\\
+	w^1_t\\
+	w^2_t\\
 	\vdots\\
-	wN_t
+	w^N_t
 \end{bmatrix}}_{w_t},\\
 \text{where $y_t$ is the $N \times 1$ vector of monthly variables at time $t$,}\\
 \text{$A$ is the $N \times R$ coefficient matrix,}\\
@@ -569,17 +572,17 @@ We wish to estimate the coefficient matrices $A$ and $D$. As before, we can do t
 
 \begin{equation}
 \underbrace{\begin{bmatrix}
-\vv{ue}_{2} & \vv{pce}_{2} & \dots & \vv{claims}_{2}\\
-\vv{ue}_{3} & \vv{pce}_{3} & \dots & \vv{claims}_{3}\\
+x^1_{2} & x^2_{2} & \dots & x^N_{2}\\
+x^1_{3} & x^2_{3} & \dots & x^N_{3}\\
 \vdots & \vdots & \vdots & \vdots \\
-\vv{ue}_{T} & \vv{pce}_{T} & \dots & \vv{claims}_{T}\\
+x^1_{T} & x^2_{T} & \dots & x^N_{T}\\
 \end{bmatrix}}_{\Phi}
 =
 \underbrace{\begin{bmatrix}
-1 & \vv{f1}_{2} & \vv{f2}_{2} & \dots & \vv{f6}_{2}\\
-1 & \vv{f1}_{3} & \vv{f2}_{3} & \dots & \vv{f6}_{3}\\
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+1 & f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
 \vdots & \vdots & \vdots & \vdots & \vdots \\
-1 & \vv{f1}_{T} & \vv{f2}_{T} & \dots & \vv{f6}_{T}\\
+1 & f^1_{T} & f^2_{T} & \dots & f^R_{T}\\
 \end{bmatrix}}_{\Omega}
 \begin{bmatrix}
 D'\\
@@ -587,10 +590,10 @@ A'
 \end{bmatrix}
  +
 \underbrace{\begin{bmatrix}
-w1_2 & w2_2 & \dots & wR_2\\
-w1_3 & w2_3 & \dots & wR_3\\
+w^1_2 & w^2_2 & \dots & w^R_2\\
+w^1_3 & w^2_3 & \dots & w^R_3\\
 \vdots\\
-w1_T & w2_T & \dots & wR_T\\
+w^1_T & w^2_T & \dots & w^R_T\\
 \end{bmatrix}}_{W}
 \end{equation}
 
@@ -605,7 +608,7 @@ As before we can estimate $A$ and $D$ with the standard OLS estimator.
 
 Estimated coefficients for $\widehat{A}$ and $\widehat{D}$ are below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:59 2021
+% Mon Mar 01 20:38:32 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -649,7 +652,7 @@ mpce & 0.00 & -0.01 & -0.00 & -0.00 \\
 
 We perform a qualitative check of the in-sample fit, as well as a quantitative review of the goodness-of-fit. The graphs of the fitted plots are located in the appendix.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:21:59 2021
+% Mon Mar 01 20:38:32 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -711,18 +714,18 @@ Specifically, we construct the matrices below.
 z_t
 =
 \begin{bmatrix}
-	\vv{f1}_{t}\\
-	\vv{f2}_{t}\\
+	f^1_{t}\\
+	f^2_{t}\\
 	\vdots \\
-	\vv{fR}_{t}
+	f^R_{t}
 \end{bmatrix}, \forall t \in 1, \dots, T\\
 y_t
 =
 \begin{bmatrix}
-	\text{$\vv{ue}_{t}$ if available, otherwise 0}\\
-	\text{$\vv{pce}_{t}$ if available, otherwise 0}\\
+	\text{$x^1_{t}$ if available, otherwise 0}\\
+	\text{$x^2_{t}$ if available, otherwise 0}\\
 	\vdots \\
-	\text{$\vv{claims}_{t}$ if available, otherwise 0}\\
+	\text{$x^N_{t}$ if available, otherwise 0}\\
 \end{bmatrix}, \forall t \in 1, \dots, \tau
 \end{align*}
 
@@ -822,7 +825,7 @@ We begin by aggregating these monthly factors into quarterly data by taking a si
 
 In this section, we will use these now-quarterly factors to forecast our quarterly subcomponents of GDP. As discussed in the data import section, these have been transformed for stationarity, typically by taking a log-difference.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:22:00 2021
+% Mon Mar 01 20:38:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -887,7 +890,7 @@ The $\beta$ coefficients can be estimated with a typical OLS process, where the 
 After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
 The forecasted results are as follows.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:22:00 2021
+% Mon Mar 01 20:38:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -931,7 +934,7 @@ Consumption: Goods: Durable: Motor Vehicles \& Parts & 0.13 & 0.02 \\
 
 We can then backtransform the data so that the units are in base values. After backtransformation, we are ready to aggregate these up to higher-level GDP components. In particular, we calculate the variables below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:22:00 2021
+% Mon Mar 01 20:38:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -963,7 +966,7 @@ Finally, we convert these into annualized percentage change, as this is the stan
 \section{Results}
 Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Mon Mar 01 20:22:00 2021
+% Mon Mar 01 20:38:32 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{11pt}{13pt}\selectfont
