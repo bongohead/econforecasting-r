@@ -1,0 +1,14 @@
+\contentsline {section}{\numberline {1}Motivation}{2}{}%
+\contentsline {section}{\numberline {2}Methodology}{3}{}%
+\contentsline {subsection}{\numberline {2.1}Overview}{3}{}%
+\contentsline {subsection}{\numberline {2.2}Data}{3}{}%
+\contentsline {subsection}{\numberline {2.3}Time Periods}{4}{}%
+\contentsline {subsection}{\numberline {2.4}Principal Components Analysis}{5}{}%
+\contentsline {subsection}{\numberline {2.5}Factor VAR}{7}{}%
+\contentsline {subsection}{\numberline {2.6}Dynamic Factor Models}{10}{}%
+\contentsline {subsection}{\numberline {2.7}State-Space Setup}{12}{}%
+\contentsline {subsection}{\numberline {2.8}Kalman Filtration}{13}{}%
+\contentsline {subsection}{\numberline {2.9}Predicting Quarterly Variables}{15}{}%
+\contentsline {section}{\numberline {3}Results}{18}{}%
+\contentsline {section}{Appendices}{19}{}%
+\contentsline {section}{\numberline {A}DFM Fitted Plots}{19}{}%
