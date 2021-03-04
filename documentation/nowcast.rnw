@@ -22,7 +22,7 @@
 	\rhead{\small{\textcolor{black}{\thepage}}}
 	\lfoot{}
 	\cfoot{}
-	\rfoot{}
+	\rfoot{\textit{charles@cmefi.com}}
 	\renewcommand{\headrulewidth}{0.5pt}
 	%\renewcommand{\footrulewidth}{0.5pt}
 }\pagestyle{plain}
@@ -44,7 +44,7 @@
 \vskip\baselineskip
 \noindent
 \textsf{Model Run Date: \Sexpr{format(Sys.Date(), '%B %d, %Y')}}\\
-\textsf{Charles Y. | charles@cmefi.com}
+\textsf{charles@cmefi.com}
 \restoregeometry % restores the geometry
 \nopagecolor% Use this to restore the color pages to white
 \end{titlepage}
@@ -75,54 +75,84 @@
 \listoffigures
 \newpage
 \section{Motivation}
-\textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
+\textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP data typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
 
-This delay is particularly salient during times of high volatility. During the first few months of the COVID-19 pandemic in the United States, many companies attempted to use high-frequency indicators to attempt nowcasts of the state of the macroeconomy. For example, JP Morgan forecasts in March 13 predicted Q2 GDP growth of -3\%; the estimate was revised down to -14\% by March 21, -25\% by March 25, and -40\% by April 10. Yet many of the models were ad-hoc and only able to use a small number of predictive indicators, such as jobless claims or traffic data.
+This delay is particularly salient during times of high volatility. During the first few months of the COVID-19 pandemic in the United States, many companies attempted to use high-frequency indicators to attempt nowcasts of the state of the macroeconomy. For example, a major investment bank forecasted Q2 GDP growth of -3\% on March 3rd; the estimate was revised down to -14\% by March 21st, -25\% by March 25th, and -40\% by April 10th. Yet many such models were ad-hoc and only able to use a small number of predictive indicators, such as jobless claims or traffic data.
 
 \textbf{Nowcasting is about deciphering key information about the state of the economy before official data is released.} Because of the fundamentally urgent nature of nowcasting, it is important that nowcast models exploit any latest, high-frequency data available. Nowcasts should be able to generate constantly rolling forecasts, updating these numbers in response to any new data releases.
 
 
-
-
-For example, suppose the date is early March, and the variable we want to predict is Q1 GDP. The simplest way to predict Q1 GDP would be to use historical quarterly data from various economic variables. But this data would only be up to Q4 of last year, and would fail to capture the critically important predictive power that could be provided by monthly and daily data released throughout January and February.
+For example, suppose the date is early March, and the variable we want to predict is Q1 GDP. The simplest way to predict Q1 GDP would be to use historical quarterly data from various economic variables. But this data would only go up to Q4 of last year, and would fail to capture the critically important predictive power that could be provided by monthly and daily data released throughout January and February. This lag in publication dates of different data series is known as the \textbf{ragged-edge} problem.
 
 Suppose instead, we used monthly data as our predictors of Q1 GDP. Again, we will soon run in to a problem. As an example, imagine that we had imported 20 monthly data series. Suppose 5 of these series ended in December, 10 ended in January, and 5 ended in March. 
 
 \begin{figure}[H]
+\caption{Example of ragged-edge data}
 \includegraphics[scale=.7]{nowcast-time-2}
 \centering
 \end{figure}
 
-Traditional modeling methods would require us to either throw out variables or throw out months - for example, we could truncate all our data series at January and lose out the information provided by the 5 February data points. Alternatively, we could completely remove the 15 variables with data releasing before March. Both methods are unappealing.
+Traditional modeling methods would require us to either throw out variables or throw out months - for example, we could truncate all our data series at January and lose out the information provided by the 5 February data points. Alternatively, we could completely remove the 15 variables with data releasing before March. Both methods result in a serious loss of useful data and are unappealing.
 
-In this paper, we will utilize a methodology that will allow us to use the information from all variables at any dates. This model will give an updated forecast in response to any new data releases. Additionally, the model can be generalized to nowcast any time series variable, not just GDP. The methodology for the model will be described in the next section.
-\section{Methodology}
+In this paper, we will develop and utilize a methodology that will allow us to use the information from \textbf{all variables} at \textbf{any dates}. This model will give an updated forecast in response to any new data releases. Additionally, the model can be generalized to nowcast any time series variable, not just GDP. The methodology for the model will be described in the next section.
 
-\subsection{Overview}
-This paper utilizes a modified version of the two-step dynamic factor model utilized in Giannone et al (2008) and Doz et al (2011). In this model, we use principal components to extract a few fundamental factors describing the overall structure of the economy. These factors are then projected into the future using a vector autoregression; smoothing over missing input data is conducted by using the Kalman filter and smoother. Finally, we aggregate these up to a quarterly level to forecast our quarterly covariates, then use these to calculate our nowcast of GDP.
+\newpage
+\section{Methodology Overview}
+Our goal will be to take monthly-frequency leading economic predictor variables --- industrial production, consumer sentiment, vehicle sales, and so on --- and use these to predict our quarterly variables. However, we will need a way to adjust for the ragged edges of the data.
 
-The model is run every weekday; this documentation will use actual data and estimates from the most recent model run to illustrate the procedure. The final nowcasted output is located in section 3.
+\begin{figure}[H]
+\caption{Overview of methodology (more detail in later sections)}
+\includegraphics[scale=.7]{nowcast-time-3}
+\centering
+\end{figure}
 
+
+To do this, we will use a methodology that relies heavily on principal components. It is well known that most economic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
+<<>>=
+rds$ef$h$q$stat %>% dplyr::select(., vsales, csent, advsales, ipi, vix, spy, cfnai) %>% dplyr::rename(., 'VehicleSales' = vsales, 'ConsumerSentiment' = csent, 'AdvSales' = advsales, 'IndustrialProd' = ipi, 'VIX' = vix, 'SP500' = spy, 'CFNAI' = cfnai) %>% corrr::correlate(.) %>% corrr::shave(.) %>% dplyr::select(., -CFNAI) %>% xtable::xtable(., caption = 'Correlation Between Major Leading Predictors') %>% print(., size = 'scriptsize')
+@
+As a result, we can take a very high-dimensional dataset of indicator variables and extract a few time series, \textit{factors} or \textit{principal components}, using principal components analysis. These factors will be able to contain the majority of information within our larger, high-dimensional dataset. Then we will use a time series model of the factor behavior --- a vector autoregression, or VAR --- to forecast the factors forward in time. 
+
+Finally, we will deal with the ragged edges of the data by casting our model dynamics in state-space form and using a Kalman filtration and smoothing process. This will, in essence, adjust our factor forecasts by whether or not the indicator variables used in the construction of the factors have been released. This procedure is a modified version of the two-step dynamic factor model utilized in Giannone et al (2008) and Doz et al (2011).
+
+Finally, we will aggregate the smoothed and forecasted time series of factors up to a quarterly level. These now-quarterly forecasts of the factors can be used as covariates in an ARIMA model of the quarterly economic variables. The usage of factors as regressors of these economic variables is known as a \textit{dynamic factor model} (DFM).
+
+The next section will go over the data and estimation procedure in detail. While this model can be generalized to nowcasts of other economic variables, we will use the example of nowcasting GDP and components of GDP.
+
+\newpage
+\section{Estimation Process}
+The model is run every weekday; this documentation will use actual data and estimates from the most recent model run (\Sexpr{Sys.Date()}) to illustrate the procedure. The final nowcasted output is located in the results section.
 
 \subsection{Data}
-We begin by importing monthly data from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference.
+We begin by importing monthly data of various leading indicators from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference, whereas \textit{base} means that no transformation was necessary for the variable to be stationary.
 
 <<>>=
 	rds$ef$paramsDf %>%
     	dplyr::filter(., dfminput == TRUE) %>%
     	dplyr::select(., fullname, stat) %>%
     	setNames(., c('Variable', 'Stationary Form')) %>%
-    	xtable::xtable(., caption = 'Imported Monthly Data', align = 'llc') %>%
+    	xtable::xtable(., caption = 'Imported Monthly Data - Leading Economic Variables', align = 'llc') %>%
     	print(., size = 'scriptsize')
 @
 
-We additionally import quarterly data for GDP and its subcomponents.
+We additionally import quarterly data for our variables of interest. While this model can be used for nowcasting other data, here we will use import GDP, its components, as well as several other major macroeconomic variables of interest.
 <<>>=
 	rds$ef$paramsDf %>%
-    	dplyr::filter(., category == 'Output') %>%
+    	# dplyr::filter(., category == 'Output') %>%
+    	dplyr::filter(., freq == 'q') %>% 
     	dplyr::select(., fullname, stat) %>%
     	setNames(., c('Variable', 'Stationary Form')) %>%
     	xtable::xtable(., caption = 'Imported Quarterly Data', align = 'llc') %>%
+    	print(., size = 'scriptsize')
+@
+
+Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
+<<>>=
+	rds$ef$paramsDf %>%
+    	dplyr::filter(., is.na(dfminput) & freq == 'm') %>%
+    	dplyr::select(., fullname, stat) %>%
+    	setNames(., c('Variable', 'Stationary Form')) %>%
+    	xtable::xtable(., caption = 'Other Imported Monthly Data', align = 'llc') %>%
     	print(., size = 'scriptsize')
 @
 
@@ -131,14 +161,14 @@ Most datasets have already been deseasonalized if necessary by their original so
 \subsection{Time Periods}
 Now we will segment the data by time periods. The imported monthly data will have ragged edges - i.e., some monthly data will be available for later months than others.
 
-We will let $T$ denote the number of dates for which data is available for all data series. $\tau$ will denote the number of dates for which data is available for at least one data series. $T*$ will denote number of dates up to the end-of-quarter month of the $\tau$ date. For example, suppose date $\tau$ occurs on February. The end-of-quarter month, $T^*$, will be March (since Q1 runs through the end of March). 
+We will let $T$ denote the number of dates for which data is available for all data series. $\tau$ will denote the number of dates for which data is available for at least one data series. $T^*$ will denote number of dates up to the end-of-quarter month of the $\tau$ date. For example, suppose date $\tau$ occurs on February. The end-of-quarter month, $T^*$, will be March (since Q1 runs through the end of March). 
 
 In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \dots, T^*$, where dates $T + 1$ through $\tau$ are the dates for which only some data are available, and dates $\tau + 1$ through $T^*$ are the dates for which no data is available up to the next quarter-ending month.
 \begin{figure}[H]
 \includegraphics[scale=.7]{nowcast-time}
 \centering
 \end{figure}
-For our data, we set the dates as follows>
+For our data, we set the dates as follows.
 <<>>=
     rds$ef$nc$timeDf %>%
 		dplyr::mutate(., date = as.character(date)) %>%
@@ -151,7 +181,7 @@ For our data, we set the dates as follows>
 \subsection{Principal Components Analysis}
 It is known that a large number of macroeconomic time series are highly correlated; using such covariates as regressors could naturally lead to problems with collinearity and unstable estimates. In addition, it becomes computationally burdensome to analyze data with such a large number of highly correlated variables. Instead, we use principal components analysis (PCA) to shrink our dataset in a way that allows us to retain most of the information in our original data.
 
-Estimation of factors is derived following Stock and Watson (2008). We begin by taking our $T \times N$ data matrix of $N$ monthly covariates, from time 1 through $T$. The matrix, which we denote $X$, is normalized to mean 0 and variance 0 across all columns.
+Estimation of factors is derived following Stock and Watson (2008). We begin by taking our $T \times N$ data matrix of $N$ monthly leading economic variables, from time 1 through $T$. The matrix, which we denote $X$, is normalized to mean 0 and variance 0 across all columns.
 
 The goal is to minimize the error $E$ below.
 \begin{align*}
@@ -167,7 +197,7 @@ Estimation of factors is derived following Stock and Watson (2008).
 	\widehat{F} = X \widehat{\Lambda}
 \end{align*}
 
-Once factors are derived, we perform a qualitative check of the factors. Typically the first factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The second and third factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
+Once factors are derived, we perform a qualitative check of the factors. The first factor usually represents the COVID-19 shock. Typically the second factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The third and fourth factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
 
 <<>>=
 for (i in 1:length(rds$ef$nc$zPlots)) {
@@ -176,7 +206,7 @@ for (i in 1:length(rds$ef$nc$zPlots)) {
 @
 
 
-Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used. We include alternative specifications of the information criteria from Bai and Ng as a robustness check.
+Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used. We also include alternative specifications of the information criteria from Bai and Ng as a robustness check.
 \begin{align*}
 	IC(R) = MSE + R \times \frac{N+T}{NT} \times log\left(\frac{NT}{N+T}\right)
 \end{align*}
@@ -197,7 +227,9 @@ Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{rds$ef$nc$bigR}$ facto
 
 
 \subsection{Factor VAR}
-The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016). As before, $R$ will refer to the total number of factors we extracted in the previous section, and $f^i$ for $i = 1, \dots, R$. will refer to factor $i$.
+The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016). As before, $R$ will refer to the total number of factors we extracted in the previous section, and $f^i_t$ for $i = 1, \dots, R$ will refer to the value of factor $i$ at time $t$.
+
+We will use a VAR(1) model of the following form.
 \begin{align*}
 \underbrace{\begin{bmatrix}
 	f^1_{t}\\
@@ -276,7 +308,7 @@ The estimated coefficients in $\widehat{B}$ and $\widehat{C}$ are shown below.
 @
 
 
-Finally, we perform a qualitative check of the fitted values and residuals.
+Finally, we perform a qualitative check of the fitted values and residuals. It is important that factors that are predictable --- i.e., factors 2 and 3, since they represent output --- have a good fit. Since factor 1 represents the COVID-19 shock, we should expect that the fit is poor; such a shock should not be predictable simply from the time dynamics of the factors; so if the fit is good, our model is likely overfitted.
 <<>>=
 for (i in 1:length(rds$ef$nc$varFittedPlots)) {
 	print(rds$ef$nc$varFittedPlots[[i]])
@@ -288,7 +320,7 @@ for (i in 1:length(rds$ef$nc$varFittedPlots)) {
 print(rds$ef$nc$varResidPlot)
 @
 
-Goodness-of-fit statistics are shown below.
+Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are shown below.
 <<>>=
 rds$ef$nc$varGofDf %>%
     xtable::xtable(., caption = 'DFM Goodness of Fit', digits = 8) %>%
@@ -298,7 +330,7 @@ rds$ef$nc$varGofDf %>%
 
 
 \subsection{Dynamic Factor Models}
-Now let us consider again the monthly covariates which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier. As before, let $x^i_t$ refer to the time $t$ value for monthly variable $x^i$, where $i = 1, \dots, N$.
+Now let us consider again the monthly leading economic variables which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier. As before, let $x^i_t$ refer to the time $t$ value for monthly variable $x^i$, where $i = 1, \dots, N$.
 
 The factor models take the following form:
 \begin{align*}
@@ -396,7 +428,7 @@ y_t = A z_t + w_t
 
 This system is now fully specified and in state-space form. The first equation is our state (or transition) equation. The second equation is our measurement equation. 
 
-We use our estimated values $B$, $C$, and $A$ calculated in our previous two sections. To run the Kalman Filter, we will want to create the actual data matrices for $z_t$ and $y_t$. $z_t$ can be constructed as before, using data for factors from time 1 through $T$. However, unlike in the previous two sections, we will want to create $y_t$ matrices not for just time periods 1 through $T$, but now for time periods $1$ through $\tau$. Elements in $y_t$ may be set to any value for missing observations; the process of Kalmam filtration will render this choice irrelevant.
+We use our estimated values $B$, $C$, $A$, and $D$ calculated in our previous two sections. To run the Kalman Filter, we will want to create the actual data matrices for $z_t$ and $y_t$. $z_t$ can be constructed as before, using data for factors from time 1 through $T$. However, unlike in the previous two sections, we will want to create $y_t$ matrices not for just time periods 1 through $T$, but now for time periods $1$ through $\tau$. Elements in $y_t$ may be set to any value for missing observations; the process of Kalmam filtration will render this choice irrelevant.
 
 Specifically, we construct the matrices below.
 \begin{align*}
@@ -426,8 +458,6 @@ We also assume $w_t$ is distributed normally with mean $0$. However, we no longe
 	w_t \sim \mathcal{N}(0, R_t)
 \end{align*}
 
-We begin with the unconditional mean of $\widehat{Z}_{0|-1} = 0$ and unconditional variance of VAR $\Sigma_{0|-1} = 0$.
-
 \subsection{Kalman Filtration}
 Now that our state-space model is fully specified, we can begin the Kalman filter recursions.
 \begin{align*}
@@ -455,7 +485,7 @@ Now for $t = 1, \dots, \tau$, we iterate through the Kalman filter recursions an
 	\vv{z}_{t|t} &= \vv{z}_{t|t-1} + P_t (\vv{y}_t - \vv{y}_{t|t-1})\\
 	\vv{CovZ}_{t|t} &= \vv{CovZ}_{t|t-1} - P_t (\vv{CovY}_{t|t-1}) P'_t
 \end{align*}
-Note that the during recursions $T + 1, \dots \tau$, the infinite values in the $R_t$ matrix will cause infinite values in the $\vv{CovY}_{t|t-1}$ matrix. This may prevent standard computational methods from computing the inverse of the matrix needed in the step for calculation of $\vv{CovZ}_{t|t}$. Alternative methods, such as a Cholesky decomposition before inversion, can be used to subvert this problem.
+Note that the during recursions $T + 1, \dots \tau$, the infinite values in the $R_t$ matrix will cause infinite values in the $\vv{CovY}_{t|t-1}$ matrix. This may prevent standard computational methods from computing the inverse of the matrix needed in the step for calculation of $\vv{CovZ}_{t|t}$. Alternative methods, such as a Cholesky decomposition before inversion, are used to subvert this problem.
 
 The Kalman filter allows us to recover all the time $t$ conditional state matrices $z_{t|t}$ that have been adjusted for information from the monthly datasets. However, of more interest to us is the value of the state matrices when conditioned on all data available at time $\tau$, $z_{t|\tau}$. This can be recovered by using the Kalman smoother.
 
@@ -487,10 +517,7 @@ Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the 
 % \subsection{Nowcasting Monthly Covariates}
 % Now that we have our Kalman-smoothed factors from time $1$ through time $T^*$, we will be able to use these as covariates to model any monthly time series that we have. 
 
-WORK IN PROGRESS
-
-
-\subsection{Predicting Quarterly Variables}
+\subsection{Nowcast Step}
 Now that we have our Kalman-smoothed and forecasted factors from time $1$ through time $T^*$, we will be able to use these as covariates to model any monthly time series that we have.
 
 We begin by aggregating these monthly factors into quarterly data by taking a simple monthly average for each factor over each quarter.
@@ -547,7 +574,10 @@ rds$ef$paramsDf %>%
     	print(., size = 'scriptsize')
 @
 These are calculated using the standard GDP aggregation equations, e.g., net exports = exports - imports, and so on.
-Finally, we convert these into annualized percentage change, as this is the standard format in which GDP subcomponents are reported in.
+Finally, we convert these into annualized percentage change, as this is the standard format in which GDP subcomponents are reported in. The results are reported in the next section.
+
+We also use a similar DFM-AR(1) specification to forecast out other economic variables of interest, with results reported in the next section.
+
 
 \section{Results}
 Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
@@ -571,10 +601,36 @@ rds$ef$ncpred$q$display %>%
 	tidyr::pivot_wider(., values_from = value, names_from = obsDate) %>%
 	dplyr::rename(., 'Variable' = fullname) %>%
 	xtable::xtable(., caption = 'Nowcasts for GDP and Subcomponents (Annualized Percent Change)') %>%
-	print(., size = '\\fontsize{11pt}{13pt}\\selectfont', sanitize.text.function = function(x) x)
+	print(., size = '\\fontsize{10pt}{12pt}\\selectfont', sanitize.text.function = function(x) x, add.to.row = list(pos = list(nrow(.)), command = '\\hline \n \\textit{apchg} = annualized \\% change \n'), hline.after = c(-1, 0))
 @
 
-
+We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
+<<>>=
+rds$ef$ncpred$q$display %>%
+	tidyr::pivot_longer(., -obsDate, names_to = 'varname') %>%
+    dplyr::inner_join(filter(rds$ef$paramsDf, category != 'Output')[, c('varname', 'units', 'display', 'fullname')], ., by = 'varname') %>%
+    dplyr::mutate(., fullname = ifelse(display != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', display, ')}}'), fullname)) %>%
+    dplyr::mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
+	dplyr::mutate(., obsDate = paste0(year(obsDate), 'Q', quarter(obsDate))) %>%
+	dplyr::select(., -varname, -display, -units) %>%
+	tidyr::pivot_wider(., values_from = value, names_from = obsDate) %>%
+	dplyr::rename(., 'Variable' = fullname) %>%
+	xtable::xtable(., caption = 'Nowcasts for Other Quarterly Variables') %>%
+	print(., size = '\\fontsize{11pt}{13pt}\\selectfont')
+@
+<<>>=
+rds$ef$ncpred$m$display %>%
+    tidyr::pivot_longer(., -obsDate, names_to = 'varname') %>%
+    dplyr::inner_join(filter(rds$ef$paramsDf, category != 'Output')[, c('varname', 'units', 'display', 'fullname')], ., by = 'varname') %>%
+    dplyr::mutate(., fullname = ifelse(display != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', display, ')}}'), fullname)) %>%
+    dplyr::mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
+    dplyr::mutate(., obsDate = paste0(year(obsDate), 'M', month(obsDate))) %>%
+    dplyr::select(., -varname, -display, -units) %>%
+    tidyr::pivot_wider(., values_from = value, names_from = obsDate) %>%
+    dplyr::rename(., 'Variable' = fullname) %>%
+    xtable::xtable(., caption = 'Nowcasts for All Monthly Variables') %>%
+	print(., size = '\\fontsize{10pt}{12pt}\\selectfont', sanitize.text.function = function(x) x, add.to.row = list(pos = list(nrow(.)), command = '\\hline \n \\textit{apchg} = annualized \\% change \n'), hline.after = c(-1, 0))
+@
 
 
 \appendix

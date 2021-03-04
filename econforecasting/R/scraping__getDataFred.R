@@ -26,7 +26,7 @@ getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE) 
     # message(url)
 
     url %>%
-        httr::RETRY('GET', url = ., times = 5) %>%
+        httr::RETRY('GET', url = ., times = 10) %>%
         httr::content(., as = 'parsed') %>%
         .$observations %>%
         purrr::map_dfr(., function(x) as_tibble(x)) %>%
