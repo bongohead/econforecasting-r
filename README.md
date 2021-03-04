@@ -5,7 +5,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 ---
 # CHANGELOG
 
-## 2021-02-26 [v0.10]
+## 2021-03-01 [v0.10]
 - Added import spreadsheet
 - Added GDP subcomponents
 - Added deseasonalization information
@@ -13,13 +13,16 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added Kalman filtration code
 - Added PCA analysis
 - Added dynamic factor models
-- Added documentation for Kalman filters
+- Added documentation for Kalman filter
 - Added backtransformation functions
 - Added many new PCA variable
 - Added FRED GET to RETRY
 - Added Bai-Ng information criteria for scree plot DFM
 - Added Yahoo Finance import
 - Added plots for PCA, Kalman filter & smoother, VAR, DFM
+- Added in-sample goodness of fit for VAR & DFM
+- Added documentation for VAR, DFM, & intro
+- Added documentation templates
 - Fixed bug with monthly aggregation
 
 ## 2021-02-13 [v0.09]
