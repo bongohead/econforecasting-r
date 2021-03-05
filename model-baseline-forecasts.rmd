@@ -87,12 +87,12 @@ local({
 			'Mortgage 30-Year', 'mort30y', 'MORTGAGE30US', 'm',
 			'5/1-Year Mortgage Rate', 'mort5yr', 'MORTGAGE5US', 'm',
 			'Housing Starts', 'hstarts', 'HOUST', 'm',
-			'CPI-U', 'cpi', 'CPIAUCSL', 'm',
-			'30-Year TIPS', 'tips30y', 'DFII30', 'd',
-			'20-Year TIPS', 'tips20y', 'DFII20', 'd',
-			'10-Year TIPS', 'tips10y', 'DFII10', 'd',
-			'7-Year TIPS', 'tips07y', 'DFII7', 'd',
-			'5-Year TIPS', 'tips05y', 'DFII5', 'd'
+			'CPI-U', 'cpi', 'CPIAUCSL', 'm'
+			# '30-Year TIPS', 'tips30y', 'DFII30', 'd',
+			# '20-Year TIPS', 'tips20y', 'DFII20', 'd',
+			# '10-Year TIPS', 'tips10y', 'DFII10', 'd',
+			# '7-Year TIPS', 'tips07y', 'DFII7', 'd',
+			# '5-Year TIPS', 'tips05y', 'DFII5', 'd'
 			) %>%
 		dplyr::select(., -fullname)
   
@@ -586,171 +586,6 @@ local({
   	na.omit(.)
 
 	ef$forecast$cle <<- df
-})
-```
-### EINF Model - DNS Fit
-```{r}
-local({
-	
-  # Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
-  yieldCurveNamesMap =
-    ef$historyDf %>% 
-    .$varname %>%
-    unique(.) %>%
-    purrr::keep(., ~ str_sub(., 1, 4) == 'tips' & str_length(.) == 7) %>%
-    tibble(varname = .) %>%
-    dplyr::mutate(., ttm = as.numeric(str_sub(varname, -3, -2)) * ifelse(str_sub(varname, -1) == 'y', 12, 1)) %>%
-  	dplyr::mutate(., varname = str_replace(varname, 'tips', 'inf')) %>%
-  	# Add additional varnames
-  	dplyr::bind_rows(
-  		.,
-  		tibble(
-  			varname = c('inf02y', 'inf01y'),
-  			ttm = c(24, 12)
-  			)
-  	)
-  
-  # Get data frame of inflation expectation by subtracting TIPS from Treasury yields 
-  spreadDf =
-	ef$historyDf %>%
-    dplyr::filter(
-        .,
-        varname %in% c(str_replace(yieldCurveNamesMap$varname, 'inf', 'tips'), str_replace(yieldCurveNamesMap$varname, 'inf', 't')) & freq == 'd'
-    ) %>%
-    dplyr::mutate(
-    	.,
-    	inf = str_sub(varname, 0, ifelse(str_detect(varname, 'tips'), 4, 1)),
-    	ttm = str_sub(varname, -3, -1)
-    	) %>%
-  	dplyr::select(., -varname, -freq) %>%
-  	tidyr::pivot_wider(., names_from = inf, values_from = value) %>%
-  	na.omit(.) %>%
-  	dplyr::mutate(., varname = paste0('inf', ttm), value = t - tips) %>%
-  	dplyr::select(., -t, -tips, -ttm) %>%
-  	dplyr::bind_rows(
-  		.,
-  		# Clone cleveland fed forecasts across 1m
-  		dplyr::filter(., varname == 'inf05y') %>%
-  			dplyr::mutate(., varname = 'inf02y') %>%
-  			dplyr::mutate(., value = ef$forecast$cle[[24, 'value']]),
-  		dplyr::filter(., varname == 'inf05y') %>%
-  			dplyr::mutate(., varname = 'inf01y') %>%
-  			dplyr::mutate(., value = ef$forecast$cle[[12, 'value']]),
-  		dplyr::filter(., varname == 'inf05y') %>%
-  			dplyr::mutate(., varname = 'inf06m') %>%
-  			dplyr::mutate(., value = ef$forecast$cle[[6, 'value']]),
-  		dplyr::filter(., varname == 'inf05y') %>%
-  			dplyr::mutate(., varname = 'inf03m') %>%
-  			dplyr::mutate(., value = ef$forecast$cle[[3, 'value']]),
-  		dplyr::filter(., varname == 'inf05y') %>%
-  			dplyr::mutate(., varname = 'inf01m') %>%
-  			dplyr::mutate(., value = ef$forecast$cle[[1, 'value']])
-  	)
-
-  # Create training dataset - fitted on last 3 months
-  trainDf =
-	spreadDf %>%
-  	dplyr::filter(., obsDate >= add_with_rollback(Sys.Date(), months(-3))) %>%
-    dplyr::right_join(., yieldCurveNamesMap, by = 'varname')
-  
-  # @df: (tibble) A tibble continuing columns obsDate, value, and ttm
-  # @param returnAll: (boolean) FALSE by default.
-  # If FALSE, will return only the MAPE (useful for optimization).
-  # Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
-  getDnsFit = function(df, lambda, returnAll = FALSE) {
-    df %>%
-      dplyr::mutate(
-        .,
-        f1 = 1,
-        f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm),
-        f3 = f2 - exp(-1 * lambda * ttm)
-        ) %>%
-      dplyr::group_by(obsDate) %>%
-      dplyr::group_split(.) %>%
-      lapply(., function(x) {
-        reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
-        dplyr::bind_cols(x, fitted = fitted(reg)) %>%
-          dplyr::mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
-          dplyr::mutate(., resid = value - fitted)
-        }) %>%
-      dplyr::bind_rows(.) %>%
-      {
-        if (returnAll == FALSE) dplyr::summarise(., mape = mean(abs(resid)/abs(value))) %>% .$mape
-        else .
-        } %>%
-      return(.)
-  }
-  
-  # Find MAPE-minimizing lambda value
-  optimLambda =
-    optimize(
-      getDnsFit,
-      df = trainDf,
-      returnAll = FALSE,
-      interval = c(-1, 1),
-      maximum = FALSE
-      )$minimum
-  
-  dnsCoefs =
-    getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
-    dplyr::filter(., obsDate == max(obsDate)) %>%
-    dplyr::select(., b1, b2, b3) %>%
-    head(., 1) %>%
-    as.list(.) 
-  
-  dnsFitChart =
-    getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
-    dplyr::filter(., obsDate == max(obsDate)) %>%
-    ggplot(.) +
-    geom_line(aes(x = ttm, y = value)) +
-    geom_point(aes(x = ttm, y = fitted))
-  
-  
-  # Monthly forecast up to 10 years
-  # Get cumulative return starting from curDate
-  fittedCurve =
-    tibble(ttm = seq(1: 480)) %>%
-    dplyr::mutate(., curDate = floor_date(Sys.Date(), 'months')) %>%
-    dplyr::mutate(
-      .,
-      annualizedYield = 
-        dnsCoefs$b1 +
-        dnsCoefs$b2 * (1-exp(-1 * optimLambda * ttm))/(optimLambda * ttm) +
-        dnsCoefs$b3 * ((1-exp(-1 * optimLambda * ttm))/(optimLambda * ttm) - exp(-1 * optimLambda * ttm)),
-      # Get cumulative yield
-      cumReturn = (1 + annualizedYield/100)^(ttm/12)
-      )
-  
-  df =
-    yieldCurveNamesMap$ttm %>%
-    lapply(., function(yttm)
-      fittedCurve %>%
-        dplyr::mutate(
-          .,
-          yttmAheadCumReturn = dplyr::lead(cumReturn, yttm)/cumReturn,
-          yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/yttm) - 1) * 100
-          ) %>%
-        dplyr::filter(., ttm <= 120) %>%
-        dplyr::mutate(., yttm = yttm) %>%
-        dplyr::inner_join(., yieldCurveNamesMap, c('yttm' = 'ttm'))
-      ) %>%
-    dplyr::bind_rows(.) %>%
-    dplyr::mutate(
-      .,
-      obsDate = add_with_rollback(curDate, months(ttm - 1))
-      ) %>%
-    dplyr::transmute(
-      .,
-      varname, obsDate, value = yttmAheadAnnualizedYield,
-      fcname = 'tip', vintageDate = trainDf %>% .$obsDate %>% max(.)
-      ) %>%
-  	dplyr::filter(., varname == 'inf01y') %>%
-  	dplyr::mutate(., varname == 'inf') 
-  
-  df %>%
-  	ggplot(.) + geom_line(aes(x = obsDate, y = value))
-	
-  ef$forecast$tip <<- df
 })
 ```
 
