@@ -1,9 +1,10 @@
 # Set Constants
 ```{r}
-DIR = 'D:/Onedrive/__Projects/econforecasting-nowcast'
-CONST_DIR = 'D:/Onedrive/__Projects/econforecasting' # Path to directory with constants.r and inputs.r - should include SQL DB info, SFTP info, etc.
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting' # Path to package with helper functions
-DOC_PATH = 'D:/Onedrive/__Projects/econforecasting-nowcast/documentation/nowcast.rnw' # Path to documentation .RNW file
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
+DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Path to documentation .RNW file
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
+OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
 ```
 
 
@@ -30,7 +31,7 @@ devtools::document(PACKAGE_DIR)
 setwd(DIR)
 
 # Read constants
-source(file.path(CONST_DIR, 'constants.r'))
+source(file.path(INPUT_DIR, 'constants.r'))
 
 # Create top level variables
 ef = list(
@@ -46,7 +47,7 @@ ef = list(
 ```{r}
 local({
 	
-	paramsDf = readxl::read_excel(file.path(CONST_DIR, 'inputs.xlsx'))
+	paramsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'))
 	params = paramsDf %>% purrr::transpose(., .names = .$varname)
 	
 	ef$paramsDf <<- paramsDf
@@ -1202,11 +1203,18 @@ local({
 ```{r}
 local({
 
-	saveRDS(list(CONST = CONST, ef = ef), file = file.path(DIR, 'nowcast.rds'))
-	setwd(str_replace(DOC_PATH, '/[^/]+$', ''))
-	knitr::knit2pdf(DOC_PATH)
+	basename =  paste0(Sys.Date(), '-nowcast')
+	saveRDS(list(CONST = CONST, ef = ef), file = file.path(OUTPUT_DIR, paste0(basename, '.rds')))
+	# setwd(str_replace(DOC_PATH, '/[^/]+$', ''))
+
+	knitr::knit2pdf(
+		input = file.path(DOC_DIR, 'nowcast.rnw'),
+		output = file.path(OUTPUT_DIR, paste0(basename, '.tex')),
+		clean = TRUE
+		)
+	
 	file.copy(
-		from = str_replace(DOC_PATH, '.rnw', '.pdf'),
+		from =  file.path(OUTPUT_DIR, paste0(basename, '.pdf')),
 		to = file.path(DIR, 'nowcast-documentation.pdf'),
 		overwrite = TRUE
 		)
