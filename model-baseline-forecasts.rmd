@@ -1,8 +1,9 @@
 # Set Constants
 ```{r}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting'
 DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 RESET_ALL = FALSE
 ```
 
@@ -16,16 +17,15 @@ library(lubridate)
 library(httr)
 library(rvest)
 library(DBI)
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
 
 setwd(DIR)
 
 if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
 dir.create(DL_DIR, recursive = TRUE)
 
-source(file.path(DIR, 'constants.r'))
-
-devtools::load_all(path = PACKAGE_DIR)
-devtools::document(PACKAGE_DIR)
+source(file.path(INPUT_DIR, 'constants.r'))
 
 ef = list(
   history = list(),

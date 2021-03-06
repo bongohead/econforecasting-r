@@ -112,7 +112,7 @@ Our goal will be to take monthly-frequency leading economic predictor variables 
 
 To do this, we will use a methodology that relies heavily on principal components. It is well known that most economic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
 <<>>=
-ef$h$q$stat %>% dplyr::select(., vsales, csent, advsales, ipi, vix, spy, cfnai) %>% dplyr::rename(., 'VehicleSales' = vsales, 'ConsumerSentiment' = csent, 'AdvSales' = advsales, 'IndustrialProd' = ipi, 'VIX' = vix, 'SP500' = spy, 'CFNAI' = cfnai) %>% corrr::correlate(.) %>% corrr::shave(.) %>% dplyr::select(., -CFNAI) %>% xtable::xtable(., caption = 'Correlation Between Major Leading Predictors') %>% print(., size = 'scriptsize')
+ef$h$q$st %>% dplyr::select(., vsales, csent, advsales, ipi, vix, spy, cfnai) %>% dplyr::rename(., 'VehicleSales' = vsales, 'ConsumerSentiment' = csent, 'AdvSales' = advsales, 'IndustrialProd' = ipi, 'VIX' = vix, 'SP500' = spy, 'CFNAI' = cfnai) %>% corrr::correlate(.) %>% corrr::shave(.) %>% dplyr::select(., -CFNAI) %>% xtable::xtable(., caption = 'Correlation Between Major Leading Predictors') %>% print(., size = 'scriptsize')
 @
 As a result, we can take a very high-dimensional dataset of indicator variables and extract a few time series, \textit{factors} or \textit{principal components}, using principal components analysis. These factors will be able to contain the majority of information within our larger, high-dimensional dataset. Then we will use a time series model of the factor behavior --- a vector autoregression, or VAR --- to forecast the factors forward in time. 
 
@@ -132,7 +132,7 @@ We begin by importing monthly data of various leading indicators from the St. Lo
 <<>>=
 	ef$paramsDf %>%
     	dplyr::filter(., dfminput == TRUE) %>%
-    	dplyr::select(., fullname, stat) %>%
+    	dplyr::select(., fullname, st) %>%
     	setNames(., c('Variable', 'Stationary Form')) %>%
     	xtable::xtable(., caption = 'Imported Monthly Data - Leading Economic Variables', align = 'llc') %>%
     	print(., size = 'scriptsize')
@@ -143,7 +143,7 @@ We additionally import quarterly data for our variables of interest. While this 
 	ef$paramsDf %>%
     	# dplyr::filter(., category == 'Output') %>%
     	dplyr::filter(., freq == 'q') %>% 
-    	dplyr::select(., fullname, stat) %>%
+    	dplyr::select(., fullname, st) %>%
     	setNames(., c('Variable', 'Stationary Form')) %>%
     	xtable::xtable(., caption = 'Imported Quarterly Data', align = 'llc') %>%
     	print(., size = 'scriptsize')
@@ -153,7 +153,7 @@ Finally, we import additional monthly data that may be of interest to forecast, 
 <<>>=
 	ef$paramsDf %>%
     	dplyr::filter(., is.na(dfminput) & freq == 'm') %>%
-    	dplyr::select(., fullname, stat) %>%
+    	dplyr::select(., fullname, st) %>%
     	setNames(., c('Variable', 'Stationary Form')) %>%
     	xtable::xtable(., caption = 'Other Imported Monthly Data', align = 'llc') %>%
     	print(., size = 'scriptsize')
@@ -557,12 +557,12 @@ The $\beta$ coefficients can be estimated with a typical OLS process, where the 
 After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
 The forecasted results are as follows.
 <<>>=
-ef$ncpred0$q$stat %>%
-    	tidyr::pivot_longer(., -obsDate, names_to = 'varname') %>%
+ef$ncpred0$q$st %>%
+    	tidyr::pivot_longer(., -date, names_to = 'varname') %>%
     	dplyr::inner_join(., filter(ef$paramsDf, category == 'Output')[, c('varname', 'fullname')], by = 'varname') %>%
-    	dplyr::mutate(., obsDate = paste0(year(obsDate), 'Q', quarter(obsDate))) %>%
+    	dplyr::mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
     	dplyr::select(., -varname) %>%
-    	tidyr::pivot_wider(., values_from = value, names_from = obsDate) %>%
+    	tidyr::pivot_wider(., values_from = value, names_from = date) %>%
     	dplyr::rename(., 'Variable' = fullname) %>%
     	xtable::xtable(., caption = 'DFM-AR(1) Forecasted GDP Subcomponents') %>%
     	print(., size = 'scriptsize')
@@ -585,8 +585,8 @@ We also use a similar DFM-AR(1) specification to forecast out other economic var
 \section{Results}
 Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
 <<>>=
-ef$ncpred$q$display %>%
-	tidyr::pivot_longer(., -obsDate, names_to = 'varname') %>%
+ef$ncpred$q$d1 %>%
+	tidyr::pivot_longer(., -date, names_to = 'varname') %>%
 	dplyr::inner_join(filter(ef$paramsDf, category == 'Output')[, c('varname', 'fullname')], ., by = 'varname') %>%
 	# Add tabs
     rowwise(.) %>%
@@ -599,9 +599,9 @@ ef$ncpred$q$display %>%
     dplyr::select(., -fullname1, -fullname2) %>%
     dplyr::ungroup(.) %>%
     # End
-	dplyr::mutate(., obsDate = paste0(year(obsDate), 'Q', quarter(obsDate))) %>%
+	dplyr::mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
 	dplyr::select(., -varname) %>%
-	tidyr::pivot_wider(., values_from = value, names_from = obsDate) %>%
+	tidyr::pivot_wider(., values_from = value, names_from = date) %>%
 	dplyr::rename(., 'Variable' = fullname) %>%
 	xtable::xtable(., caption = 'Nowcasts for GDP and Subcomponents (Annualized Percent Change)') %>%
 	print(., size = '\\fontsize{10pt}{12pt}\\selectfont', sanitize.text.function = function(x) x, add.to.row = list(pos = list(nrow(.)), command = '\\hline \n \\textit{apchg} = annualized \\% change \n'), hline.after = c(-1, 0))
@@ -609,27 +609,27 @@ ef$ncpred$q$display %>%
 
 We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
 <<>>=
-ef$ncpred$q$display %>%
-	tidyr::pivot_longer(., -obsDate, names_to = 'varname') %>%
-    dplyr::inner_join(filter(ef$paramsDf, category != 'Output')[, c('varname', 'units', 'display', 'fullname')], ., by = 'varname') %>%
-    dplyr::mutate(., fullname = ifelse(display != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', display, ')}}'), fullname)) %>%
+ef$ncpred$q$d1 %>%
+	tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+    dplyr::inner_join(filter(ef$paramsDf, category != 'Output')[, c('varname', 'units', 'd1', 'fullname')], ., by = 'varname') %>%
+    dplyr::mutate(., fullname = ifelse(d1 != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', d1, ')}}'), fullname)) %>%
     dplyr::mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
-	dplyr::mutate(., obsDate = paste0(year(obsDate), 'Q', quarter(obsDate))) %>%
-	dplyr::select(., -varname, -display, -units) %>%
-	tidyr::pivot_wider(., values_from = value, names_from = obsDate) %>%
+	dplyr::mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
+	dplyr::select(., -varname, -d1, -units) %>%
+	tidyr::pivot_wider(., values_from = value, names_from = date) %>%
 	dplyr::rename(., 'Variable' = fullname) %>%
 	xtable::xtable(., caption = 'Nowcasts for Other Quarterly Variables') %>%
 	print(., size = '\\fontsize{11pt}{13pt}\\selectfont')
 @
 <<>>=
-ef$ncpred$m$display %>%
-    tidyr::pivot_longer(., -obsDate, names_to = 'varname') %>%
-    dplyr::inner_join(filter(ef$paramsDf, category != 'Output')[, c('varname', 'units', 'display', 'fullname')], ., by = 'varname') %>%
-    dplyr::mutate(., fullname = ifelse(display != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', display, ')}}'), fullname)) %>%
+ef$ncpred$m$d1 %>%
+    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+    dplyr::inner_join(filter(ef$paramsDf, category != 'Output')[, c('varname', 'units', 'd1', 'fullname')], ., by = 'varname') %>%
+    dplyr::mutate(., fullname = ifelse(d1 != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', d1, ')}}'), fullname)) %>%
     dplyr::mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
-    dplyr::mutate(., obsDate = paste0(year(obsDate), 'M', month(obsDate))) %>%
-    dplyr::select(., -varname, -display, -units) %>%
-    tidyr::pivot_wider(., values_from = value, names_from = obsDate) %>%
+    dplyr::mutate(., date = paste0(year(date), 'M', month(date))) %>%
+    dplyr::select(., -varname, -d1, -units) %>%
+    tidyr::pivot_wider(., values_from = value, names_from = date) %>%
     dplyr::rename(., 'Variable' = fullname) %>%
     xtable::xtable(., caption = 'Nowcasts for All Monthly Variables') %>%
 	print(., size = '\\fontsize{10pt}{12pt}\\selectfont', sanitize.text.function = function(x) x, add.to.row = list(pos = list(nrow(.)), command = '\\hline \n \\textit{apchg} = annualized \\% change \n'), hline.after = c(-1, 0))

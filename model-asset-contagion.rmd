@@ -1,9 +1,9 @@
 # Set Constants
 ```{r}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-TMP_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/econforecasting'
-CONSTANTS_PATH = 'D:/Onedrive/__Projects/econforecasting/constants.r'
+DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 RESET_ALL = FALSE # TRUE TO COMPLETELY REDO ALL DATA SERIES; FALSE TO ONLY UPDATE NEW ONES
 ```
 
@@ -18,12 +18,11 @@ library(DBI)
 library(RPostgres)
 library(data.table)
 library(roll)
-
-setwd(DIR)
-source(CONSTANTS_PATH)
-
 devtools::load_all(path = PACKAGE_DIR)
 devtools::document(PACKAGE_DIR)
+
+setwd(DIR)
+source(file.path(INPUT_DIR, 'constants.r'))
 ```
 
 
@@ -329,7 +328,7 @@ local({
 ```{r eval=FALSE, include=FALSE}
 local({
 	
-	dir = file.path(TMP_DIR, 'sp500')
+	dir = file.path(DL_DIR, 'sp500')
 	if (dir.exists(dir)) unlink(dir, recursive = TRUE)
     dir.create(dir, recursive = TRUE)
 

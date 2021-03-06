@@ -144,7 +144,7 @@ Our goal will be to take monthly-frequency leading economic predictor variables 
 
 To do this, we will use a methodology that relies heavily on principal components. It is well known that most economic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:27 2021
+% Fri Mar 05 18:45:37 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -181,7 +181,7 @@ The model is run every weekday; this documentation will use actual data and esti
 We begin by importing monthly data of various leading indicators from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference, whereas \textit{base} means that no transformation was necessary for the variable to be stationary.
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:27 2021
+% Fri Mar 05 18:45:37 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -225,7 +225,7 @@ PCE & dlog \\
 
 We additionally import quarterly data for our variables of interest. While this model can be used for nowcasting other data, here we will use import GDP, its components, as well as several other major macroeconomic variables of interest.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:27 2021
+% Fri Mar 05 18:45:37 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -284,7 +284,7 @@ GDP & dlog \\
 
 Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:27 2021
+% Fri Mar 05 18:45:38 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -292,22 +292,7 @@ Finally, we import additional monthly data that may be of interest to forecast, 
   \hline
 Variable & Stationary Form \\ 
   \hline
-Personal Income & dlog \\ 
-  Personal Outlays & dlog \\ 
-  Personal Savings & dlog \\ 
-  Personal Savings Rate & base \\ 
-  Secured Overnight Financing Rate & base \\ 
-  Treasury Yield 30Y & base \\ 
-  Treasury Yield 5Y & base \\ 
-  Treasury Yield 2Y & base \\ 
-  Treasury Yield 6M & base \\ 
-  Treasury Yield 3M & base \\ 
-  Treasury Yield 1M & base \\ 
-  Treasury Yield 20Y & base \\ 
-  Treasury Yield 7Y & base \\ 
-  Housing Prices: New Listed Prices & dlog \\ 
-  PCE Price Index & dlog \\ 
-   \hline
+\hline
 \end{tabular}
 \endgroup
 \caption{Other Imported Monthly Data} 
@@ -328,7 +313,7 @@ In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \
 \end{figure}
 For our data, we set the dates as follows.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:27 2021
+% Fri Mar 05 18:45:38 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -370,21 +355,21 @@ Once factors are derived, we perform a qualitative check of the factors. The fir
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-8-1} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-9-1} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-8-2} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-9-2} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-8-3} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-9-3} 
 
 }
 
@@ -399,17 +384,17 @@ Once factors are derived, we select the optimal number of factors to use in pred
 
 \begin{figure}[H]
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-9-1} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-10-1} 
 
 }
 
-\caption[Factor Selection]{Factor Selection}\label{fig:unnamed-chunk-9}
+\caption[Factor Selection]{Factor Selection}\label{fig:unnamed-chunk-10}
 \end{figure}
 
 
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:28 2021
+% Fri Mar 05 18:45:38 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -529,7 +514,7 @@ It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which
 
 The estimated coefficients in $\widehat{B}$ and $\widehat{C}$ are shown below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:28 2021
+% Fri Mar 05 18:45:39 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -551,21 +536,21 @@ f1 & 0.00 & 0.15 & -0.03 & -0.20 \\
 Finally, we perform a qualitative check of the fitted values and residuals. It is important that factors that are predictable --- i.e., factors 2 and 3, since they represent output --- have a good fit. Since factor 1 represents the COVID-19 shock, we should expect that the fit is poor; such a shock should not be predictable simply from the time dynamics of the factors; so if the fit is good, our model is likely overfitted.
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-12-1} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-13-1} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-12-2} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-13-2} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-12-3} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-13-3} 
 
 }
 
@@ -575,18 +560,18 @@ Finally, we perform a qualitative check of the fitted values and residuals. It i
 
 \begin{figure}[H]
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-13-1} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-14-1} 
 
 }
 
-\caption[Factor VAR Residuals]{Factor VAR Residuals}\label{fig:unnamed-chunk-13}
+\caption[Factor VAR Residuals]{Factor VAR Residuals}\label{fig:unnamed-chunk-14}
 \end{figure}
 
 
 
 Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are shown below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:29 2021
+% Fri Mar 05 18:45:39 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -680,7 +665,7 @@ As before we can estimate $A$ and $D$ with the standard OLS estimator.
 
 Estimated coefficients for $\widehat{A}$ and $\widehat{D}$ are below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:29 2021
+% Fri Mar 05 18:45:39 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -724,7 +709,7 @@ mpce & 0.00 & -0.01 & -0.00 & -0.00 \\
 
 We perform a qualitative check of the in-sample fit, as well as a quantitative review of the goodness-of-fit. The graphs of the fitted plots are located in the appendix.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:29 2021
+% Fri Mar 05 18:45:40 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -861,21 +846,21 @@ Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-17-1} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-18-1} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-17-2} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-18-2} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-17-3} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-18-3} 
 
 }
 
@@ -892,7 +877,7 @@ We begin by aggregating these monthly factors into quarterly data by taking a si
 
 In this section, we will use these now-quarterly factors to forecast our quarterly subcomponents of GDP. As discussed in the data import section, these have been transformed for stationarity, typically by taking a log-difference.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:30 2021
+% Fri Mar 05 18:45:40 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -957,7 +942,7 @@ The $\beta$ coefficients can be estimated with a typical OLS process, where the 
 After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
 The forecasted results are as follows.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:30 2021
+% Fri Mar 05 18:45:40 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -1001,7 +986,7 @@ Consumption: Goods: Durable: Motor Vehicles \& Parts & 0.13 & 0.03 \\
 
 We can then backtransform the data so that the units are in base values. After backtransformation, we are ready to aggregate these up to higher-level GDP components. In particular, we calculate the variables below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:30 2021
+% Fri Mar 05 18:45:40 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -1036,7 +1021,7 @@ We also use a similar DFM-AR(1) specification to forecast out other economic var
 \section{Results}
 Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:30 2021
+% Fri Mar 05 18:45:40 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{10pt}{12pt}\selectfont
@@ -1093,7 +1078,7 @@ Variable & 2021Q1 & 2021Q2 \\
 
 We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:30 2021
+% Fri Mar 05 18:45:41 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{11pt}{13pt}\selectfont
@@ -1111,7 +1096,7 @@ Delinquency Rate on Residential Mortgages & 9.49 & 8.76 \\
 \end{table}
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Fri Mar 05 17:47:30 2021
+% Fri Mar 05 18:45:41 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{10pt}{12pt}\selectfont
@@ -1132,16 +1117,16 @@ PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 20.48 & 0.41 & 2.07 & 2
   Case-Shiller Housing Price Index & 236.85 & 238.01 & 239.16 & 240.31 & 241.46 & 242.61 \\ 
   Effective Federal Funds Rate &  &  & 0.07 & 0.07 & 0.08 & 0.08 \\ 
   Secured Overnight Financing Rate &  &  & 0.04 & 0.04 & 0.06 & 0.06 \\ 
-  Treasury Yield 10Y &  &  & 1.45 & 1.47 & 1.49 & 1.51 \\ 
-  Treasury Yield 30Y &  &  & 2.34 & 2.35 & 2.35 & 2.36 \\ 
-  Treasury Yield 5Y &  &  & 0.78 & 0.81 & 0.83 & 0.86 \\ 
-  Treasury Yield 2Y &  &  & 0.27 & 0.30 & 0.32 & 0.35 \\ 
-  Treasury Yield 1Y &  &  & 0.13 & 0.15 & 0.17 & 0.19 \\ 
-  Treasury Yield 6M &  &  & 0.06 & 0.08 & 0.10 & 0.12 \\ 
-  Treasury Yield 3M &  &  & 0.04 & 0.05 & 0.07 & 0.09 \\ 
-  Treasury Yield 1M &  &  & 0.02 & 0.04 & 0.05 & 0.07 \\ 
-  Treasury Yield 20Y &  &  & 2.09 & 2.10 & 2.11 & 2.12 \\ 
-  Treasury Yield 7Y &  &  & 1.08 & 1.11 & 1.13 & 1.16 \\ 
+  Treasury Yield 10Y &  &  & 1.51 & 1.53 & 1.55 & 1.57 \\ 
+  Treasury Yield 30Y &  &  & 2.40 & 2.41 & 2.41 & 2.42 \\ 
+  Treasury Yield 5Y &  &  & 0.83 & 0.86 & 0.88 & 0.91 \\ 
+  Treasury Yield 2Y &  &  & 0.30 & 0.32 & 0.35 & 0.38 \\ 
+  Treasury Yield 1Y &  &  & 0.13 & 0.16 & 0.18 & 0.21 \\ 
+  Treasury Yield 6M &  &  & 0.06 & 0.08 & 0.10 & 0.13 \\ 
+  Treasury Yield 3M &  &  & 0.03 & 0.05 & 0.07 & 0.09 \\ 
+  Treasury Yield 1M &  &  & 0.01 & 0.03 & 0.05 & 0.07 \\ 
+  Treasury Yield 20Y &  &  & 2.15 & 2.16 & 2.17 & 2.18 \\ 
+  Treasury Yield 7Y &  &  & 1.14 & 1.17 & 1.19 & 1.22 \\ 
   Vehicle Sales &  &  & 16.35 & 16.45 & 16.53 & 16.59 \\ 
   Unemployment rate &  &  & 6.35 & 6.45 & 6.52 & 6.59 \\ 
   S\&P 500 &  &  &  & 3875.23 & 3910.40 & 3945.86 \\ 
@@ -1156,6 +1141,8 @@ PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 20.48 & 0.41 & 2.07 & 2
   KC Fed Labor Market Index &  & -0.22 & -0.17 & -0.14 & -0.10 & -0.07 \\ 
   Consumer Confidence (OECD) &  & 99.82 & 100.08 & 100.12 & 100.18 & 100.23 \\ 
   PCE Price Index \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 1.93 & 1.22 & 1.31 & 1.33 & 1.34 \\ 
+  New York Fed: Business Conditions Manufacturing Survey &  &  & -0.57 & 0.41 & 1.18 & 1.80 \\ 
+  Current General Business Activity, Diffusion Index for Texas &  &  & -4.77 & -3.56 & -2.61 & -1.83 \\ 
    \hline 
  \textit{apchg} = annualized \% change 
 \end{tabular}
@@ -1172,189 +1159,189 @@ PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 20.48 & 0.41 & 2.07 & 2
 \section{DFM Fitted Plots}
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-1} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-1} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-2} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-2} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-3} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-3} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-4} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-4} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-5} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-5} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-6} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-6} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-7} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-7} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-8} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-8} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-9} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-9} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-10} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-10} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-11} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-11} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-12} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-12} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-13} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-13} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-14} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-14} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-15} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-15} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-16} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-16} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-17} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-17} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-18} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-18} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-19} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-19} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-20} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-20} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-21} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-21} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-22} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-22} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-23} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-23} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-24} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-24} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-25} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-25} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-26} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-26} 
 
 }
 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-27} 
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-25-27} 
 
 }
 
