@@ -5,6 +5,7 @@ PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to packa
 DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Path to documentation .RNW file
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
+RESET_ALL = FALSE
 ```
 
 
@@ -1238,6 +1239,12 @@ local({
 		)
 	
 	
+	IF (RESET_ALL == TRUE) {
+		DBI::dbGetQuery(conn, 'TRUNCATE nc_params CASCADE')
+		DBI::dbGetQuery(conn, 'TRUNCATE nc_values')
+	}
+	
+	
 	# Send variables to SQL
 	query =
 	  econforecasting::createInsertQuery(
@@ -1262,26 +1269,24 @@ local({
 	
 	
 	# Insert fc_forecast_last_vintage
-	forecastLastVintageDf =
-		ef$forecastDf %>%
-		dplyr::group_by(fcname) %>% 
-		dplyr::filter(., vintageDate == max(vintageDate)) %>%
-		dplyr::ungroup(.) %>%
-		dplyr::rename(., obs_date = date, vintage_date = vintageDate)
-	query =
-	  econforecasting::createInsertQuery(
-	    forecastLastVintageDf,
-	    'fc_forecast_last_vintage',
-	    'ON CONFLICT ON CONSTRAINT fc_forecast_last_vintage_fcname_obs_date_varname DO UPDATE SET value = EXCLUDED.value, vintage_date = EXCLUDED.vintage_date'
-	    )
-	res = DBI::dbGetQuery(conn, query)
-
-	
+	# forecastLastVintageDf =
+	# 	ef$forecastDf %>%
+	# 	dplyr::group_by(fcname) %>% 
+	# 	dplyr::filter(., vintageDate == max(vintageDate)) %>%
+	# 	dplyr::ungroup(.) %>%
+	# 	dplyr::rename(., obs_date = date, vintage_date = vintageDate)
+	# query =
+	#   econforecasting::createInsertQuery(
+	#     forecastLastVintageDf,
+	#     'fc_forecast_last_vintage',
+	#     'ON CONFLICT ON CONSTRAINT fc_forecast_last_vintage_fcname_obs_date_varname DO UPDATE SET value = EXCLUDED.value, vintage_date = EXCLUDED.vintage_date'
+	#     )
+	# res = DBI::dbGetQuery(conn, query)
 	
 })
 ```
 
-## Save data to RDS and create documentation
+## Save data to RDS and process .rnw
 ```{r}
 local({
 
