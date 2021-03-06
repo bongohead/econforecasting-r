@@ -5,7 +5,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 ---
 # CHANGELOG
 
-## 2021-03-01 [v0.10]
+## 2021-03-05 [v0.10]
 - Added import spreadsheet
 - Added GDP subcomponents
 - Added deseasonalization information
