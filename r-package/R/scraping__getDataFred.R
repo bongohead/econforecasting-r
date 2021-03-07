@@ -4,10 +4,11 @@
 #' @param apiKey (string) User's FRED API Key
 #' @param .freq (string) One of 'd', 'm', 'q'. If NULL, returns highest available frequency.
 #' @param .returnVintages (boolean) If TRUE, returns all historic forecast values ('vintages').
+#' @param .vintageDate (date) If .returnVintages = TRUE, .vintageDate can be set to only return the vintage for a single date
 #' @return A data frame of forecasts
 #' @export
 
-getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE) {
+getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE, .vintageDate = NULL) {
 
     url =
         paste0(
@@ -15,15 +16,15 @@ getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE) 
             'series_id=', seriesId,
             '&api_key=', apiKey,
             '&file_type=json',
-            '&realtime_start=', if(.returnVintages == TRUE) '2000-01-01' else Sys.Date(),
-            '&realtime_end=', Sys.Date(),
+            '&realtime_start=', if (.returnVintages == TRUE & is.null(.vintageDate)) '2000-01-01' else if (.returnVintages == TRUE & !is.null(.vintageDate)) .vintageDate else Sys.Date(),
+            '&realtime_end=', if (.returnVintages == TRUE & !is.null(.vintageDate)) .vintageDate else Sys.Date(),
             '&obs_start=', '2000-01-01',
             '&obs_end=', Sys.Date(),
             if(!is.null(.freq)) paste0('&frequency=', .freq) else '',
             '&aggregation_method=avg'
         )
 
-    # message(url)
+    message(url)
 
     url %>%
         httr::RETRY('GET', url = ., times = 10) %>%

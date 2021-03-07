@@ -5,7 +5,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 ---
 # CHANGELOG
 
-## 2021-03-05 [v0.10]
+## 2021-03-07 [v0.10]
 - Added import spreadsheet
 - Added GDP subcomponents
 - Added deseasonalization information
@@ -23,7 +23,11 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added in-sample goodness of fit for VAR & DFM
 - Added documentation for VAR, DFM, & intro
 - Added documentation templates
+- Added SQL insert
+- Added ability to pull data from particular vintage date
+- Added purl code to extract main rmd code and convert it to a function - use for backtesting
 - Fixed bug with monthly aggregation
+- Fixed bug with specific vintage date pulls from ALFRED database
 
 ## 2021-02-13 [v0.09]
 - Added mortgage models

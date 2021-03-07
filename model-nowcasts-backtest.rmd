@@ -1,0 +1,13 @@
+
+
+```{r}
+# Use purl to extract R code (minus OG chunk) and convert it to a function
+knitr::purl(input = 'model-nowcasts.rmd', output = 'model-nowcasts.r')
+source('model-nowcasts.r')
+read_lines('D:/OneDrive/__Projects/econforecasting/model-nowcasts.r') %>% paste0(., collapse = '\n') %>% paste0('testFunction = function(VINTAGE_DATE = Sys.Date()) {', ., '}') %>% write_lines('D:/OneDrive/__Projects/econforecasting/model-nowcasts-fn.r')
+nowcast(VINTAGE_DATE = as.Date('2021-02-02'))
+
+
+rmarkdown::render(..., clean = TRUE)
+```
+
