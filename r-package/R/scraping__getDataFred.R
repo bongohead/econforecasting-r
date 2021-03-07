@@ -1,14 +1,15 @@
-#' Scrape data from FRED.
+#' Returns data from St. Louis Federal Reserve Economic Database (FRED)
 #'
 #' @param seriesId (string) FRED ID of economic variable
 #' @param apiKey (string) User's FRED API Key
 #' @param .freq (string) One of 'd', 'm', 'q'. If NULL, returns highest available frequency.
 #' @param .returnVintages (boolean) If TRUE, returns all historic forecast values ('vintages').
 #' @param .vintageDate (date) If .returnVintages = TRUE, .vintageDate can be set to only return the vintage for a single date
+#' @param .verbose (boolean) If TRUE, returns boolean
 #' @return A data frame of forecasts
 #' @export
 
-getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE, .vintageDate = NULL) {
+getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE, .vintageDate = NULL, .verbose = FALSE) {
 
     url =
         paste0(
@@ -24,7 +25,7 @@ getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE, 
             '&aggregation_method=avg'
         )
 
-    message(url)
+    if (.verbose == TRUE) message(url)
 
     url %>%
         httr::RETRY('GET', url = ., times = 10) %>%
