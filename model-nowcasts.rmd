@@ -1265,8 +1265,6 @@ local({
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_history')
 	}
 	
-	
-	
 	# Send variables to SQL
 	query =
 	  econforecasting::createInsertQuery(

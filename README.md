@@ -5,7 +5,11 @@ This project contains the code for data scraping, data cleaning, and modeling us
 ---
 # CHANGELOG
 
-## 2021-03-07 [v0.10]
+## 2021-03-08 [v0.11]
+- Added backtest code for nowcasts
+- Fixed bug related to knitr::purl 
+
+## 2021-03-06 [v0.10]
 - Added import spreadsheet
 - Added GDP subcomponents
 - Added deseasonalization information
