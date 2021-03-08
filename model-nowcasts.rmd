@@ -6,7 +6,7 @@ DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Pat
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
 RESET_ALL = FALSE
-VINTAGE_DATE = as.Date('2021-02-01') # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
+VINTAGE_DATE = Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
 ```
 
 
@@ -122,46 +122,53 @@ local({
 ```{r}
 local({
 	
-	url =
-		paste0(
-			'https://query1.finance.yahoo.com/v7/finance/download/', '%5EGSPC',
-			'?period1=', '946598400', # 12/30/1999
-			'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
-			'&interval=1d',
-			'&events=history&includeAdjustedClose=true'
-		)
-	
-	df0 =
-		data.table::fread(url) %>%
-		.[, c('Date', 'Adj Close')]	%>%
-		setnames(., new = c('date', 'value')) %>%
-		as_tibble(.) %>%
-		dplyr::filter(., date <= VINTAGE_DATE)
-	
-	qDf = 
-		df0 %>%
-		dplyr::mutate(
-			.,
-			date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'Q', lubridate::quarter(date)))
-			) %>%
-		dplyr::group_by(., date) %>%
-		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
-		dplyr::mutate(., freq = 'q')
-	
-	mDf =
-		df0 %>%
-		dplyr::mutate(
-			.,
-			date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'M', lubridate::month(date)))
-			) %>%
-		dplyr::group_by(., date) %>%
-		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
-		dplyr::mutate(., freq = 'm')
-
 	df =
-		dplyr::bind_rows(mDf, qDf) %>%
-		dplyr::mutate(., varname = 'spy')
-
+		ef$params %>%
+    	purrr::keep(., ~ .$source == 'yahoo') %>%
+		lapply(., function(x) {
+		
+			url =
+				paste0(
+					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
+					'?period1=', '946598400', # 12/30/1999
+					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+					'&interval=1d',
+					'&events=history&includeAdjustedClose=true'
+				)
+			
+			df0 =
+				data.table::fread(url) %>%
+				.[, c('Date', 'Adj Close')]	%>%
+				setnames(., new = c('date', 'value')) %>%
+				as_tibble(.) %>%
+				dplyr::filter(., date <= VINTAGE_DATE)
+			
+			qDf = 
+				df0 %>%
+				dplyr::mutate(
+					.,
+					date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'Q', lubridate::quarter(date)))
+					) %>%
+				dplyr::group_by(., date) %>%
+				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+				dplyr::mutate(., freq = 'q')
+			
+			mDf =
+				df0 %>%
+				dplyr::mutate(
+					.,
+					date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'M', lubridate::month(date)))
+					) %>%
+				dplyr::group_by(., date) %>%
+				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+				dplyr::mutate(., freq = 'm')
+		
+			df =
+				dplyr::bind_rows(mDf, qDf) %>%
+				dplyr::mutate(., varname = x$varname)
+		}) %>%
+		dplyr::bind_rows(.)
+	
 	ef$h$source$yahoo <<- df
 })
 ```
@@ -215,6 +222,7 @@ local({
 				dplyr::group_by(varname, freq) %>%
 				dplyr::group_split(.) %>%
 				lapply(., function(x) {
+					# message(x$varname[[1]])
 					if (head(x, 1)[[.form]] == 'none') return(NA)
 					x %>%
 						dplyr::arrange(., date) %>%
@@ -746,7 +754,12 @@ local({
 			)
 	
 	
-	fDf = dplyr::bind_rows(kSmooth, tail(kFitted, 1), kForecast %>% dplyr::mutate(., f1 = mean(dplyr::filter(ef$nc$zDf, date < '2020-03-01')$f1)))
+	fDf =
+		dplyr::bind_rows(
+			kSmooth,
+			tail(kFitted, 1),
+			kForecast %>% dplyr::mutate(., f1 = mean(dplyr::filter(ef$nc$zDf, date < '2020-03-01')$f1))
+			)
 	
 	yDf =
 		yTCondBigT %>%
