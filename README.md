@@ -1,12 +1,18 @@
 # ABOUT
 This project contains the code for data scraping, data cleaning, and modeling used to generate forecasts shown on [econforecasting.com](https://econforecasting.com).
 
-
 ---
+
+# RUN NOTES
+- Run model-asset-contagion.rmd, model-baseling-forecasts.rmd, model-nowcasts-backtest.rmd daily until cron server set up
+- After finish development, nowcast model should run DAILY but backtest code can be invoked to "catch up" on days where missed for whatever reason - code does not need to be modularized for backtest ease
+
+
 # CHANGELOG
 
 ## 2021-03-08 [v0.11]
 - Added backtest code for nowcasts
+- Added code for iterating over vintage dates
 - Fixed bug related to knitr::purl 
 
 ## 2021-03-06 [v0.10]
