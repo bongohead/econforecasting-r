@@ -13,7 +13,8 @@ This project contains the code for data scraping, data cleaning, and modeling us
 ## 2021-03-08 [v0.11]
 - Added backtest code for nowcasts
 - Added code for iterating over vintage dates
-- Fixed bug related to knitr::purl 
+- Fixed bug related to knitr::purl
+- Fixed bug related to SQL insert
 
 ## 2021-03-06 [v0.10]
 - Added import spreadsheet
