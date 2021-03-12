@@ -5,7 +5,7 @@ PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to packa
 DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Path to documentation .RNW file; if NULL no docs generated
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
-RESET_ALL = FALSE
+RESET_ALL = TRUE
 VINTAGE_DATE = Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
 ```
 
@@ -1244,7 +1244,7 @@ local({
 			x %>% purrr::imap_dfr(function(df, .form)
 				df %>%
 					tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
-					dplyr::mutate(., freq = .freq, form = .form, vdate = Sys.Date())
+					dplyr::mutate(., freq = .freq, form = .form, vdate = VINTAGE_DATE)
 				)
 			) %>%
 		na.omit(.)
