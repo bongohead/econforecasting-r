@@ -10,9 +10,10 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 # CHANGELOG
 
-## 2021-03-08 [v0.11]
+## 2021-03-12 [v0.11]
 - Added backtest code for nowcasts
 - Added code for iterating over vintage dates
+- Added JOLTS data to model inputs
 - Fixed bug related to knitr::purl
 - Fixed bug related to SQL insert
 
