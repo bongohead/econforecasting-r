@@ -10,10 +10,13 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 # CHANGELOG
 
-## 2021-03-12 [v0.11]
+## 2021-03-15 [v0.11]
 - Added backtest code for nowcasts
 - Added code for iterating over vintage dates
 - Added JOLTS data to model inputs
+- Added formatted table for diagnostic factor weights
+- Added elastic net regularization to quarterly dynamic factor models
+- Added elastic net hyperparameter selection plots
 - Fixed bug related to knitr::purl
 - Fixed bug related to SQL insert
 

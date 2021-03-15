@@ -5,8 +5,8 @@ PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to packa
 DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Path to documentation .RNW file; if NULL no docs generated
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
-RESET_ALL = TRUE
-VINTAGE_DATE = Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
+RESET_ALL = FALSE
+VINTAGE_DATE = as.Date('2021-03-15') # Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
 ```
 
 
@@ -118,7 +118,7 @@ local({
 })
 ```
 
-## Yahoo Finance
+## Yahoo Finance - use last available data point as value
 ```{r}
 local({
 	
@@ -417,7 +417,7 @@ local({
 		# .$factor
 		screeDf %>%
 		dplyr::filter(., ic1 == min(ic1)) %>%
-		.$factors
+		.$factors + 1
 	
 	
 	zDf =
@@ -442,7 +442,25 @@ local({
 				scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 			)
 	
+	factorWeightsDf =
+		lambdaHat %>%
+		as.data.frame(.) %>% 
+		as_tibble(.) %>%
+		setNames(., paste0('f', str_pad(1:ncol(.), pad = '0', 1))) %>%
+		dplyr::bind_cols(weight = colnames(xMat), .) %>%
+		tidyr::pivot_longer(., -weight, names_to = 'varname') %>%
+		dplyr::group_by(varname) %>%
+		dplyr::arrange(., varname, desc(abs(value))) %>%
+		dplyr::mutate(., order = 1:n(), valFormat = paste0(weight, ' (', round(value, 2), ')')) %>%
+		dplyr::ungroup(.) %>%
+		dplyr::select(., -value, -weight) %>%
+		tidyr::pivot_wider(., names_from = varname, values_from = valFormat) %>%
+		dplyr::arrange(., order) %>%
+		dplyr::select(., -order) %>%
+		dplyr::select(., paste0('f', 1:bigR))
 	
+	
+	ef$nc$factorWeightsDf <<- factorWeightsDf
 	ef$nc$screeDf <<- screeDf
 	ef$nc$screePlot <<- screePlot
 	ef$nc$bigR <<- bigR
@@ -930,7 +948,7 @@ local({
 })
 ```
 
-## Forecast dfm.q quarterly variables
+## Forecast dfm.q quarterly variables w/elastic net
 ```{r}
 local({
 	
@@ -950,8 +968,8 @@ local({
 		dplyr::rename(., date = q)
 	
 	
-	dfmQDf =
-		lapply(dfmVarnames, function(.varname) {
+	dfmRes =
+		lapply(dfmVarnames %>% setNames(., .), function(.varname) {
 			
 	# 		inputDf =
 	# 			dplyr::inner_join(
@@ -1002,11 +1020,69 @@ local({
 
 			yMat = dplyr::select(inputDf, all_of(.varname)) %>% as.matrix(.)
 			xDf = dplyr::select(inputDf, -date, -all_of(.varname)) %>% dplyr::mutate(., constant = 1)
+			
+			glmResult = lapply(seq(.1, 1, .1), function(.alpha) {
+				cv =
+					glmnet::cv.glmnet(
+						x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
+						y = yMat,
+						deviance = 'mae',
+						alpha = .alpha,
+						intercept = TRUE
+					)
+				tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
+				dplyr::mutate(., min_lambda_for_given_alpha = (mae == min(mae))) %>%
+				return(.)
+				}) %>%
+				dplyr::bind_rows(.) %>%
+				dplyr::mutate(., min_overall = (mae == min(mae)))
 
+			glmOptim = glmResult %>% dplyr::filter(., min_overall == TRUE)
+
+			cvPlot =
+				glmResult %>%
+				ggplot(.) +
+				geom_line(aes(x = log(lambda), y = mae, group = alpha, color = alpha)) +
+				geom_point(
+					data = glmResult %>% dplyr::filter(., min_lambda_for_given_alpha == TRUE),
+					aes(x = log(lambda), y = mae), color = 'red'
+				) +
+				geom_point(
+					data = glmResult %>% dplyr::filter(., min_overall == TRUE),
+					aes(x = log(lambda), y = mae), color = 'green'
+				) +
+				labs(
+					x = 'log(Lambda)', y = 'MAE', color = 'alpha',
+					title = 'Elastic Net Hyperparameter Fit',
+					subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
+					Green = MAE Minimizing (Lambda, Alpha) Pair'
+					)
+			
+		
+			glmObj =
+				glmnet::glmnet(
+					x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
+					y = yMat,
+					alpha = glmOptim$alpha,
+					lambda = glmOptim$lambda
+				)
+  
+			coefMat = glmObj %>% coef(.) %>% as.matrix(.)
+			
 			coefDf =
-				lm(yMat ~ . - 1, xDf)$coef %>%
-	    		as.data.frame(.) %>% rownames_to_column(., 'coefname') %>% as_tibble(.) %>%
-				setNames(., c('coefname', 'value'))
+				coefMat %>%
+			    as.data.frame(.) %>%
+			    rownames_to_column(., var = 'Covariate') %>%
+			    setNames(., c('coefname', 'value')) %>%
+				as_tibble(.) %>%
+				dplyr::mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname))
+
+			
+			# Standard OLS
+	# 		coefDf =
+	# 			lm(yMat ~ . - 1, xDf)$coef %>%
+	#     		as.data.frame(.) %>% rownames_to_column(., 'coefname') %>% as_tibble(.) %>%
+	# 			setNames(., c('coefname', 'value'))
 
 			# Forecast dates + last historical date
 			forecastDf0 =
@@ -1031,12 +1107,32 @@ local({
 				.[2:nrow(.), ] %>%
 				dplyr::select(., all_of(c('date', .varname)))
 			
-			}) %>%
-			purrr::reduce(., function(accum, x) dplyr::full_join(accum, x, by = 'date')) %>%
-			dplyr::arrange(., date)
-
+			list(
+				forecastDf = forecastDf,
+				coefDf = coefDf,
+				glmOptim = glmOptim,
+				cvPlot = cvPlot
+				)
+			})
 	
-	ef$nc$dfmQDf <<- dfmQDf
+	
+	glmOptimDf =
+		purrr::imap_dfr(dfmRes, function(x, i)
+			x$glmOptim %>% dplyr::bind_cols(varname = i, .)
+			)
+	
+	cvPlots = purrr::map(dfmRes, ~ .$cvPlot)
+	
+	dfmDf =
+		dfmRes %>%
+		lapply(., function(x) x$forecastDf) %>%
+		purrr::reduce(., function(accum, x) dplyr::full_join(accum, x, by = 'date')) %>%
+		dplyr::arrange(., date)
+
+
+	ef$nc$glmOptimQDf <<- glmOptimDf
+	ef$nc$cvPlotsQ <<- cvPlots
+	ef$nc$dfmQDf <<- dfmDf
 })
 ```
 
