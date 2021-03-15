@@ -412,13 +412,13 @@ local({
 	
 	bigR =
 		# screeDf %>%
-		# dplyr::filter(cum_pct_of_total >= .50) %>%
-		# head(., 1) %>%
-		# .$factor
-		screeDf %>%
-		dplyr::filter(., ic1 == min(ic1)) %>%
-		.$factors + 1
-	
+		# dplyr::filter(., ic1 == min(ic1)) %>%
+		# .$factors + 1
+		((
+			{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
+		  	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
+			)/2) %>%
+		round(., digits = 0)
 	
 	zDf =
 		xDf[, 'date'] %>%
@@ -1021,7 +1021,7 @@ local({
 			yMat = dplyr::select(inputDf, all_of(.varname)) %>% as.matrix(.)
 			xDf = dplyr::select(inputDf, -date, -all_of(.varname)) %>% dplyr::mutate(., constant = 1)
 			
-			glmResult = lapply(seq(.1, 1, .1), function(.alpha) {
+			glmResult = lapply(seq(.75, 1, .05), function(.alpha) {
 				cv =
 					glmnet::cv.glmnet(
 						x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
@@ -1116,6 +1116,8 @@ local({
 			})
 	
 	
+	glmCoefList = purrr::map(dfmRes, ~ .$coefDf) 
+	
 	glmOptimDf =
 		purrr::imap_dfr(dfmRes, function(x, i)
 			x$glmOptim %>% dplyr::bind_cols(varname = i, .)
@@ -1130,6 +1132,7 @@ local({
 		dplyr::arrange(., date)
 
 
+	ef$nc$glmCoefQList <<-glmCoefList 
 	ef$nc$glmOptimQDf <<- glmOptimDf
 	ef$nc$cvPlotsQ <<- cvPlots
 	ef$nc$dfmQDf <<- dfmDf
