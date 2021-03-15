@@ -17,6 +17,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added formatted table for diagnostic factor weights
 - Added elastic net regularization to quarterly dynamic factor models
 - Added elastic net hyperparameter selection plots
+- Added alpha boundaries to (.5, 1) due to overregularization of some consumption variables 
 - Fixed bug related to knitr::purl
 - Fixed bug related to SQL insert
 
