@@ -200,13 +200,6 @@ Estimation of factors is derived following Stock and Watson (2008).
 	\widehat{F} = X \widehat{\Lambda}
 \end{align*}
 
-Once factors are derived, we perform a qualitative check of the factors. The first factor usually represents the COVID-19 shock. Typically the second factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The third and fourth factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
-
-<<>>=
-for (i in 1:length(ef$nc$zPlots)) {
-	print(ef$nc$zPlots[[i]])
-}
-@
 
 
 Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used. We also include alternative specifications of the information criteria from Bai and Ng as a robustness check.
@@ -226,6 +219,22 @@ Once factors are derived, we select the optimal number of factors to use in pred
 @
 
 Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{ef$nc$bigR}$ factors.
+
+<<>>=
+for (i in 1:length(ef$nc$zPlots)) {
+	print(ef$nc$zPlots[[i]])
+}
+@
+
+Next, we perform a qualitative check of the factors. The first factor usually represents the COVID-19 shock. Typically the second factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The third and fourth factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
+
+Finally, we evaluate the components of each factor, i.e. which 
+<<>>=
+	ef$nc$factorWeightsDf %>%
+    	head(., 5) %>%
+    	xtable::xtable(., caption = 'PCA Factor Weights - Top 5 Per Factor', align = 'cccc') %>%
+    	print(., size = 'scriptsize')
+@
 
 
 
