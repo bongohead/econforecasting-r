@@ -6,7 +6,7 @@ DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Pat
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
 RESET_ALL = FALSE
-VINTAGE_DATE = as.Date('2021-03-15') # Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
+VINTAGE_DATE = Sys.Date() # as.Date('2021-03-15') # Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
 ```
 
 
@@ -411,14 +411,14 @@ local({
 
 	
 	bigR =
-		# screeDf %>%
-		# dplyr::filter(., ic1 == min(ic1)) %>%
-		# .$factors + 1
-		((
-			{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
-		  	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
-			)/2) %>%
-		round(., digits = 0)
+		screeDf %>%
+		dplyr::filter(., ic1 == min(ic1)) %>%
+		.$factors + 1
+		# ((
+		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
+		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
+		# 	)/2) %>%
+		# round(., digits = 0)
 	
 	zDf =
 		xDf[, 'date'] %>%
@@ -1021,7 +1021,7 @@ local({
 			yMat = dplyr::select(inputDf, all_of(.varname)) %>% as.matrix(.)
 			xDf = dplyr::select(inputDf, -date, -all_of(.varname)) %>% dplyr::mutate(., constant = 1)
 			
-			glmResult = lapply(seq(.75, 1, .05), function(.alpha) {
+			glmResult = lapply(c(1), function(.alpha) {
 				cv =
 					glmnet::cv.glmnet(
 						x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
@@ -1449,6 +1449,13 @@ local({
 			to = file.path(DIR, 'nowcast-documentation.pdf'),
 			overwrite = TRUE
 			)
+
+		file.copy(
+			from =  file.path(OUTPUT_DIR, paste0(basename, '.pdf')),
+			to = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
+			overwrite = TRUE
+			)
+
 	}
 })
 ```
