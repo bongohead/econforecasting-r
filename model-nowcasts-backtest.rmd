@@ -58,7 +58,7 @@ nowcast = function(
 ```{r}
 local({
 	
-	runDates = seq(from = as.Date('2021-01-01'), to = Sys.Date(), by = '1 day')
+	runDates = seq(from = as.Date('2021-01-01'), to = Sys.Date(), by = '1 week')
 		
 	res =
 		purrr::imap(runDates, function(.vdate, i) {

@@ -10,7 +10,7 @@ nowcast = function(
 	RESET_ALL = FALSE,
 	VINTAGE_DATE = NULL
 	) {
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 # General purpose
 library(tidyverse) # General
 library(data.table) # General
@@ -41,7 +41,7 @@ ef = list(
 )
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	paramsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'))
@@ -52,7 +52,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
   
 	# Run below in console to get list of GDP subcomponents
@@ -112,7 +112,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	df =
@@ -166,13 +166,13 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	ef$h$sourceDf <<- dplyr::bind_rows(ef$h$source)
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	seasDf =
@@ -196,7 +196,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 
 	flat = list()
@@ -240,7 +240,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	wide =
@@ -262,7 +262,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	quartersForward = 1
@@ -323,7 +323,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	xDf = ef$nc$pcaVariablesDf %>% dplyr::filter(., date %in% ef$nc$bigTDates)
@@ -391,14 +391,14 @@ local({
 
 	
 	bigR =
-		# screeDf %>%
-		# dplyr::filter(cum_pct_of_total >= .50) %>%
-		# head(., 1) %>%
-		# .$factor
 		screeDf %>%
 		dplyr::filter(., ic1 == min(ic1)) %>%
-		.$factors
-	
+		.$factors + 1
+		# ((
+		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
+		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
+		# 	)/2) %>%
+		# round(., digits = 0)
 	
 	zDf =
 		xDf[, 'date'] %>%
@@ -422,7 +422,25 @@ local({
 				scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 			)
 	
+	factorWeightsDf =
+		lambdaHat %>%
+		as.data.frame(.) %>% 
+		as_tibble(.) %>%
+		setNames(., paste0('f', str_pad(1:ncol(.), pad = '0', 1))) %>%
+		dplyr::bind_cols(weight = colnames(xMat), .) %>%
+		tidyr::pivot_longer(., -weight, names_to = 'varname') %>%
+		dplyr::group_by(varname) %>%
+		dplyr::arrange(., varname, desc(abs(value))) %>%
+		dplyr::mutate(., order = 1:n(), valFormat = paste0(weight, ' (', round(value, 2), ')')) %>%
+		dplyr::ungroup(.) %>%
+		dplyr::select(., -value, -weight) %>%
+		tidyr::pivot_wider(., names_from = varname, values_from = valFormat) %>%
+		dplyr::arrange(., order) %>%
+		dplyr::select(., -order) %>%
+		dplyr::select(., paste0('f', 1:bigR))
 	
+	
+	ef$nc$factorWeightsDf <<- factorWeightsDf
 	ef$nc$screeDf <<- screeDf
 	ef$nc$screePlot <<- screePlot
 	ef$nc$bigR <<- bigR
@@ -432,7 +450,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	inputDf =
@@ -517,7 +535,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	yMat = ef$nc$pcaInputDf %>% dplyr::select(., -date) %>% as.matrix(.)
@@ -601,7 +619,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	bMat = ef$nc$bMat
@@ -757,7 +775,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
   
 	conn =
@@ -810,7 +828,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	dfmVarnames = ef$paramsDf %>% dplyr::filter(., nowcast == 'dfm.m') %>% .$varname
@@ -904,7 +922,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	dfmVarnames = ef$paramsDf %>% dplyr::filter(., nowcast == 'dfm.q') %>% .$varname
@@ -923,8 +941,8 @@ local({
 		dplyr::rename(., date = q)
 	
 	
-	dfmQDf =
-		lapply(dfmVarnames, function(.varname) {
+	dfmRes =
+		lapply(dfmVarnames %>% setNames(., .), function(.varname) {
 			
 	# 		inputDf =
 	# 			dplyr::inner_join(
@@ -975,11 +993,69 @@ local({
 
 			yMat = dplyr::select(inputDf, all_of(.varname)) %>% as.matrix(.)
 			xDf = dplyr::select(inputDf, -date, -all_of(.varname)) %>% dplyr::mutate(., constant = 1)
+			
+			glmResult = lapply(c(1), function(.alpha) {
+				cv =
+					glmnet::cv.glmnet(
+						x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
+						y = yMat,
+						deviance = 'mae',
+						alpha = .alpha,
+						intercept = TRUE
+					)
+				tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
+				dplyr::mutate(., min_lambda_for_given_alpha = (mae == min(mae))) %>%
+				return(.)
+				}) %>%
+				dplyr::bind_rows(.) %>%
+				dplyr::mutate(., min_overall = (mae == min(mae)))
 
+			glmOptim = glmResult %>% dplyr::filter(., min_overall == TRUE)
+
+			cvPlot =
+				glmResult %>%
+				ggplot(.) +
+				geom_line(aes(x = log(lambda), y = mae, group = alpha, color = alpha)) +
+				geom_point(
+					data = glmResult %>% dplyr::filter(., min_lambda_for_given_alpha == TRUE),
+					aes(x = log(lambda), y = mae), color = 'red'
+				) +
+				geom_point(
+					data = glmResult %>% dplyr::filter(., min_overall == TRUE),
+					aes(x = log(lambda), y = mae), color = 'green'
+				) +
+				labs(
+					x = 'log(Lambda)', y = 'MAE', color = 'alpha',
+					title = 'Elastic Net Hyperparameter Fit',
+					subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
+					Green = MAE Minimizing (Lambda, Alpha) Pair'
+					)
+			
+		
+			glmObj =
+				glmnet::glmnet(
+					x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
+					y = yMat,
+					alpha = glmOptim$alpha,
+					lambda = glmOptim$lambda
+				)
+  
+			coefMat = glmObj %>% coef(.) %>% as.matrix(.)
+			
 			coefDf =
-				lm(yMat ~ . - 1, xDf)$coef %>%
-	    		as.data.frame(.) %>% rownames_to_column(., 'coefname') %>% as_tibble(.) %>%
-				setNames(., c('coefname', 'value'))
+				coefMat %>%
+			    as.data.frame(.) %>%
+			    rownames_to_column(., var = 'Covariate') %>%
+			    setNames(., c('coefname', 'value')) %>%
+				as_tibble(.) %>%
+				dplyr::mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname))
+
+			
+			# Standard OLS
+	# 		coefDf =
+	# 			lm(yMat ~ . - 1, xDf)$coef %>%
+	#     		as.data.frame(.) %>% rownames_to_column(., 'coefname') %>% as_tibble(.) %>%
+	# 			setNames(., c('coefname', 'value'))
 
 			# Forecast dates + last historical date
 			forecastDf0 =
@@ -1004,16 +1080,39 @@ local({
 				.[2:nrow(.), ] %>%
 				dplyr::select(., all_of(c('date', .varname)))
 			
-			}) %>%
-			purrr::reduce(., function(accum, x) dplyr::full_join(accum, x, by = 'date')) %>%
-			dplyr::arrange(., date)
-
+			list(
+				forecastDf = forecastDf,
+				coefDf = coefDf,
+				glmOptim = glmOptim,
+				cvPlot = cvPlot
+				)
+			})
 	
-	ef$nc$dfmQDf <<- dfmQDf
+	
+	glmCoefList = purrr::map(dfmRes, ~ .$coefDf) 
+	
+	glmOptimDf =
+		purrr::imap_dfr(dfmRes, function(x, i)
+			x$glmOptim %>% dplyr::bind_cols(varname = i, .)
+			)
+	
+	cvPlots = purrr::map(dfmRes, ~ .$cvPlot)
+	
+	dfmDf =
+		dfmRes %>%
+		lapply(., function(x) x$forecastDf) %>%
+		purrr::reduce(., function(accum, x) dplyr::full_join(accum, x, by = 'date')) %>%
+		dplyr::arrange(., date)
+
+
+	ef$nc$glmCoefQList <<-glmCoefList 
+	ef$nc$glmOptimQDf <<- glmOptimDf
+	ef$nc$cvPlotsQ <<- cvPlots
+	ef$nc$dfmQDf <<- dfmDf
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	mDf =
@@ -1032,7 +1131,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	mDf =
@@ -1092,7 +1191,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	qDf =
@@ -1127,7 +1226,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	wide = list()
@@ -1199,7 +1298,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	flat =
@@ -1217,7 +1316,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 	conn =
@@ -1288,7 +1387,7 @@ local({
 })
 
 
-## ---------------------------------------------------------------------------------------------------------------------
+## ------------------------------------------------------------------------------------------------------------
 local({
 	
 
@@ -1308,6 +1407,13 @@ local({
 			to = file.path(DIR, 'nowcast-documentation.pdf'),
 			overwrite = TRUE
 			)
+
+		file.copy(
+			from =  file.path(OUTPUT_DIR, paste0(basename, '.pdf')),
+			to = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
+			overwrite = TRUE
+			)
+
 	}
 })
 return(ef)
