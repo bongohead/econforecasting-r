@@ -1,0 +1,100 @@
+# Set Options
+```{r purl = FALSE}
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
+```
+
+
+# Initialize
+```{r}
+# General purpose
+library(tidyverse) # General
+library(data.table) # General
+library(devtools) # General
+library(lubridate) # Dates
+# Data parse/import
+library(jsonlite) # JSON Parser
+library(rvest) # HTML Parser
+library(httr) # CURL Interface
+library(tidytext) # Text analysis
+# SQL/Apache Spark
+library(DBI) # SQL Interface
+# library(RPostgres) # PostgreSQL
+# library(rsparklyr) # Spark
+# My package
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
+
+# Set working directory
+setwd(DIR)
+
+# Read constants
+source(file.path(INPUT_DIR, 'constants.r'))
+
+# Create top level variables
+ef = list(
+  h = list(),
+  f = list()
+)
+```
+
+# Text analysis
+```{r}
+local({
+	
+	sentimentsDf =
+		get_sentiments('nrc') %>%
+		dplyr::mutate(
+			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
+			sentiment = ifelse(sentiment == 'sadness', 'negative', sentiment),
+			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
+
+		)
+		
+	rawDf =
+		# Iterate through pages
+		purrr::map_dfr(1:1000, function(page) {
+			pageContent =
+				httr::GET(paste0('https://www.reuters.com/news/archive/businessnews?view=page&page=', page)) %>%
+				httr::content(.) %>%
+				rvest::html_node(., 'div.column1')
+			
+			res =
+				tibble(
+					page = page,
+    				article1 = html_text(html_nodes(pageContent, 'h3.story-title'), trim = TRUE),
+    				article2 = html_text(html_nodes(pageContent, 'div.story-content > p'), trim = TRUE),
+    				date = html_text(html_nodes(pageContent, 'span.timestamp'), trim = TRUE)
+					)
+			
+			return(res)
+			})
+	
+	# finalDf =
+		rawDf %>%
+		dplyr::mutate(
+			.,
+			article = paste0(article1, ' ', article2),
+			date = ifelse(str_detect(date, coll('EDT')) == TRUE, format(Sys.Date(), '%b %d %Y'), date),
+			date = as.Date(parse_date_time2(date, '%b %d %Y'))
+			) %>%
+		tidytext::unnest_tokens(., word, article) %>%
+		dplyr::anti_join(., stop_words, by = 'word') %>%
+		dplyr::inner_join(., sentimentsDf, by = 'word') %>%
+		dplyr::left_join(
+			.,
+			dplyr::group_by(., date) %>%
+				dplyr::summarize(., dateTotal = n(), .groups = 'drop'),
+			by = 'date'
+		) %>%
+		dplyr::group_by(., sentiment, date) %>%
+		dplyr::summarize(., count = n(), dateTotal = unique(dateTotal), .groups = 'drop') %>%
+		dplyr::mutate(., percent = count/dateTotal) %>%
+	
+		ggplot(.) + geom_line(aes(x = date, y = percent, color = sentiment, group = sentiment))
+
+
+	
+})
+```
+
