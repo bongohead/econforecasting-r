@@ -110,7 +110,7 @@ Our goal will be to take monthly-frequency leading economic predictor variables 
 \end{figure}
 
 
-To do this, we will use a methodology that relies heavily on principal components. It is well known that most economic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
+To do this, we will use a methodology that relies heavily on principal components. It is well known that most macroeconomic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
 <<>>=
 ef$h$q$st %>% dplyr::select(., vsales, csent, advsales, ipi, vix, spy, cfnai) %>% dplyr::rename(., 'VehicleSales' = vsales, 'ConsumerSentiment' = csent, 'AdvSales' = advsales, 'IndustrialProd' = ipi, 'VIX' = vix, 'SP500' = spy, 'CFNAI' = cfnai) %>% corrr::correlate(.) %>% corrr::shave(.) %>% dplyr::select(., -CFNAI) %>% xtable::xtable(., caption = 'Correlation Between Major Leading Predictors') %>% print(., size = 'scriptsize')
 @
@@ -118,7 +118,7 @@ As a result, we can take a very high-dimensional dataset of indicator variables 
 
 Finally, we will deal with the ragged edges of the data by casting our model dynamics in state-space form and using a Kalman filtration and smoothing process. This will, in essence, adjust our factor forecasts by whether or not the indicator variables used in the construction of the factors have been released. This procedure is a modified version of the two-step dynamic factor model utilized in Giannone et al (2008) and Doz et al (2011).
 
-Finally, we will aggregate the smoothed and forecasted time series of factors up to a quarterly level. These now-quarterly forecasts of the factors can be used as covariates in an ARIMA model of the quarterly economic variables. The usage of factors as regressors of these economic variables is known as a \textit{dynamic factor model} (DFM).
+Finally, we will aggregate the smoothed and forecasted time series of factors up to a quarterly level. These now-quarterly forecasts of the factors can be used as covariates in an ARIMA model of the quarterly economic variables. The usage of factors as regressors of these economic variables is known as a \textit{dynamic factor model} (DFM). We additionally regularize our selection of regressors using a dynamic factor model.
 
 The next section will go over the data and estimation procedure in detail. While this model can be generalized to nowcasts of other economic variables, we will use the example of nowcasting GDP and components of GDP.
 
@@ -404,14 +404,15 @@ w^1_T & w^2_T & \dots & w^R_T\\
 \end{bmatrix}}_{W}
 \end{equation}
 
-As before we can estimate $A$ and $D$ with the standard OLS estimator.
-\begin{align*}
-\begin{bmatrix}
-	\widehat{A}\\
-	\widehat{D}
-\end{bmatrix} =
-(\Omega' \Omega)^{-1} (\Omega'\Phi)
-\end{align*}
+However, estimation of $A$ and $D$ with the standard OLS estimator is likely to lead to significant overfitting, particularly if the matrix of $f$ factors is particularly high-dimensional. We will instead use an elastic net process to regularize covariate selection (Zou and Hastie 2005). Hyperparameters of the elastic net are chosen through a cross-validated MAE-minimization process.
+% As before we can estimate $A$ and $D$ with the standard OLS estimator.
+% \begin{align*}
+% \begin{bmatrix}
+% 	\widehat{A}\\
+% 	\widehat{D}
+% \end{bmatrix} =
+% (\Omega' \Omega)^{-1} (\Omega'\Phi)
+% \end{align*}
 
 Estimated coefficients for $\widehat{A}$ and $\widehat{D}$ are below.
 <<>>= 
@@ -426,7 +427,6 @@ We perform a qualitative check of the in-sample fit, as well as a quantitative r
     	xtable::xtable(., caption = 'DFM Goodness of Fit', digits = 8) %>%
     	print(.)
 @
-
 
 
 
