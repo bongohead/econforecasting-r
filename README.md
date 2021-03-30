@@ -9,8 +9,9 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
-## 2021-04-01 [v0.12]
-- Add structural basics with impulse response
+## 2021-04-30 (target) [v0.12]
+- Added structural basics with impulse response
+- Added headers to CME scraping; user-agent now required to access JSON files
 
 ## 2021-03-19 [v0.11]
 - Added backtest code for nowcasts

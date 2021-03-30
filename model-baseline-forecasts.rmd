@@ -594,9 +594,10 @@ local({
 local({
   
 	# First get from Quandl
-	message('Getting Quandl data ...')
+	message('Starting Quandl data scrape...')
 	df =
-		lapply(1:24, function(j)
+		lapply(1:24, function(j) {
+			# message(j)
 			read_csv(
 				paste0(
 					'https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF', j,
@@ -606,7 +607,7 @@ local({
 				) %>%
 				dplyr::transmute(., vintageDate = Date, settle = Settle, j = j) %>%
 				dplyr::filter(., vintageDate >= as.Date('2010-01-01'))
-			) %>%
+			}) %>%
 		dplyr::bind_rows(.) %>%
 		dplyr::transmute(
 		.,
@@ -619,8 +620,9 @@ local({
 		varname = 'ffr',
 		fcname = 'cme'
 		)
+	message('Completed Quandl data scrape')
 	
-	
+	message('Starting CME data scrape...')
 	df2 =
 		tribble(
 			~ varname, ~ cmeId,
@@ -631,7 +633,9 @@ local({
 		purrr::transpose(.) %>%
 		purrr::map_dfr(., function(var) {
 			httr::GET(
-				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_=')
+				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
+				# 3/30/21 - CME website now requires user-agent header
+				add_headers(c('User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:87.0) Gecko/20100101 Firefox/87.0'))
 				) %>%
 				httr::content(., as = 'parsed') %>%
 				.$quotes %>%
@@ -653,8 +657,8 @@ local({
 		# Assume vintagedate is the same date as the last Quandl obs
 		dplyr::mutate(., vintageDate = max(df$vintageDate), fcname = 'cme') %>%
 		dplyr::filter(., value != 100) 
-	
-	
+	message('Completed CME data scrape...')
+
 	# Now combine, replacing df2 with df1 if necessary
 	combinedDf =
 		dplyr::full_join(df, df2, by = c('fcname', 'vintageDate', 'obsDate', 'varname')) %>%

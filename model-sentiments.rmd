@@ -48,6 +48,7 @@ local({
 			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
 			sentiment = ifelse(sentiment == 'sadness', 'negative', sentiment),
 			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
+			sentiment = ifelse(sentiment == 'anticipation', 'neutral', sentiment),
 
 		)
 		
