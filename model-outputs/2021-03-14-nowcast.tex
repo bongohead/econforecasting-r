@@ -1,0 +1,1406 @@
+\documentclass[11pt, letterpaper]{article}\usepackage[]{graphicx}\usepackage[]{color}
+% maxwidth is the original width if it is less than linewidth
+% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+\let\hlipl\hlkwb
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage[parfill]{parskip}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{appendix}
+\graphicspath{{D:/Onedrive/__Projects/econforecasting/documentation-templates/images/}}
+\newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
+\definecolor{econgreen}{RGB}{55, 91, 1}
+
+\geometry{left=2.6cm, right = 2.6cm, top = 3cm, bottom = 3cm}
+
+\fancypagestyle{plain}{
+	\let\oldheadrule\headrule% Copy \headrule into \oldheadrule
+	\renewcommand{\headrule}{\color{econgreen}\oldheadrule}
+	\lhead{\small{\textcolor{black}{\leftmark}}}
+	%\chead{}
+	\rhead{\small{\textcolor{black}{\thepage}}}
+	\lfoot{}
+	\cfoot{}
+	\rfoot{\textit{charles@cmefi.com}}
+	\renewcommand{\headrulewidth}{0.5pt}
+	%\renewcommand{\footrulewidth}{0.5pt}
+}\pagestyle{plain}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\begin{document}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{titlepage}
+\thispagestyle{empty}
+\newgeometry{left=5cm, top=5cm} %defines the geometry for the titlepage
+\pagecolor{econgreen}
+\noindent
+\includegraphics[width=2cm]{cmefi_short.png} \\[-1em]
+\color{white}
+\makebox[0pt][l]{\rule{1.3\textwidth}{1pt}}
+\par
+\noindent
+%\textbf{\textsf{A Macroeconomic Nowcasting Model}} 
+%\vskip5cm
+{\Huge \textsf{A Nowcasting Model for Time Series with Ragged-Edge Data}}
+\vskip\baselineskip
+\noindent
+\textsf{Model Run Date: March 15, 2021}\\
+\textsf{charles@cmefi.com}
+\restoregeometry % restores the geometry
+\nopagecolor% Use this to restore the color pages to white
+\end{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+\tableofcontents
+\newpage
+\listoftables
+\listoffigures
+\newpage
+\section{Motivation}
+\textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP data typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
+
+This delay is particularly salient during times of high volatility. During the first few months of the COVID-19 pandemic in the United States, many companies attempted to use high-frequency indicators to attempt nowcasts of the state of the macroeconomy. For example, a major investment bank forecasted Q2 GDP growth of -3\% on March 3rd; the estimate was revised down to -14\% by March 21st, -25\% by March 25th, and -40\% by April 10th. Yet many such models were ad-hoc and only able to use a small number of predictive indicators, such as jobless claims or traffic data.
+
+\textbf{Nowcasting is about deciphering key information about the state of the economy before official data is released.} Because of the fundamentally urgent nature of nowcasting, it is important that nowcast models exploit any latest, high-frequency data available. Nowcasts should be able to generate constantly rolling forecasts, updating these numbers in response to any new data releases.
+
+
+For example, suppose the date is early March, and the variable we want to predict is Q1 GDP. The simplest way to predict Q1 GDP would be to use historical quarterly data from various economic variables. But this data would only go up to Q4 of last year, and would fail to capture the critically important predictive power that could be provided by monthly and daily data released throughout January and February. This lag in publication dates of different data series is known as the \textbf{ragged-edge} problem.
+
+Suppose instead, we used monthly data as our predictors of Q1 GDP. Again, we will soon run in to a problem. As an example, imagine that we had imported 20 monthly data series. Suppose 5 of these series ended in December, 10 ended in January, and 5 ended in March. 
+
+\begin{figure}[H]
+\caption{Example of ragged-edge data}
+\includegraphics[scale=.7]{nowcast-time-2}
+\centering
+\end{figure}
+
+Traditional modeling methods would require us to either throw out variables or throw out months - for example, we could truncate all our data series at January and lose out the information provided by the 5 February data points. Alternatively, we could completely remove the 15 variables with data releasing before March. Both methods result in a serious loss of useful data and are unappealing.
+
+In this paper, we will develop and utilize a methodology that will allow us to use the information from \textbf{all variables} at \textbf{any dates}. This model will give an updated forecast in response to any new data releases. Additionally, the model can be generalized to nowcast any time series variable, not just GDP. The methodology for the model will be described in the next section.
+
+\newpage
+\section{Methodology Overview}
+Our goal will be to take monthly-frequency leading economic predictor variables --- industrial production, consumer sentiment, vehicle sales, and so on --- and use these to predict our quarterly variables. However, we will need a way to adjust for the ragged edges of the data.
+
+\begin{figure}[H]
+\caption{Overview of methodology (more detail in later sections)}
+\includegraphics[scale=.7]{nowcast-time-3}
+\centering
+\end{figure}
+
+
+To do this, we will use a methodology that relies heavily on principal components. It is well known that most economic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:37 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{lrrrrrr}
+  \hline
+term & VehicleSales & ConsumerSentiment & AdvSales & IndustrialProd & VIX & SP500 \\ 
+  \hline
+VehicleSales &  &  &  &  &  &  \\ 
+  ConsumerSentiment & 0.83 &  &  &  &  &  \\ 
+  AdvSales & 0.24 & 0.11 &  &  &  &  \\ 
+  IndustrialProd & 0.29 & 0.18 & 0.76 &  &  &  \\ 
+  VIX & -0.56 & -0.48 & -0.35 & -0.41 &  &  \\ 
+  SP500 & 0.11 & 0.15 & 0.53 & 0.42 & -0.64 &  \\ 
+  CFNAI & 0.48 & 0.37 & 0.72 & 0.88 & -0.64 & 0.54 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Correlation Between Major Leading Predictors} 
+\end{table}
+
+As a result, we can take a very high-dimensional dataset of indicator variables and extract a few time series, \textit{factors} or \textit{principal components}, using principal components analysis. These factors will be able to contain the majority of information within our larger, high-dimensional dataset. Then we will use a time series model of the factor behavior --- a vector autoregression, or VAR --- to forecast the factors forward in time. 
+
+Finally, we will deal with the ragged edges of the data by casting our model dynamics in state-space form and using a Kalman filtration and smoothing process. This will, in essence, adjust our factor forecasts by whether or not the indicator variables used in the construction of the factors have been released. This procedure is a modified version of the two-step dynamic factor model utilized in Giannone et al (2008) and Doz et al (2011).
+
+Finally, we will aggregate the smoothed and forecasted time series of factors up to a quarterly level. These now-quarterly forecasts of the factors can be used as covariates in an ARIMA model of the quarterly economic variables. The usage of factors as regressors of these economic variables is known as a \textit{dynamic factor model} (DFM).
+
+The next section will go over the data and estimation procedure in detail. While this model can be generalized to nowcasts of other economic variables, we will use the example of nowcasting GDP and components of GDP.
+
+\newpage
+\section{Estimation Process}
+The model is run every weekday; this documentation will use actual data and estimates from the most recent model run (2021-03-15) to illustrate the procedure. The final nowcasted output is located in the results section.
+
+\subsection{Data}
+We begin by importing monthly data of various leading indicators from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference, whereas \textit{base} means that no transformation was necessary for the variable to be stationary.
+
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:37 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{lc}
+  \hline
+Variable & Stationary Form \\ 
+  \hline
+PCE & dlog \\ 
+  Disposable Personal Income & dlog \\ 
+  Case-Shiller Housing Price Index & dlog \\ 
+  Housing Starts & dlog \\ 
+  Houses Sold & dlog \\ 
+  New Private Housing Permits & dlog \\ 
+  Manufacturers New Orders: Durable Goods & dlog \\ 
+  Capacity Utilization: Total Index & dlog \\ 
+  Total Construction Spending & dlog \\ 
+  Effective Federal Funds Rate & base \\ 
+  Treasury Yield 10Y & base \\ 
+  Treasury Yield 1Y & base \\ 
+  Vehicle Sales & base \\ 
+  Unemployment Rate & dlog \\ 
+  Weekly Economic Index & base \\ 
+  S\&P 500 & dlog \\ 
+  VIX & base \\ 
+  Outstanding Real Estate Loans & dlog \\ 
+  Outstanding Credit Card Balances & dlog \\ 
+  St. Louis Fed Financial Stress Index & base \\ 
+  U.S. Dollar Index & base \\ 
+  Average Weeks Unemployed & base \\ 
+  Retail \& Food Sales & dlog \\ 
+  KC Fed Labor Market Index & base \\ 
+  Consumer Confidence (OECD) & base \\ 
+  Industrial Production index & dlog \\ 
+  PCE Price Index & dlog \\ 
+  New York Fed: Business Conditions Manufacturing Survey & base \\ 
+  Dallas Fed: Current General Business Activity & base \\ 
+  Philadelphia Fed: Future Capital Expenditures Survey & base \\ 
+  Chicago Fed National Activity Index & base \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Imported Monthly Data - Leading Economic Variables} 
+\end{table}
+
+
+We additionally import quarterly data for our variables of interest. While this model can be used for nowcasting other data, here we will use import GDP, its components, as well as several other major macroeconomic variables of interest.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:37 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{lc}
+  \hline
+Variable & Stationary Form \\ 
+  \hline
+GDP & dlog \\ 
+  Consumption & dlog \\ 
+  Consumption: Goods & dlog \\ 
+  Consumption: Goods: Durable & dlog \\ 
+  Consumption: Goods: Durable: Motor Vehicles \& Parts & dlog \\ 
+  Consumption: Goods: Durable: Furnishings \& Durable Household Equipment & dlog \\ 
+  Consumption: Goods: Durable: Recreational Goods \& Services & dlog \\ 
+  Consumption: Goods: Durable: Other Durable Goods & dlog \\ 
+  Consumption: Goods: Nondurable Goods & dlog \\ 
+  Consumption: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Use & dlog \\ 
+  Consumption: Goods: Nondurable Goods: Clothing & dlog \\ 
+  Consumption: Goods: Nondurable Goods: Gasoline \& Energy Goods & dlog \\ 
+  Consumption: Goods: Nondurable Goods: Other Nondurable Goods & dlog \\ 
+  Consumption: Services & dlog \\ 
+  Consumption: Services: Housing \& Utilities & dlog \\ 
+  Consumption: Services: Health Care & dlog \\ 
+  Consumption: Services: Transportation & dlog \\ 
+  Consumption: Services: Recreation & dlog \\ 
+  Consumption: Services: Food Services \& Accomodations & dlog \\ 
+  Consumption: Services: Financial Services & dlog \\ 
+  Consumption: Services: Other Services & dlog \\ 
+  Consumption: Services: Nonprofit Services & dlog \\ 
+  Gross Private Domestic Investment & dlog \\ 
+  Gross Private Domestic Investment: Nonresidential Investment & dlog \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Structures & dlog \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Equipment & dlog \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Intellectual Property & dlog \\ 
+  Gross Private Domestic Investment: Residential Investment & dlog \\ 
+  Gross Private Domestic Investment: Change in Private Inventories & base \\ 
+  Net Exports & base \\ 
+  Exports & dlog \\ 
+  Exports: Exported Goods & dlog \\ 
+  Exports: Exported Services & dlog \\ 
+  Imports & dlog \\ 
+  Imports: Imported Goods & dlog \\ 
+  Imports: Imported Services & dlog \\ 
+  Government Spending & dlog \\ 
+  Government Spending: Federal & dlog \\ 
+  Government Spending: State \& Local & dlog \\ 
+  Delinquency Rate on Residential Mortgages & base \\ 
+  Delinquency Rate on Credit Cards & base \\ 
+  Delinquency Rate on Commercial \& Industrial Loans & base \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Imported Quarterly Data} 
+\end{table}
+
+
+Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:37 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{lc}
+  \hline
+Variable & Stationary Form \\ 
+  \hline
+\hline
+\end{tabular}
+\endgroup
+\caption{Other Imported Monthly Data} 
+\end{table}
+
+
+Most datasets have already been deseasonalized if necessary by their original source. We deseasonalize the remaining series by using the U.S. Census Bureau's seasonal adjustment package, X13-ARIMA-SEATS. We interface with it by using the \texttt{seasonal} package implementation in R (Sax and Eddelbuettel 2018).
+
+\subsection{Time Periods}
+Now we will segment the data by time periods. The imported monthly data will have ragged edges - i.e., some monthly data will be available for later months than others.
+
+We will let $T$ denote the number of dates for which data is available for all data series. $\tau$ will denote the number of dates for which data is available for at least one data series. $T^*$ will denote number of dates up to the end-of-quarter month of the $\tau$ date. For example, suppose date $\tau$ occurs on February. The end-of-quarter month, $T^*$, will be March (since Q1 runs through the end of March). 
+
+In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \dots, T^*$, where dates $T + 1$ through $\tau$ are the dates for which only some data are available, and dates $\tau + 1$ through $T^*$ are the dates for which no data is available up to the next quarter-ending month.
+\begin{figure}[H]
+\includegraphics[scale=.7]{nowcast-time}
+\centering
+\end{figure}
+For our data, we set the dates as follows.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:37 2021
+\begin{table}[H]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{cc}
+  \hline
+Date & $t$ \\ 
+  \hline
+2010-01-01 & $1$ \\ 
+  2020-12-01 & $T$ \\ 
+  2021-03-01 & $\tau$ \\ 
+  2021-03-01 & $T*$ \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Time Periods} 
+\end{table}
+
+
+\subsection{Principal Components Analysis}
+It is known that a large number of macroeconomic time series are highly correlated; using such covariates as regressors could naturally lead to problems with collinearity and unstable estimates. In addition, it becomes computationally burdensome to analyze data with such a large number of highly correlated variables. Instead, we use principal components analysis (PCA) to shrink our dataset in a way that allows us to retain most of the information in our original data.
+
+Estimation of factors is derived following Stock and Watson (2008). We begin by taking our $T \times N$ data matrix of $N$ monthly leading economic variables, from time 1 through $T$. The matrix, which we denote $X$, is normalized to mean 0 and variance 0 across all columns.
+
+The goal is to minimize the error $E$ below.
+\begin{align*}
+	X = F  \Lambda ' + E,\\
+	\text{where $X$ is the $T \times N$ data matrix,}\\
+	\text{$F$ is the $T \times N$ matrix of factors,}\\
+	\text{and $\Lambda$ is the weighting matrix.}\\
+\end{align*}
+
+Estimation of factors is derived following Stock and Watson (2008).
+\begin{align*}
+	\widehat{\Lambda} = \text{eigenvectors of } (X'X)\\
+	\widehat{F} = X \widehat{\Lambda}
+\end{align*}
+
+Once factors are derived, we perform a qualitative check of the factors. The first factor usually represents the COVID-19 shock. Typically the second factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The third and fourth factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-8-1} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-8-2} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-8-3} 
+
+}
+
+
+
+
+
+Once factors are derived, we select the optimal number of factors to use in predictive regressions. To do so, we use the information criteria from Bai and Ng (2002). Let $R$ refer to the number of factors used. We also include alternative specifications of the information criteria from Bai and Ng as a robustness check.
+\begin{align*}
+	IC(R) = MSE + R \times \frac{N+T}{NT} \times log\left(\frac{NT}{N+T}\right)
+\end{align*}
+
+\begin{figure}[H]
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-9-1} 
+
+}
+
+\caption[Factor Selection]{Factor Selection}\label{fig:unnamed-chunk-9}
+\end{figure}
+
+
+
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:38 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{cccccccc}
+  \hline
+Factors (R) & Variance Explained & Pct of Total Var Explained & Cumulative Pct & MSE & IC1 & IC2 & IC3 \\ 
+  \hline
+  1 & 8.33 & 0.27 & 0.27 & 0.73 & 0.85 & 0.86 & 0.84 \\ 
+    2 & 5.78 & 0.19 & 0.46 & 0.54 & 0.80 & 0.81 & 0.76 \\ 
+    3 & 4.02 & 0.13 & 0.58 & 0.41 & 0.80 & 0.82 & 0.74 \\ 
+    4 & 2.00 & 0.06 & 0.65 & 0.35 & 0.86 & 0.90 & 0.79 \\ 
+    5 & 1.77 & 0.06 & 0.71 & 0.29 & 0.93 & 0.98 & 0.85 \\ 
+    6 & 1.29 & 0.04 & 0.75 & 0.25 & 1.02 & 1.07 & 0.91 \\ 
+    7 & 1.14 & 0.04 & 0.78 & 0.21 & 1.11 & 1.17 & 0.99 \\ 
+    8 & 0.99 & 0.03 & 0.82 & 0.18 & 1.21 & 1.28 & 1.07 \\ 
+    9 & 0.80 & 0.03 & 0.84 & 0.16 & 1.31 & 1.39 & 1.15 \\ 
+   10 & 0.76 & 0.02 & 0.87 & 0.13 & 1.42 & 1.50 & 1.24 \\ 
+   11 & 0.63 & 0.02 & 0.89 & 0.11 & 1.52 & 1.62 & 1.33 \\ 
+   12 & 0.59 & 0.02 & 0.91 & 0.09 & 1.63 & 1.73 & 1.42 \\ 
+   13 & 0.49 & 0.02 & 0.92 & 0.08 & 1.75 & 1.86 & 1.52 \\ 
+   14 & 0.46 & 0.01 & 0.94 & 0.06 & 1.86 & 1.98 & 1.61 \\ 
+   15 & 0.40 & 0.01 & 0.95 & 0.05 & 1.98 & 2.10 & 1.71 \\ 
+   16 & 0.30 & 0.01 & 0.96 & 0.04 & 2.09 & 2.23 & 1.81 \\ 
+   17 & 0.26 & 0.01 & 0.97 & 0.03 & 2.21 & 2.36 & 1.91 \\ 
+   18 & 0.22 & 0.01 & 0.98 & 0.02 & 2.34 & 2.49 & 2.02 \\ 
+   19 & 0.19 & 0.01 & 0.98 & 0.02 & 2.46 & 2.62 & 2.12 \\ 
+   20 & 0.16 & 0.01 & 0.99 & 0.01 & 2.58 & 2.75 & 2.23 \\ 
+   21 & 0.11 & 0.00 & 0.99 & 0.01 & 2.71 & 2.88 & 2.34 \\ 
+   22 & 0.10 & 0.00 & 0.99 & 0.01 & 2.83 & 3.02 & 2.44 \\ 
+   23 & 0.08 & 0.00 & 1.00 & 0.00 & 2.96 & 3.15 & 2.55 \\ 
+   24 & 0.04 & 0.00 & 1.00 & 0.00 & 3.08 & 3.29 & 2.66 \\ 
+   25 & 0.03 & 0.00 & 1.00 & 0.00 & 3.21 & 3.42 & 2.77 \\ 
+   26 & 0.02 & 0.00 & 1.00 & 0.00 & 3.34 & 3.56 & 2.88 \\ 
+   27 & 0.01 & 0.00 & 1.00 & 0.00 & 3.47 & 3.69 & 2.99 \\ 
+   28 & 0.01 & 0.00 & 1.00 & 0.00 & 3.60 & 3.83 & 3.10 \\ 
+   29 & 0.01 & 0.00 & 1.00 & 0.00 & 3.72 & 3.97 & 3.21 \\ 
+   30 & 0.00 & 0.00 & 1.00 & 0.00 & 3.85 & 4.10 & 3.32 \\ 
+   31 & 0.00 & 0.00 & 1.00 & 0.00 & 3.98 & 4.24 & 3.43 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Factor Selection Process} 
+\end{table}
+
+
+Choosing the IC-minimizing $R$ lets us choose $R = 3$ factors.
+
+
+
+\subsection{Factor VAR}
+The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016). As before, $R$ will refer to the total number of factors we extracted in the previous section, and $f^i_t$ for $i = 1, \dots, R$ will refer to the value of factor $i$ at time $t$.
+
+We will use a VAR(1) model of the following form.
+\begin{align*}
+\underbrace{\begin{bmatrix}
+	f^1_{t}\\
+	f^2_{t}\\
+	\vdots \\
+	f^R_{t}
+\end{bmatrix}}_{z_t}
+=
+B
+\underbrace{\begin{bmatrix}
+	f^1_{t-1}\\
+	f^2_{t-1}\\
+	\vdots \\
+	f^R_{t-1}
+\end{bmatrix}}_{z_{t-1}}
++
+C
++
+\underbrace{\begin{bmatrix}
+v^1_t\\
+v^2_t\\
+\vdots\\
+v^R_t
+\end{bmatrix}}_{v_t},\\
+\text{where $z_t$ is the $R \times 1$ matrix of time $t$ factors,}\\
+\text{$B$ is the $R \times R$ coefficient matrix,}\\
+\text{$C$ is the $R \times 1$ constant matrix,}\\
+\text{and $v_t$ is the $R \times 1$ matrix of errors for time $t$.}
+\end{align*}
+
+
+We wish to estimate the coefficient matrices $B$ and $C$. This can be done via OLS estimation. We first rewrite the data as the standard linear equation,
+\begin{align*}
+\underbrace{\begin{bmatrix}
+f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
+\vdots & \vdots & \vdots & \vdots \\
+f^1_{T} & f^2_{T} & \dots & f^R_{T}
+\end{bmatrix}}_{\Gamma}
+=
+\underbrace{\begin{bmatrix}
+1 & f^1_{1} & f^2_{1} & \dots & f^R_{1}\\
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+\vdots & \vdots & \vdots & \vdots & \vdots \\
+1 & f^1_{T-1} & f^2_{T-1} & \dots & f^R_{T-1}
+\end{bmatrix}}_{\Psi}
+\underbrace{\begin{bmatrix}
+C'\\
+B'
+\end{bmatrix}}_{\Lambda}
+ +
+\underbrace{\begin{bmatrix}
+v^1_2 & v^2_2 & \dots & v^R_2\\
+v^1_3 & v^2_3 & \dots & v^R_3\\
+\vdots\\
+v^1_T & v^2_T & \dots & v^R_T\\
+\end{bmatrix}}_{V},\\
+\text{where $\Gamma$ is the $T-1 \times R$ dependent data matrix,}\\
+\text{$\Psi$ is the $T-1 \times R+1$ independent data matrix,}\\
+\text{$\Lambda$ is the $R+1 \times R$ matrix of coefficient weightings,}\\
+\text{and $V$ is the $T-1 \times R$ matrix of residuals.}
+\end{align*}
+The coefficient matrix $\Lambda$ can be estimated by the standard OLS estimator.
+\begin{align*}
+\widehat{\Lambda} = (\Psi' \Psi)^{-1} (\Psi'\Gamma)
+\end{align*}
+It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which can then be transposed to derive our estimates of the original coefficient matrices B and C, $\widehat{B}$ and $\widehat{C}$.
+
+The estimated coefficients in $\widehat{B}$ and $\widehat{C}$ are shown below.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:38 2021
+\begin{table}[H]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{lrrrr}
+  \hline
+name & constant & f1.l1 & f2.l1 & f3.l1 \\ 
+  \hline
+f1 & -0.01 & 0.34 & 0.01 & -0.16 \\ 
+  f2 & -0.04 & -0.04 & 0.97 & -0.05 \\ 
+  f3 & 0.03 & -0.30 & -0.02 & 0.76 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Factor VAR Coefficients} 
+\end{table}
+
+
+
+Finally, we perform a qualitative check of the fitted values and residuals. It is important that factors that are predictable --- i.e., factors 2 and 3, since they represent output --- have a good fit. Since factor 1 represents the COVID-19 shock, we should expect that the fit is poor; such a shock should not be predictable simply from the time dynamics of the factors; so if the fit is good, our model is likely overfitted.
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-12-1} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-12-2} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-12-3} 
+
+}
+
+
+
+
+
+\begin{figure}[H]
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-13-1} 
+
+}
+
+\caption[Factor VAR Residuals]{Factor VAR Residuals}\label{fig:unnamed-chunk-13}
+\end{figure}
+
+
+
+Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are shown below.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:39 2021
+\begin{table}[H]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{lrr}
+  \hline
+varname & MAE & MSE \\ 
+  \hline
+f1 & 1.00839425 & 7.24872996 \\ 
+  f2 & 0.29383347 & 0.17059919 \\ 
+  f3 & 0.60373241 & 0.98924118 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{DFM Goodness of Fit} 
+\end{table}
+
+
+
+
+\subsection{Dynamic Factor Models}
+Now let us consider again the monthly leading economic variables which were include in the principal components analysis. We will model these as dynamic factor models (DFMs), i.e. - they are regressed on the factor variables derived from earlier. As before, let $x^i_t$ refer to the time $t$ value for monthly variable $x^i$, where $i = 1, \dots, N$.
+
+The factor models take the following form:
+\begin{align*}
+\underbrace{\begin{bmatrix}
+	x^1_t\\
+	x^2_t\\
+	\vdots \\
+	x^N_t
+\end{bmatrix}}_{y_t}
+=
+A
+\underbrace{\begin{bmatrix}
+	f^1_{t}\\
+	f^2_{t}\\
+	\vdots \\
+	f^R_{t}
+\end{bmatrix}}_{z_t}
++
+D 
++
+\underbrace{\begin{bmatrix}
+	w^1_t\\
+	w^2_t\\
+	\vdots\\
+	w^N_t
+\end{bmatrix}}_{w_t},\\
+\text{where $y_t$ is the $N \times 1$ vector of monthly variables at time $t$,}\\
+\text{$A$ is the $N \times R$ coefficient matrix,}\\
+\text{$z_t$ is the $R \times 1$ vector of factors at time $t$,}\\
+\text{$D$ is the $N \times 1$ constant matrix,}\\
+\text{and $w_t$ is the $N \times 1$ vector of errors at time $t$.}\\
+\end{align*}
+We wish to estimate the coefficient matrices $A$ and $D$. As before, we can do this by estimating this as an OLS equation, writing the data matrices as follows
+
+\begin{equation}
+\underbrace{\begin{bmatrix}
+x^1_{2} & x^2_{2} & \dots & x^N_{2}\\
+x^1_{3} & x^2_{3} & \dots & x^N_{3}\\
+\vdots & \vdots & \vdots & \vdots \\
+x^1_{T} & x^2_{T} & \dots & x^N_{T}\\
+\end{bmatrix}}_{\Phi}
+=
+\underbrace{\begin{bmatrix}
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+1 & f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
+\vdots & \vdots & \vdots & \vdots & \vdots \\
+1 & f^1_{T} & f^2_{T} & \dots & f^R_{T}\\
+\end{bmatrix}}_{\Omega}
+\begin{bmatrix}
+D'\\
+A'
+\end{bmatrix}
+ +
+\underbrace{\begin{bmatrix}
+w^1_2 & w^2_2 & \dots & w^R_2\\
+w^1_3 & w^2_3 & \dots & w^R_3\\
+\vdots\\
+w^1_T & w^2_T & \dots & w^R_T\\
+\end{bmatrix}}_{W}
+\end{equation}
+
+As before we can estimate $A$ and $D$ with the standard OLS estimator.
+\begin{align*}
+\begin{bmatrix}
+	\widehat{A}\\
+	\widehat{D}
+\end{bmatrix} =
+(\Omega' \Omega)^{-1} (\Omega'\Phi)
+\end{align*}
+
+Estimated coefficients for $\widehat{A}$ and $\widehat{D}$ are below.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:39 2021
+\begin{table}[H]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{lrrrr}
+  \hline
+name & constant & f1 & f2 & f3 \\ 
+  \hline
+mpce & 0.00 & 0.00 & 0.00 & 0.00 \\ 
+  pid & 0.00 & -0.00 & -0.00 & -0.00 \\ 
+  hpi & 0.00 & 0.00 & -0.00 & 0.00 \\ 
+  houst & 0.01 & 0.01 & 0.00 & 0.01 \\ 
+  hsold & 0.01 & 0.01 & -0.00 & 0.01 \\ 
+  hpermits & 0.01 & 0.01 & 0.00 & 0.01 \\ 
+  mnodg & 0.00 & 0.01 & 0.00 & 0.01 \\ 
+  cu & 0.00 & 0.00 & 0.00 & 0.00 \\ 
+  cons & 0.00 & 0.00 & -0.00 & 0.00 \\ 
+  ffr & 0.59 & 0.03 & -0.21 & -0.13 \\ 
+  t10y & 2.27 & 0.06 & 0.10 & -0.28 \\ 
+  t01y & 2.27 & 0.06 & 0.10 & -0.28 \\ 
+  vsales & 15.97 & 0.21 & -0.75 & -0.09 \\ 
+  ue & -0.00 & -0.04 & -0.00 & -0.01 \\ 
+  wei & 1.62 & 0.26 & 0.22 & -0.86 \\ 
+  spy & 0.01 & 0.00 & -0.00 & 0.00 \\ 
+  vix & 17.97 & -1.21 & 0.94 & 1.53 \\ 
+  loansre & 0.00 & -0.00 & -0.00 & 0.00 \\ 
+  loanscc & 0.01 & 0.00 & 0.00 & -0.00 \\ 
+  stlfsi & -0.26 & -0.13 & 0.04 & 0.10 \\ 
+  usd & 103.78 & -0.52 & -4.03 & 1.16 \\ 
+  uemean & 29.67 & 0.47 & 2.38 & -0.58 \\ 
+  advsales & 0.00 & 0.01 & 0.00 & 0.00 \\ 
+  kclfi & -0.47 & 0.05 & -0.42 & -0.07 \\ 
+  csent & 99.78 & 0.03 & -0.54 & -0.19 \\ 
+  ipi & 0.00 & 0.00 & 0.00 & 0.00 \\ 
+  pcepi & 0.00 & 0.00 & 0.00 & 0.00 \\ 
+  snyfed & 6.18 & 2.97 & -0.08 & -3.51 \\ 
+  stxfed & 2.41 & 3.65 & -1.16 & -4.58 \\ 
+  sphfed & 21.05 & 0.84 & -2.28 & -1.41 \\ 
+  cfnai & -0.07 & 0.57 & 0.02 & 0.23 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Estimated DFM Coefficients} 
+\end{table}
+
+
+We perform a qualitative check of the in-sample fit, as well as a quantitative review of the goodness-of-fit. The graphs of the fitted plots are located in the appendix.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:39 2021
+\begin{table}[H]
+\centering
+\begingroup\footnotesize
+\begin{tabular}{lrr}
+  \hline
+varname & MAE & MSE \\ 
+  \hline
+advsales & 0.00678300 & 0.00014448 \\ 
+  cfnai & 0.32002320 & 0.20632292 \\ 
+  cons & 0.00846566 & 0.00011839 \\ 
+  csent & 0.36558403 & 0.21885944 \\ 
+  cu & 0.00422648 & 0.00003390 \\ 
+  ffr & 0.39104184 & 0.22373327 \\ 
+  houst & 0.06475798 & 0.00635376 \\ 
+  hpermits & 0.03715992 & 0.00218911 \\ 
+  hpi & 0.00272140 & 0.00001367 \\ 
+  hsold & 0.05635031 & 0.00578140 \\ 
+  ipi & 0.00413608 & 0.00003173 \\ 
+  kclfi & 0.20756271 & 0.07727951 \\ 
+  loanscc & 0.01580556 & 0.00224962 \\ 
+  loansre & 0.00199023 & 0.00000679 \\ 
+  mnodg & 0.02971798 & 0.00180317 \\ 
+  mpce & 0.00375920 & 0.00003395 \\ 
+  pcepi & 0.00097996 & 0.00000159 \\ 
+  pid & 0.00511091 & 0.00009491 \\ 
+  snyfed & 6.04287724 & 61.38702195 \\ 
+  sphfed & 5.73213440 & 48.22715674 \\ 
+  spy & 0.02188882 & 0.00104436 \\ 
+  stlfsi & 0.24403593 & 0.12266733 \\ 
+  stxfed & 7.92470247 & 102.69184526 \\ 
+  t01y & 0.21489291 & 0.07503840 \\ 
+  t10y & 0.21489291 & 0.07503840 \\ 
+  ue & 0.03346797 & 0.00220366 \\ 
+  uemean & 3.17902462 & 16.91468256 \\ 
+  usd & 3.56094127 & 20.38050011 \\ 
+  vix & 3.44892273 & 20.67122736 \\ 
+  vsales & 0.90436106 & 1.18141193 \\ 
+  wei & 1.00338503 & 1.79425100 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{DFM Goodness of Fit} 
+\end{table}
+
+
+
+
+
+
+\subsection{State-Space Setup}
+Now, combining our equations for the DFM and the VAR, we have the below system.
+\begin{align*}
+z_t = B z_{t-1} + Cx + v_t\\
+y_t = A z_t + w_t
+\end{align*}
+
+This system is now fully specified and in state-space form. The first equation is our state (or transition) equation. The second equation is our measurement equation. 
+
+We use our estimated values $B$, $C$, $A$, and $D$ calculated in our previous two sections. To run the Kalman Filter, we will want to create the actual data matrices for $z_t$ and $y_t$. $z_t$ can be constructed as before, using data for factors from time 1 through $T$. However, unlike in the previous two sections, we will want to create $y_t$ matrices not for just time periods 1 through $T$, but now for time periods $1$ through $\tau$. Elements in $y_t$ may be set to any value for missing observations; the process of Kalmam filtration will render this choice irrelevant.
+
+Specifically, we construct the matrices below.
+\begin{align*}
+z_t
+=
+\begin{bmatrix}
+	f^1_{t}\\
+	f^2_{t}\\
+	\vdots \\
+	f^R_{t}
+\end{bmatrix}, \forall t \in 1, \dots, T\\
+y_t
+=
+\begin{bmatrix}
+	\text{$x^1_{t}$ if available, otherwise 0}\\
+	\text{$x^2_{t}$ if available, otherwise 0}\\
+	\vdots \\
+	\text{$x^N_{t}$ if available, otherwise 0}\\
+\end{bmatrix}, \forall t \in 1, \dots, \tau
+\end{align*}
+
+For Kalman filtration, we also require an assumed distribution on $v_t$ and $w_t$. We assume that $v_t$ is distributed normally with mean 0 and constant diagonal covariance matrix denoted $Q$, with diagonal entries calculated by taking the average squared values of the residuals of the VAR.
+
+We also assume $w_t$ is distributed normally with mean $0$. However, we no longer specify the covariance matrix as constant, but as the time-dependent matrices $R_t$. For $t \in 1, \dots, T+1$, we let $R_t$ be a diagonal covariance matrix with diagonal entries calcualted by taking the average squared values of the residuals of the DFM. For $t \in T+1, \dots, \tau$, we let the diagonal elements of $R_t$ be equal to infinity if the corresponding element of $y_t$ is missing for that time period; and equal to the average squared value of the residual if otherwise.
+\begin{align*}
+	v_t \sim \mathcal{N}(0, Q)\\
+	w_t \sim \mathcal{N}(0, R_t)
+\end{align*}
+
+\subsection{Kalman Filtration}
+Now that our state-space model is fully specified, we can begin the Kalman filter recursions.
+\begin{align*}
+	z_t = B z_{t-1} + Cx + v_t\\
+	y_t = A z_t + Dx + w_t\\
+	v_t \sim \mathcal{N}(0, Q)\\
+	w_t \sim \mathcal{N}(0, R_t)
+\end{align*}
+
+To solve this programmatically, we will need the previously estimated matrices $A$, $B$, $C$, and $D$; the matrices $z_t$ from 1 through $T$; the matrices $y_t$ from 1 through $\tau$; the covariance matrix $Q$; and finally, the covariance matrices $R_t$ from 1 through $\tau$.
+
+We initialize the Kalman filter with the following standard assumptions. 
+\begin{align*}
+	\vv{z}_{0|0} = 0\\
+	\vv{CovZ} = 0
+\end{align*}
+
+Now for $t = 1, \dots, \tau$, we iterate through the Kalman filter recursions and iteratively calculate the values below.
+\begin{align*}
+	\vv{z}_{t|t-1} &= B \vv{z}_{t-1|t-1} + C\\
+	\vv{CovZ}_{t|t-1} &= B \vv{CovZ}_{t-1|t-1} + Q\\
+	\vv{y}_{t|t-1} &= A \vv{z}_{t|t-1} + D\\
+	\vv{CovY}_{t|t-1} &= A \vv{CovZ}_{t|t-1} A' + R_t\\
+	P_t &= \vv{CovZ}_{t|t-1} A' \vv{CovY}^{-1}_{t|t-1}\\
+	\vv{z}_{t|t} &= \vv{z}_{t|t-1} + P_t (\vv{y}_t - \vv{y}_{t|t-1})\\
+	\vv{CovZ}_{t|t} &= \vv{CovZ}_{t|t-1} - P_t (\vv{CovY}_{t|t-1}) P'_t
+\end{align*}
+Note that the during recursions $T + 1, \dots \tau$, the infinite values in the $R_t$ matrix will cause infinite values in the $\vv{CovY}_{t|t-1}$ matrix. This may prevent standard computational methods from computing the inverse of the matrix needed in the step for calculation of $\vv{CovZ}_{t|t}$. Alternative methods, such as a Cholesky decomposition before inversion, are used to subvert this problem.
+
+The Kalman filter allows us to recover all the time $t$ conditional state matrices $z_{t|t}$ that have been adjusted for information from the monthly datasets. However, of more interest to us is the value of the state matrices when conditioned on all data available at time $\tau$, $z_{t|\tau}$. This can be recovered by using the Kalman smoother.
+
+Recursively iterating over $t = \tau - 1, \dots, 1$, we calculate the following values. 
+\begin{align*}
+	S_{t} &= \vv{CovZ}_{t|t} B' \vv{CovZ}^{-1}_{t + 1|t}\\
+	\vv{z}_{t|\tau} &= \vv{z}_{t|t} + S_t (\vv{z}_{t+1|\tau} - \vv{z}_{t + 1|t})\\
+	\vv{CovZ}_{t|\tau} &= \vv{CovZ}_{t|t} - S_t(\vv{CovZ}_{t + 1|t} - \vv{CovZ}_{t + 1|\tau})S'_t
+\end{align*}
+These values $\vv{z}_{t|\tau}$ will serve as our estimates of the state variables (i.e., the PCA factors) from time 1 through $\tau$.
+
+Finally, we want to forecast the the state vector $z_{t|\tau}$ for $t = \tau + 1, \dots, T^*$. This can be done through the typical Kalman filter forecasting step.
+
+Recursively iterating over $t = \tau + 1, \dots, T^*$, we calculate the following values.
+\begin{align*}
+	\vv{z}_{t|\tau} &= B \vv{z}_{t-1|\tau} + C\\
+	\vv{CovZ}_{t|\tau} &= B \vv{CovZ}_{t-1|\tau} B'+ Q\\
+	\vv{y}_{t|\tau} &= A \vv{z}_{t|\tau} + D\\
+	\vv{CovY}_{t|\tau} &= A \vv{CovZ}_{t|\tau} A' + R_0
+\end{align*}
+Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the Kalman smoother, we will now be able to obtain the full time series for the factors from time 1 through time $T^*$.
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-17-1} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-17-2} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-17-3} 
+
+}
+
+
+
+
+% \subsection{Nowcasting Monthly Covariates}
+% Now that we have our Kalman-smoothed factors from time $1$ through time $T^*$, we will be able to use these as covariates to model any monthly time series that we have. 
+
+\subsection{Nowcast Step}
+Now that we have our Kalman-smoothed and forecasted factors from time $1$ through time $T^*$, we will be able to use these as covariates to model any monthly time series that we have.
+
+We begin by aggregating these monthly factors into quarterly data by taking a simple monthly average for each factor over each quarter.
+
+In this section, we will use these now-quarterly factors to forecast our quarterly subcomponents of GDP. As discussed in the data import section, these have been transformed for stationarity, typically by taking a log-difference.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:40 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{l}
+  \hline
+Variable \\ 
+  \hline
+Consumption: Goods: Durable: Motor Vehicles \& Parts \\ 
+  Consumption: Goods: Durable: Furnishings \& Durable Household Equipment \\ 
+  Consumption: Goods: Durable: Recreational Goods \& Services \\ 
+  Consumption: Goods: Durable: Other Durable Goods \\ 
+  Consumption: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Use \\ 
+  Consumption: Goods: Nondurable Goods: Clothing \\ 
+  Consumption: Goods: Nondurable Goods: Gasoline \& Energy Goods \\ 
+  Consumption: Goods: Nondurable Goods: Other Nondurable Goods \\ 
+  Consumption: Services: Housing \& Utilities \\ 
+  Consumption: Services: Health Care \\ 
+  Consumption: Services: Transportation \\ 
+  Consumption: Services: Recreation \\ 
+  Consumption: Services: Food Services \& Accomodations \\ 
+  Consumption: Services: Financial Services \\ 
+  Consumption: Services: Other Services \\ 
+  Consumption: Services: Nonprofit Services \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Structures \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Equipment \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Intellectual Property \\ 
+  Gross Private Domestic Investment: Residential Investment \\ 
+  Gross Private Domestic Investment: Change in Private Inventories \\ 
+  Exports: Exported Goods \\ 
+  Exports: Exported Services \\ 
+  Imports: Imported Goods \\ 
+  Imports: Imported Services \\ 
+  Government Spending: Federal \\ 
+  Government Spending: State \& Local \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Quarterly Data Covariates} 
+\end{table}
+
+We will notate each of these gdp subcomponents as $y^i$ and $M$ as the total number of covariates, so that $i = 1, \dots, M$.
+
+Note that many higher-level components of GDP (including GDP itself) are \textit{not} forecasted directly in this step; these will be forecasted later by aggregating their subcomponents.
+
+Now we will specify that these GDP subcomponents follow a DFM-AR(1) model; i.e., they will be functions of the monthly-aggregated factors as well as the first lag of themselves.
+\begin{align*}
+	y^i_t
+	=
+	\beta
+	\begin{bmatrix}
+	1 \\
+	y^i_{t-1}\\
+	f^1_t \\
+	\vdots\\
+	f^R_t
+	\end{bmatrix}
+	+
+	e_t
+\end{align*}
+The $\beta$ coefficients can be estimated with a typical OLS process, where the training data is constituted of the $y^i_t$ quarterly covariates, the lagged quarterly covariates $y^i_{t-1}$, and the quarterly-aggregated factor variables. The data is cut off at the date for which the any data on the quarterly covariates are missing.
+
+After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
+The forecasted results are as follows.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:40 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{lrr}
+  \hline
+Variable & 2021Q1 & 2021Q2 \\ 
+  \hline
+Consumption: Goods: Durable: Motor Vehicles \& Parts & 0.08 & 0.04 \\ 
+  Consumption: Goods: Durable: Furnishings \& Durable Household Equipment & 0.07 & 0.02 \\ 
+  Consumption: Goods: Durable: Recreational Goods \& Services & 0.05 & 0.04 \\ 
+  Consumption: Goods: Durable: Other Durable Goods & 0.11 & 0.04 \\ 
+  Consumption: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Use & 0.01 & 0.00 \\ 
+  Consumption: Goods: Nondurable Goods: Clothing & 0.09 & 0.03 \\ 
+  Consumption: Goods: Nondurable Goods: Gasoline \& Energy Goods & 0.05 & 0.01 \\ 
+  Consumption: Goods: Nondurable Goods: Other Nondurable Goods & 0.02 & 0.01 \\ 
+  Consumption: Services: Housing \& Utilities & 0.00 & 0.00 \\ 
+  Consumption: Services: Health Care & 0.06 & 0.03 \\ 
+  Consumption: Services: Transportation & 0.07 & 0.03 \\ 
+  Consumption: Services: Recreation & 0.09 & 0.04 \\ 
+  Consumption: Services: Food Services \& Accomodations & 0.08 & 0.02 \\ 
+  Consumption: Services: Financial Services & 0.00 & 0.00 \\ 
+  Consumption: Services: Other Services & 0.03 & 0.02 \\ 
+  Consumption: Services: Nonprofit Services & -0.07 & -0.02 \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Structures & 0.00 & 0.00 \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Equipment & 0.05 & 0.03 \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Intellectual Property & 0.02 & 0.02 \\ 
+  Gross Private Domestic Investment: Residential Investment & 0.06 & 0.04 \\ 
+  Gross Private Domestic Investment: Change in Private Inventories & 102.80 & 108.96 \\ 
+  Exports: Exported Goods & 0.05 & 0.03 \\ 
+  Exports: Exported Services & 0.03 & 0.03 \\ 
+  Imports: Imported Goods & 0.06 & 0.04 \\ 
+  Imports: Imported Services & 0.07 & 0.05 \\ 
+  Government Spending: Federal & -0.01 & -0.01 \\ 
+  Government Spending: State \& Local & -0.00 & 0.00 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{DFM-AR(1) Forecasted GDP Subcomponents} 
+\end{table}
+
+
+We can then backtransform the data so that the units are in base values. After backtransformation, we are ready to aggregate these up to higher-level GDP components. In particular, we calculate the variables below.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:40 2021
+\begin{table}[H]
+\centering
+\begingroup\scriptsize
+\begin{tabular}{l}
+  \hline
+Variable \\ 
+  \hline
+GDP \\ 
+  Consumption \\ 
+  Consumption: Goods \\ 
+  Consumption: Goods: Durable \\ 
+  Consumption: Goods: Nondurable Goods \\ 
+  Consumption: Services \\ 
+  Gross Private Domestic Investment \\ 
+  Gross Private Domestic Investment: Nonresidential Investment \\ 
+  Net Exports \\ 
+  Exports \\ 
+  Imports \\ 
+  Government Spending \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Summable Quarterly Data Covariates} 
+\end{table}
+
+These are calculated using the standard GDP aggregation equations, e.g., net exports = exports - imports, and so on.
+Finally, we convert these into annualized percentage change, as this is the standard format in which GDP subcomponents are reported in. The results are reported in the next section.
+
+We also use a similar DFM-AR(1) specification to forecast out other economic variables of interest, with results reported in the next section.
+
+
+\section{Results}
+Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:40 2021
+\begin{table}[H]
+\centering
+\begingroup\fontsize{10pt}{12pt}\selectfont
+\begin{tabular}{lrr}
+  \hline
+Variable & 2021Q1 & 2021Q2 \\ 
+  \hline
+\hspace{0mm} \textbf{GDP} & 13.99 & 5.36 \\ 
+  \hspace{0mm} \textbf{Consumption} & 21.60 & 7.18 \\ 
+  \hspace{8mm}  Goods & 23.17 & 8.02 \\ 
+  \hspace{16mm}  Durable & 43.62 & 13.53 \\ 
+  \hspace{24mm}  Motor Vehicles \& Parts & 35.76 & 15.25 \\ 
+  \hspace{24mm}  Furnishings \& Durable Household Equipment & 30.97 & 6.52 \\ 
+  \hspace{24mm}  Recreational Goods \& Services & 24.44 & 15.81 \\ 
+  \hspace{24mm}  Other Durable Goods & 54.53 & 15.58 \\ 
+  \hspace{16mm}  Nondurable Goods & 6.85 & 4.32 \\ 
+  \hspace{24mm}  Food \& Beverages for Off-Premises Use & 2.63 & 0.58 \\ 
+  \hspace{24mm}  Clothing & 43.22 & 12.51 \\ 
+  \hspace{24mm}  Gasoline \& Energy Goods & 20.99 & 4.67 \\ 
+  \hspace{24mm}  Other Nondurable Goods & 8.65 & 4.51 \\ 
+  \hspace{8mm}  Services & 12.41 & 6.64 \\ 
+  \hspace{16mm}  Housing \& Utilities & 1.16 & 1.16 \\ 
+  \hspace{16mm}  Health Care & 25.11 & 12.49 \\ 
+  \hspace{16mm}  Transportation & 34.17 & 12.28 \\ 
+  \hspace{16mm}  Recreation & 43.81 & 18.26 \\ 
+  \hspace{16mm}  Food Services \& Accomodations & 39.19 & 10.47 \\ 
+  \hspace{16mm}  Financial Services & 1.97 & 1.55 \\ 
+  \hspace{16mm}  Other Services & 12.20 & 7.08 \\ 
+  \hspace{16mm}  Nonprofit Services & -24.89 & -7.30 \\ 
+  \hspace{0mm} \textbf{Gross Private Domestic Investment} & 20.59 & 11.25 \\ 
+  \hspace{8mm}  Nonresidential Investment & 17.37 & 9.35 \\ 
+  \hspace{16mm}  Structures & 1.18 & 0.53 \\ 
+  \hspace{16mm}  Equipment & 23.74 & 14.71 \\ 
+  \hspace{16mm}  Intellectual Property & 7.35 & 6.46 \\ 
+  \hspace{8mm}  Residential Investment & 25.72 & 16.77 \\ 
+  \hspace{8mm}  Change in Private Inventories & 102.80 & 108.96 \\ 
+  \hspace{0mm} \textbf{Net Exports} & -1249.57 & -1328.47 \\ 
+  \hspace{0mm} \textbf{Exports} & 27.71 & 12.23 \\ 
+  \hspace{8mm}  Exported Goods & 22.53 & 12.63 \\ 
+  \hspace{8mm}  Exported Services & 14.40 & 11.06 \\ 
+  \hspace{0mm} \textbf{Imports} & 35.78 & 17.35 \\ 
+  \hspace{8mm}  Imported Goods & 29.37 & 16.69 \\ 
+  \hspace{8mm}  Imported Services & 32.44 & 22.24 \\ 
+  \hspace{0mm} \textbf{Government Spending} & -1.41 & -0.62 \\ 
+  \hspace{8mm}  Federal & -3.50 & -2.03 \\ 
+  \hspace{8mm}  State \& Local & -0.18 & 0.33 \\ 
+   \hline 
+ \textit{apchg} = annualized \% change 
+\end{tabular}
+\endgroup
+\caption{Nowcasts for GDP and Subcomponents (Annualized Percent Change)} 
+\end{table}
+
+
+We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:40 2021
+\begin{table}[H]
+\centering
+\begingroup\fontsize{11pt}{13pt}\selectfont
+\begin{tabular}{lrr}
+  \hline
+Variable & 2021Q1 & 2021Q2 \\ 
+  \hline
+Delinquency Rate on Residential Mortgages & 2.88 & 2.97 \\ 
+  Delinquency Rate on Credit Cards & 2.04 & 2.03 \\ 
+  Delinquency Rate on Commercial $\backslash$\& Industrial Loans & 1.34 & 1.36 \\ 
+   \hline
+\end{tabular}
+\endgroup
+\caption{Nowcasts for Other Quarterly Variables} 
+\end{table}
+
+% latex table generated in R 4.0.4 by xtable 1.8-4 package
+% Mon Mar 15 00:29:40 2021
+\begin{table}[H]
+\centering
+\begingroup\fontsize{10pt}{12pt}\selectfont
+\begin{tabular}{lrrrrrr}
+  \hline
+Variable & 2021M1 & 2021M2 & 2021M3 & 2021M4 & 2021M5 & 2021M6 \\ 
+  \hline
+PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 20.33 & -0.29 & 9.46 & 8.81 & 8.11 \\ 
+  PCE: Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 27.40 & 5.30 & 14.95 & 13.97 & 12.94 \\ 
+  PCE: Goods: Durable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 45.46 & 11.72 & 25.23 & 23.41 & 21.51 \\ 
+  PCE: Goods: Nondurable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 19.14 & 2.17 & 10.06 & 9.45 & 8.81 \\ 
+  PCE: Services \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 17.03 & -2.86 & 6.91 & 6.40 & 5.87 \\ 
+  Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -6.01 & 5.92 & -0.34 & -0.02 & 0.33 \\ 
+  Disposable Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -7.57 & 6.71 & -0.86 & -0.49 & -0.09 \\ 
+  Personal Outlays \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 21.83 & 0.60 & 10.75 & 10.11 & 9.44 \\ 
+  Personal Savings \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -58.78 & 57.70 & -21.07 & -18.37 & -15.40 \\ 
+  Personal Savings Rate &  & 0.22 & 0.22 & 0.22 & 0.21 & 0.21 \\ 
+  Case-Shiller Housing Price Index & 237.10 & 238.52 & 239.87 & 241.23 & 242.58 & 243.93 \\ 
+  Housing Starts &  & 1661.06 & 1671.29 & 1716.85 & 1760.51 & 1801.86 \\ 
+  Houses Sold &  & 963.94 & 981.80 & 1009.60 & 1036.30 & 1061.62 \\ 
+  New Private Housing Permits &  & 1966.41 & 1990.92 & 2041.62 & 2090.26 & 2136.42 \\ 
+  Manufacturers New Orders: Durable Goods &  & 264339.08 & 264049.68 & 267689.00 & 271077.01 & 274186.68 \\ 
+  Capacity Utilization: Total Index &  & 76.38 & 76.09 & 76.39 & 76.66 & 76.90 \\ 
+  Total Construction Spending &  & 1535252.23 & 1543850.76 & 1554934.35 & 1565858.15 & 1576595.13 \\ 
+  Effective Federal Funds Rate &  &  & 0.07 & 0.07 & 0.08 & 0.08 \\ 
+  Secured Overnight Financing Rate &  &  & 0.04 & 0.04 & 0.05 & 0.05 \\ 
+  Treasury Yield 10Y &  &  & 1.52 & 1.55 & 1.57 & 1.59 \\ 
+  Treasury Yield 30Y &  &  & 2.36 & 2.37 & 2.37 & 2.38 \\ 
+  Treasury Yield 5Y &  &  & 0.87 & 0.90 & 0.92 & 0.95 \\ 
+  Treasury Yield 2Y &  &  & 0.33 & 0.36 & 0.39 & 0.42 \\ 
+  Treasury Yield 1Y &  &  & 0.16 & 0.18 & 0.21 & 0.24 \\ 
+  Treasury Yield 6M &  &  & 0.08 & 0.10 & 0.13 & 0.15 \\ 
+  Treasury Yield 3M &  &  & 0.04 & 0.06 & 0.09 & 0.11 \\ 
+  Treasury Yield 1M &  &  & 0.02 & 0.04 & 0.06 & 0.09 \\ 
+  Treasury Yield 20Y &  &  & 2.13 & 2.14 & 2.15 & 2.16 \\ 
+  Treasury Yield 7Y &  &  & 1.17 & 1.20 & 1.22 & 1.25 \\ 
+  Vehicle Sales &  &  & 16.32 & 16.71 & 16.78 & 16.85 \\ 
+  Unemployment Rate &  &  & 6.40 & 6.24 & 6.09 & 5.95 \\ 
+  All Employees (Nonfarm) &  &  & 142607.91 & 143161.82 & 143682.31 & 144166.78 \\ 
+  Job Openings: Total Nonfarm &  & 7126.40 & 7122.63 & 7228.78 & 7329.87 & 7425.33 \\ 
+  Hires: Total Nonfarm &  & 5800.15 & 5528.56 & 5651.66 & 5642.48 & 5630.69 \\ 
+  S\&P 500 &  &  &  & 3918.66 & 3968.57 & 4017.64 \\ 
+  VIX &  &  &  & 19.72 & 19.39 & 19.04 \\ 
+  Outstanding Real Estate Loans \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 3.74 & 3.51 & 3.57 & 3.63 \\ 
+  Outstanding Credit Card Balances \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & -9.94 & -6.01 & -5.22 & -4.36 \\ 
+  Housing Prices: New Listed Prices \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 11.12 & 11.32 & 11.08 & 10.86 \\ 
+  St. Louis Fed Financial Stress Index &  &  & 0.02 & -0.16 & -0.18 & -0.20 \\ 
+  U.S. Dollar Index &  &  & 111.30 & 110.90 & 110.97 & 111.01 \\ 
+  Average Weeks Unemployed &  &  & 25.23 & 25.76 & 25.70 & 25.66 \\ 
+  Retail \& Food Sales \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 31.78 & 2.83 & 15.35 & 14.10 & 12.77 \\ 
+  KC Fed Labor Market Index &  &  & -0.22 & -0.10 & -0.06 & -0.01 \\ 
+  Consumer Confidence (OECD) &  & 99.77 & 99.93 & 100.03 & 100.10 & 100.18 \\ 
+  PCE Price Index \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 2.07 & 1.12 & 1.63 & 1.62 & 1.60 \\ 
+  New York Fed: Business Conditions Manufacturing Survey &  &  & -3.94 & 0.76 & 1.36 & 2.00 \\ 
+  Dallas Fed: Current General Business Activity &  &  & -8.77 & -3.19 & -2.40 & -1.57 \\ 
+  Philadelphia Fed: Future Capital Expenditures Survey &  &  & 20.26 & 21.61 & 21.98 & 22.35 \\ 
+   \hline 
+ \textit{apchg} = annualized \% change 
+\end{tabular}
+\endgroup
+\caption{Nowcasts for All Monthly Variables} 
+\end{table}
+
+
+
+\appendix
+\appendixpage
+\addappheadtotoc
+
+\section{DFM Fitted Plots}
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-1} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-2} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-3} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-4} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-5} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-6} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-7} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-8} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-9} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-10} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-11} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-12} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-13} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-14} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-15} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-16} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-17} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-18} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-19} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-20} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-21} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-22} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-23} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-24} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-25} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-26} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-27} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-28} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-29} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-30} 
+
+}
+
+
+
+
+{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-24-31} 
+
+}
+
+
+
+
+
+\end{document}
