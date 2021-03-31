@@ -30,3 +30,6 @@ df =
 			return(.)
 		}) %>%
 	dplyr::bind_rows(.)
+
+
+openxlsx::read.xlsx('https://www2.census.gov/programs-surveys/popest/tables/2010-2019/counties/totals/co-est2019-annres.xlsx', startRow = 4) %>% as_tibble(.) %>% dplyr::transmute(., county = str_replace(X1, coll('.'), ''), population = .$'2019') %>% dplyr::filter(., county != 'United States') %>% 
