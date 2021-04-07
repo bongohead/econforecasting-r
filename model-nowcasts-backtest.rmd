@@ -1,3 +1,4 @@
+To run this code, first set purl = FALSE in first chunk of model-nowcasts.rmd
 # Set Constants
 ```{r}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
