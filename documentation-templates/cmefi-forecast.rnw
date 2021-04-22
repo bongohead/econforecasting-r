@@ -232,7 +232,7 @@ Finally, we evaluate the components of each factor, i.e. which
 <<>>=
 	ef$nc$factorWeightsDf %>%
     	head(., 5) %>%
-    	xtable::xtable(., caption = 'PCA Factor Weights - Top 5 Per Factor', align = 'cccc') %>%
+    	xtable::xtable(., caption = 'PCA Factor Weights - Top 5 Per Factor', align = 'lcccc') %>%
     	print(., size = 'scriptsize')
 @
 
