@@ -9,10 +9,11 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
-## 2021-04-30 (target) [v0.12]
+## 2021-05-07 [v0.12]
 - Added structural basics with impulse response
 - Added headers to CME scraping; user-agent now required to access JSON files
 - Added task scheduler for Windows automation of scripts
+- Added updated project management spreadsheet
 - Fixed bug in documentation (xtables)
 
 ## 2021-03-19 [v0.11]
