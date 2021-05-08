@@ -10,16 +10,6 @@ nowcast = function(
 	RESET_ALL = FALSE,
 	VINTAGE_DATE = NULL
 	) {
-## ----purl = TRUE---------------------------------------------------------------------------------------------------------------------
-DIR = 'D:/Onedrive/__Projects/econforecasting'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
-DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Path to documentation .RNW file; if NULL no docs generated
-INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
-OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
-RESET_ALL = FALSE
-VINTAGE_DATE = Sys.Date() # as.Date('2021-03-15') # Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
-
-
 ## ------------------------------------------------------------------------------------------------------------------------------------
 # General purpose
 library(tidyverse) # General
@@ -38,7 +28,7 @@ library(DBI) # SQL Interface
 # My package
 devtools::load_all(path = PACKAGE_DIR)
 devtools::document(PACKAGE_DIR)
-library(econforecasting)
+# library(econforecasting)
 
 # Set working directory
 setwd(DIR)
@@ -66,7 +56,7 @@ local({
 
 			# Get series data
 			dataDf =
-			  getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+			  econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
 			  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
 			  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
 			  	dplyr::select(., -vintageDate) %>%
@@ -74,7 +64,7 @@ local({
 			    {if (x$freq %in% c('d', 'm'))
 			      dplyr::bind_rows(
 			        .,
-			        getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+			        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
 						dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
 						dplyr::filter(., vintageDate == max(vintageDate)) %>%
 						dplyr::select(., -vintageDate) %>%
@@ -85,7 +75,7 @@ local({
 			    {if (x$freq %in% c('d'))
 			      dplyr::bind_rows(
 			        .,
-			        getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+			        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
 					  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
 					  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
 					  	dplyr::select(., -vintageDate) %>%

@@ -59,10 +59,16 @@ nowcast = function(
 ```{r include=FALSE}
 local({
 	
-	runDates = seq(from = as.Date('2021-04-01'), to = Sys.Date(), by = '1 week')
+	# Filter to only weekdays
+	runDates =
+		tibble(date = seq(from = as.Date('2021-04-01'), to = Sys.Date(), by = '1 day')) %>% dplyr::mutate(., wday = wday(date)) %>%
+		dplyr::filter(., wday %in% 2:6) %>%
+		.$date
 		
 	res =
 		purrr::imap(runDates, function(.vdate, i) {
+			
+			message(.vdate)
 			nowcast(
 				DIR = DIR,
 				PACKAGE_DIR = PACKAGE_DIR,

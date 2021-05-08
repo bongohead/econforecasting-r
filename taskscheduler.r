@@ -11,17 +11,17 @@ lapply(list('model-asset-contagion', 'model-baseline-forecasts', 'model-nowcasts
 })
 
 
-send.mail(
-	from = sender,
-	to = recipients,
-	subject = "Subject of the email",
-	body = "Body of the email",
-	smtp = list(
-		host.name = "smtp.gmail.com", port = 465, 
-		user.name = "YOURUSERNAME@gmail.com",            
-		passwd = "YOURPASSWORD",
-		ssl = TRUE
-		),
-	authenticate = TRUE,
-	send = TRUE
-	)
+# send.mail(
+# 	from = sender,
+# 	to = recipients,
+# 	subject = "Subject of the email",
+# 	body = "Body of the email",
+# 	smtp = list(
+# 		host.name = "smtp.gmail.com", port = 465, 
+# 		user.name = "YOURUSERNAME@gmail.com",            
+# 		passwd = "YOURPASSWORD",
+# 		ssl = TRUE
+# 		),
+# 	authenticate = TRUE,
+# 	send = TRUE
+# 	)
