@@ -9,6 +9,12 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
+# 2021-05-08 [v0.13]
+- Added importing of releases & release dates
+- Added SQL export of releases & release dates
+- Added new shipments, new business applications
+- Removed WEI index
+
 ## 2021-05-07 [v0.12]
 - Added structural basics with impulse response
 - Added headers to CME scraping; user-agent now required to access JSON files
