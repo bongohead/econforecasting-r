@@ -19,7 +19,7 @@ library(doParallel) # Parallelized backtests
 ```
 
 # Some Metaprogramming to Convert RMD to an R Function
-```{r}
+```{r include=FALSE}
 local({
 	# Use purl to extract main R code (minus first chunk) from Rmd and convert it to a function
 	if (file.exists(file.path(DIR, 'model-nowcasts.r'))) file.remove(file.path(DIR, 'model-nowcasts.r'))
@@ -56,10 +56,10 @@ nowcast = function(
 ```
 
 # Run Backtest Dates
-```{r}
+```{r include=FALSE}
 local({
 	
-	runDates = seq(from = as.Date('2021-01-01'), to = Sys.Date(), by = '1 week')
+	runDates = seq(from = as.Date('2021-04-01'), to = Sys.Date(), by = '1 week')
 		
 	res =
 		purrr::imap(runDates, function(.vdate, i) {
@@ -77,6 +77,7 @@ local({
 	runDates <<- runDates
 })
 ```
+
 
 # Aggregate
 ```{r}
