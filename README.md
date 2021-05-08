@@ -13,6 +13,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added importing of releases & release dates
 - Added SQL export of releases & release dates
 - Added new shipments, new business applications
+- Added code to cleanup old .tex and .pdf files, as well as clean images directory
 - Removed WEI index
 
 ## 2021-05-07 [v0.12]
