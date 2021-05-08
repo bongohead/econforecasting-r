@@ -17,6 +17,7 @@ library(tidyverse) # General
 library(data.table) # General
 library(devtools) # General
 library(lubridate) # Dates
+library(glue) # String Interpolation
 # Data parse/import
 library(jsonlite) # JSON Parser
 library(rvest) # HTML Parser
@@ -28,6 +29,7 @@ library(DBI) # SQL Interface
 # My package
 devtools::load_all(path = PACKAGE_DIR)
 devtools::document(PACKAGE_DIR)
+library(econforecasting)
 
 # Set working directory
 setwd(DIR)
@@ -45,22 +47,118 @@ ef = list(
 
 # Get Historical Data
 
-## Load list of data to import
-```{r}
-local({
-	
-	paramsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'))
-	params = paramsDf %>% purrr::transpose(., .names = .$varname)
-	
-	ef$paramsDf <<- paramsDf
-	ef$params <<- params
-})
-```
-
 ## From FRED
 ```{r}
 local({
-  
+	
+	fredRes =
+		readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx')) %>%
+		purrr::transpose(., .names = .$varname)  %>%
+		purrr::keep(., ~ .$source == 'fred') %>%
+		lapply(., function(x) {
+			
+			message('Getting data ... ', x$varname)
+
+			# Get series data
+			dataDf =
+			  getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+			  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
+			  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
+			  	dplyr::select(., -vintageDate) %>%
+			    dplyr::mutate(., varname = x$varname, freq = 'q') %>%
+			    {if (x$freq %in% c('d', 'm'))
+			      dplyr::bind_rows(
+			        .,
+			        getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+						dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
+						dplyr::filter(., vintageDate == max(vintageDate)) %>%
+						dplyr::select(., -vintageDate) %>%
+				        dplyr::mutate(., varname = x$varname, freq = 'm')
+			        )
+			      else .
+			    } %>%
+			    {if (x$freq %in% c('d'))
+			      dplyr::bind_rows(
+			        .,
+			        getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+					  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
+					  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
+					  	dplyr::select(., -vintageDate) %>%
+				        dplyr::mutate(., varname = x$varname, freq = 'd')
+			        )
+			      else .
+			    }
+			
+			# Get series release
+			releaseDf =
+				httr::RETRY(
+					'GET', 
+					glue('https://api.stlouisfed.org/fred/series/release?series_id={x$sckey}&api_key={CONST$FRED_API_KEY}&file_type=json'),
+					times = 10
+				) %>%
+		        httr::content(., as = 'parsed') %>%
+				.$releases %>%
+				.[[1]] %>%
+				as_tibble(.) %>%
+				dplyr::mutate(., varname = x$varname)
+
+			list(dataDf = dataDf, releaseDf = releaseDf)
+		}) %>%
+		lapply(., function(x) list(dataDf = x$dataDf, releaseDf = x$releaseDf %>% dplyr::rename(., relname = name)))
+	
+	
+	
+	paramsDf =
+		readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx')) %>%
+		dplyr::left_join(
+			.,
+			lapply(fredRes, function(x) x$releaseDf) %>%
+			    dplyr::bind_rows(.) %>%
+				dplyr::transmute(., varname, releaseId = id),
+			by = 'varname'
+		)
+	
+	params = paramsDf %>% purrr::transpose(., .names = .$varname)
+
+	
+	
+	dataDf =
+		lapply(fredRes, function(x) x$dataDf) %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::rename(., date = obsDate) %>%
+		dplyr::filter(., date >= as.Date('2010-01-01'))
+	
+	releaseDf =
+		lapply(fredRes, function(x) x$releaseDf) %>%
+		dplyr::bind_rows(.) %>%
+		# Now create a column of included varnames
+		dplyr::left_join(., paramsDf[, c('varname', 'fullname', 'releaseId')], by = c('varname')) %>%
+		dplyr::group_by(., id, relname, link) %>%
+		dplyr::summarize(., count = n(), seriesnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
+		# Now create a column of included releaseDates
+		dplyr::inner_join(
+			.,
+			purrr::map_dfr(.$id, function(id)
+				httr::RETRY(
+					'GET', 
+					glue(
+						'https://api.stlouisfed.org/fred/release/dates?',
+						'release_id={id}&realtime_start=2020-01-01',
+						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
+						 ),
+					times = 10
+					) %>%
+			        httr::content(., as = 'parsed') %>%
+					.$release_dates %>%
+					sapply(., function(y) y$date) %>%
+					tibble(id = id, reldates = .)
+				),
+			by = 'id'
+		) %>%
+		dplyr::group_by(., id, relname, link, count, seriesnames) %>%
+		dplyr::summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop')
+
+
 	# Run below in console to get list of GDP subcomponents
 	# httr::GET('https://fred.stlouisfed.org/release/tables?rid=53&eid=14961#snid=14966') %>%
 	# 	httr::content(.) %>%
@@ -76,45 +174,12 @@ local({
 	# 			)
 	# 		)
 
-	df =
-		ef$params %>%
-		purrr::keep(., ~ .$source == 'fred') %>%
-		lapply(., function(x) {
-		  message('Getting data ... ', x$varname)
-		  econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
-		  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
-		  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
-		  	dplyr::select(., -vintageDate) %>%
-		    dplyr::mutate(., varname = x$varname, freq = 'q') %>%
-		    {if (x$freq %in% c('d', 'm'))
-		      dplyr::bind_rows(
-		        .,
-		        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
-					dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
-					dplyr::filter(., vintageDate == max(vintageDate)) %>%
-					dplyr::select(., -vintageDate) %>%
-		          dplyr::mutate(., varname = x$varname, freq = 'm')
-		        )
-		      else .
-		    } %>%
-		    {if (x$freq %in% c('d'))
-		      dplyr::bind_rows(
-		        .,
-		        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
-				  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
-				  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
-				  	dplyr::select(., -vintageDate) %>%
-			        dplyr::mutate(., varname = x$varname, freq = 'd')
-		        )
-		      else .
-		    }
-		}) %>%
-		dplyr::bind_rows(.) %>%
-		dplyr::rename(., date = obsDate) %>%
-		dplyr::filter(., date >= as.Date('2000-01-01'))
+	
+	ef$paramsDf <<- paramsDf
+	ef$params <<- params
 
-
-	ef$h$source$fred <<- df
+	ef$h$source$fred <<- dataDf
+	ef$releaseDf <<- releaseDf
 })
 ```
 
@@ -1375,6 +1440,7 @@ local({
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_params CASCADE')
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_values')
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_history')
+		DBI::dbGetQuery(conn, 'TRUNCATE nc_releases')
 	}
 	
 	# Send variables to SQL
@@ -1410,6 +1476,16 @@ local({
 	res = DBI::dbGetQuery(conn, query)
 	
 	
+	# Insert nc_releases
+	query =
+	  econforecasting::createInsertQuery(
+	    ef$releaseDf,
+	    'nc_releases',
+	    'ON CONFLICT ON CONSTRAINT nc_releases_id DO UPDATE SET link=EXCLUDED.link, count=EXCLUDED.count,seriesnames=EXCLUDED.seriesnames,reldates=EXCLUDED.reldates'
+	    )
+	res = DBI::dbGetQuery(conn, query)
+
+	
 	# Insert fc_forecast_last_vintage
 	# forecastLastVintageDf =
 	# 	ef$forecastDf %>%
@@ -1444,6 +1520,8 @@ local({
 			clean = TRUE
 			)
 		
+		file.remove(file.path(OUTPUT_DIR, paste0(basename, '.log')))
+
 		file.copy(
 			from =  file.path(OUTPUT_DIR, paste0(basename, '.pdf')),
 			to = file.path(DIR, 'nowcast-documentation.pdf'),
