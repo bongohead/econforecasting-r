@@ -14,6 +14,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added importing of releases & release dates
 - Added SQL export of releases & release dates
 - Added new shipments, new business applications
+- Added releases table to SQL
 - Added notes re: purl toggle
 - Added code to cleanup old .tex and .pdf files, as well as clean images directory
 - Removed WEI index

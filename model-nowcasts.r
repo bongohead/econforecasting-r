@@ -457,9 +457,10 @@ local({
 
 	
 	bigR =
-		screeDf %>%
-		dplyr::filter(., ic1 == min(ic1)) %>%
-		.$factors + 1
+		# screeDf %>%
+		# dplyr::filter(., ic1 == min(ic1)) %>%
+		# .$factors + 1
+		3
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -818,7 +819,7 @@ local({
 		dplyr::bind_rows(
 			kSmooth,
 			tail(kFitted, 1),
-			kForecast %>% dplyr::mutate(., f1 = mean(dplyr::filter(ef$nc$zDf, date < '2020-03-01')$f1))
+			kForecast #%>% dplyr::mutate(., f1 = mean(dplyr::filter(ef$nc$zDf, date < '2020-03-01')$f1))
 			)
 	
 	yDf =
