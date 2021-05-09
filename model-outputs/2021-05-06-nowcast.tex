@@ -94,7 +94,7 @@
 {\Huge \textsf{A Nowcasting Model for Time Series with Ragged-Edge Data}}
 \vskip\baselineskip
 \noindent
-\textsf{Model Run Date: May 08, 2021}\\
+\textsf{Model Run Date: May 09, 2021}\\
 \textsf{charles@cmefi.com}
 \restoregeometry % restores the geometry
 \nopagecolor% Use this to restore the color pages to white
@@ -144,7 +144,7 @@ Our goal will be to take monthly-frequency leading economic predictor variables 
 
 To do this, we will use a methodology that relies heavily on principal components. It is well known that most macroeconomic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
+% Sun May 09 00:54:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -175,13 +175,13 @@ The next section will go over the data and estimation procedure in detail. While
 
 \newpage
 \section{Estimation Process}
-The model is run every weekday; this documentation will use actual data and estimates from the most recent model run (2021-05-08) to illustrate the procedure. The final nowcasted output is located in the results section.
+The model is run every weekday; this documentation will use actual data and estimates from the most recent model run (2021-05-09) to illustrate the procedure. The final nowcasted output is located in the results section.
 
 \subsection{Data}
 We begin by importing monthly data of various leading indicators from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference, whereas \textit{base} means that no transformation was necessary for the variable to be stationary.
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
+% Sun May 09 00:54:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -233,7 +233,7 @@ PCE & dlog \\
 
 We additionally import quarterly data for our variables of interest. While this model can be used for nowcasting other data, here we will use import GDP, its components, as well as several other major macroeconomic variables of interest.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
+% Sun May 09 00:54:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -292,7 +292,7 @@ GDP & dlog \\
 
 Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
+% Sun May 09 00:54:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -321,7 +321,7 @@ In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \
 \end{figure}
 For our data, we set the dates as follows.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
+% Sun May 09 00:54:32 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -378,7 +378,7 @@ Once factors are derived, we select the optimal number of factors to use in pred
 
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
+% Sun May 09 00:54:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -428,7 +428,7 @@ Factors (R) & Variance Explained & Pct of Total Var Explained & Cumulative Pct &
 \end{table}
 
 
-Choosing the IC-minimizing $R$ lets us choose $R = 3$ factors.
+Choosing the IC-minimizing $R$ lets us choose $R = 2$ factors.
 
 
 
@@ -446,36 +446,13 @@ Choosing the IC-minimizing $R$ lets us choose $R = 3$ factors.
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-10-3} 
-
-}
-
-
-
-
 Next, we perform a qualitative check of the factors. The first factor usually represents the COVID-19 shock. Typically the second factor should give us something similar to the growth rate of GDP or aggregate production, but on a monthly basis. The third and fourth factors may vary but often represent interest rates or consumption. Note that the sign direction of the factors is irrelevant to the modeling process, and they may be switched negated without consequence. 
 
 Finally, we evaluate the components of each factor, i.e. which 
-% latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
-\begin{table}[H]
-\centering
-\begingroup\scriptsize
-\begin{tabular}{ccc}
-  \hline
-f1 & f2 & f3 \\ 
-  \hline
-cu (0.24) & joltshires (0.3) & t10y (-0.31) \\ 
-  oil (0.24) & kclfi (0.26) & t01y (-0.31) \\ 
-  ipi (0.24) & vsales (0.26) & wei (-0.31) \\ 
-  usd (-0.24) & cfnai (0.22) & ffr (-0.28) \\ 
-  lfpr (0.24) & baa (-0.22) & csent (-0.28) \\ 
-   \hline
-\end{tabular}
-\endgroup
-\caption{PCA Factor Weights - Top 5 Per Factor} 
-\end{table}
+\begin{kframe}
 
+
+{\ttfamily\noindent\bfseries\color{errorcolor}{\#\# Error in `align<-.xtable`(`*tmp*`, value = switch(1 + is.null(align), : "{}align"{} must have length equal to 3 ( ncol(x) + 1 )}}\end{kframe}
 
 
 
@@ -553,17 +530,16 @@ It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which
 
 The estimated coefficients in $\widehat{B}$ and $\widehat{C}$ are shown below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:43 2021
+% Sun May 09 00:54:32 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
   \hline
-name & constant & f1.l1 & f2.l1 & f3.l1 \\ 
+name & constant & f1.l1 & f2.l1 \\ 
   \hline
-f1 & -0.05 & 0.68 & -0.27 & -0.06 \\ 
-  f2 & 0.05 & -0.34 & 0.66 & -0.09 \\ 
-  f3 & 0.01 & -0.22 & -0.22 & 0.78 \\ 
+f1 & -0.05 & 0.68 & -0.27 \\ 
+  f2 & 0.05 & -0.34 & 0.67 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -589,13 +565,6 @@ Finally, we perform a qualitative check of the fitted values and residuals. It i
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-13-3} 
-
-}
-
-
-
-
 
 \begin{figure}[H]
 
@@ -610,7 +579,7 @@ Finally, we perform a qualitative check of the fitted values and residuals. It i
 
 Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are shown below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:44 2021
+% Sun May 09 00:54:33 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -618,9 +587,8 @@ Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are
   \hline
 varname & MAE & MSE \\ 
   \hline
-f1 & 0.77760754 & 3.83764855 \\ 
-  f2 & 0.75329694 & 3.36259356 \\ 
-  f3 & 0.59123101 & 0.90210966 \\ 
+f1 & 0.79659831 & 3.85314533 \\ 
+  f2 & 0.78768494 & 3.40039606 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -705,49 +673,49 @@ However, estimation of $A$ and $D$ with the standard OLS estimator is likely to 
 
 Estimated coefficients for $\widehat{A}$ and $\widehat{D}$ are below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:44 2021
+% Sun May 09 00:54:33 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
-\begin{tabular}{lrrrr}
+\begin{tabular}{lrrr}
   \hline
-name & constant & f1 & f2 & f3 \\ 
+name & constant & f1 & f2 \\ 
   \hline
-mpce & 0.00 & 0.00 & 0.00 & 0.00 \\ 
-  pid & 0.00 & -0.00 & -0.00 & -0.00 \\ 
-  hpi & 0.00 & -0.00 & 0.00 & 0.00 \\ 
-  houst & 0.01 & 0.01 & 0.01 & 0.01 \\ 
-  hsold & 0.01 & 0.00 & 0.01 & 0.01 \\ 
-  hpermits & 0.01 & 0.01 & 0.01 & 0.01 \\ 
-  mnodg & 0.00 & 0.01 & 0.01 & 0.01 \\ 
-  cu & 0.00 & 0.00 & 0.00 & 0.00 \\ 
-  cons & 0.00 & 0.00 & 0.00 & 0.00 \\ 
-  ffr & 0.59 & -0.06 & 0.12 & -0.21 \\ 
-  t10y & 2.24 & 0.14 & -0.06 & -0.22 \\ 
-  t01y & 2.24 & 0.14 & -0.06 & -0.22 \\ 
-  vsales & 16.02 & -0.17 & 0.55 & -0.36 \\ 
-  ue & -0.00 & -0.03 & -0.02 & -0.01 \\ 
-  joltshires & 5108.83 & -93.54 & 210.95 & 39.26 \\ 
-  wei & 1.57 & 0.48 & -0.15 & -0.74 \\ 
-  spy & 0.01 & 0.00 & 0.00 & 0.00 \\ 
-  vix & 18.04 & -0.77 & -1.05 & 1.68 \\ 
-  oil & 69.13 & 5.59 & -3.51 & -0.74 \\ 
-  loansre & 0.00 & -0.00 & 0.00 & -0.00 \\ 
-  loanscc & 0.01 & 0.00 & -0.00 & -0.00 \\ 
-  stlfsi & -0.26 & -0.09 & -0.09 & 0.09 \\ 
-  usd & 103.99 & -2.64 & 2.37 & -0.49 \\ 
-  uemean & 29.62 & 1.72 & -1.34 & 0.35 \\ 
-  advsales & 0.00 & 0.00 & 0.00 & 0.00 \\ 
-  kclfi & -0.46 & -0.15 & 0.28 & -0.23 \\ 
-  csent & 99.78 & -0.21 & 0.31 & -0.40 \\ 
-  ipi & 0.00 & 0.00 & 0.00 & 0.00 \\ 
-  pcepi & 0.00 & 0.00 & 0.00 & 0.00 \\ 
-  snyfed & 6.14 & 2.68 & 1.52 & -2.96 \\ 
-  stxfed & 2.52 & 2.77 & 2.54 & -4.09 \\ 
-  sphfed & 21.28 & -0.30 & 1.92 & -1.93 \\ 
-  cfnai & -0.07 & 0.41 & 0.39 & 0.23 \\ 
-  baa & 4.83 & 0.14 & -0.15 & -0.08 \\ 
-  lfpr & 63.11 & 0.20 & -0.14 & -0.09 \\ 
+mpce & 0.00 & 0.00 & 0.00 \\ 
+  pid & 0.00 & -0.00 & -0.00 \\ 
+  hpi & 0.00 & -0.00 & 0.00 \\ 
+  houst & 0.01 & 0.01 & 0.01 \\ 
+  hsold & 0.01 & 0.00 & 0.01 \\ 
+  hpermits & 0.01 & 0.01 & 0.01 \\ 
+  mnodg & 0.00 & 0.01 & 0.01 \\ 
+  cu & 0.00 & 0.00 & 0.00 \\ 
+  cons & 0.00 & 0.00 & 0.00 \\ 
+  ffr & 0.59 & -0.06 & 0.12 \\ 
+  t10y & 2.24 & 0.14 & -0.06 \\ 
+  t01y & 2.24 & 0.14 & -0.06 \\ 
+  vsales & 16.02 & -0.17 & 0.55 \\ 
+  ue & -0.00 & -0.03 & -0.02 \\ 
+  joltshires & 5108.83 & -93.54 & 210.95 \\ 
+  wei & 1.57 & 0.48 & -0.15 \\ 
+  spy & 0.01 & 0.00 & 0.00 \\ 
+  vix & 18.04 & -0.77 & -1.05 \\ 
+  oil & 69.13 & 5.59 & -3.51 \\ 
+  loansre & 0.00 & -0.00 & 0.00 \\ 
+  loanscc & 0.01 & 0.00 & -0.00 \\ 
+  stlfsi & -0.26 & -0.09 & -0.09 \\ 
+  usd & 103.99 & -2.64 & 2.37 \\ 
+  uemean & 29.62 & 1.72 & -1.34 \\ 
+  advsales & 0.00 & 0.00 & 0.00 \\ 
+  kclfi & -0.46 & -0.15 & 0.28 \\ 
+  csent & 99.78 & -0.21 & 0.31 \\ 
+  ipi & 0.00 & 0.00 & 0.00 \\ 
+  pcepi & 0.00 & 0.00 & 0.00 \\ 
+  snyfed & 6.14 & 2.68 & 1.52 \\ 
+  stxfed & 2.52 & 2.77 & 2.54 \\ 
+  sphfed & 21.28 & -0.30 & 1.92 \\ 
+  cfnai & -0.07 & 0.41 & 0.39 \\ 
+  baa & 4.83 & 0.14 & -0.15 \\ 
+  lfpr & 63.11 & 0.20 & -0.14 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -757,7 +725,7 @@ mpce & 0.00 & 0.00 & 0.00 & 0.00 \\
 
 We perform a qualitative check of the in-sample fit, as well as a quantitative review of the goodness-of-fit. The graphs of the fitted plots are located in the appendix.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:44 2021
+% Sun May 09 00:54:33 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -765,41 +733,41 @@ We perform a qualitative check of the in-sample fit, as well as a quantitative r
   \hline
 varname & MAE & MSE \\ 
   \hline
-advsales & 0.00749537 & 0.00016708 \\ 
-  baa & 0.25779362 & 0.12124433 \\ 
-  cfnai & 0.34255545 & 0.24430594 \\ 
-  cons & 0.00841908 & 0.00011506 \\ 
-  csent & 0.39563688 & 0.25349875 \\ 
-  cu & 0.00433823 & 0.00003647 \\ 
-  ffr & 0.38449670 & 0.21947951 \\ 
-  houst & 0.06472953 & 0.00635864 \\ 
-  hpermits & 0.03750824 & 0.00224273 \\ 
-  hpi & 0.00273874 & 0.00001386 \\ 
-  hsold & 0.05749764 & 0.00595725 \\ 
-  ipi & 0.00425522 & 0.00003446 \\ 
-  joltshires & 187.38793317 & 66172.45855521 \\ 
-  kclfi & 0.21545150 & 0.08439647 \\ 
-  lfpr & 0.31473479 & 0.15831057 \\ 
-  loanscc & 0.01582536 & 0.00219688 \\ 
-  loansre & 0.00215820 & 0.00000813 \\ 
-  mnodg & 0.02846864 & 0.00162660 \\ 
-  mpce & 0.00400620 & 0.00003806 \\ 
-  oil & 10.88379177 & 171.35597848 \\ 
-  pcepi & 0.00099035 & 0.00000161 \\ 
-  pid & 0.00683204 & 0.00026933 \\ 
-  snyfed & 6.40689605 & 66.38565583 \\ 
-  sphfed & 5.81061072 & 49.12389038 \\ 
-  spy & 0.02173378 & 0.00102837 \\ 
-  stlfsi & 0.25744351 & 0.13349251 \\ 
-  stxfed & 8.54797631 & 116.70800978 \\ 
-  t01y & 0.21793456 & 0.07613985 \\ 
-  t10y & 0.21793456 & 0.07613985 \\ 
-  ue & 0.03468858 & 0.00245901 \\ 
-  uemean & 2.73446397 & 12.80762378 \\ 
-  usd & 3.22446781 & 15.79644407 \\ 
-  vix & 3.51428686 & 21.35571782 \\ 
-  vsales & 0.94736195 & 1.30029474 \\ 
-  wei & 0.88103588 & 1.31352726 \\ 
+advsales & 0.00836104 & 0.00026492 \\ 
+  baa & 0.30390371 & 0.15041370 \\ 
+  cfnai & 0.48158019 & 0.47205585 \\ 
+  cons & 0.00861200 & 0.00011795 \\ 
+  csent & 0.68834117 & 0.93922367 \\ 
+  cu & 0.00497833 & 0.00004933 \\ 
+  ffr & 0.49116800 & 0.40321928 \\ 
+  houst & 0.06828199 & 0.00690219 \\ 
+  hpermits & 0.04087848 & 0.00260308 \\ 
+  hpi & 0.00281562 & 0.00001413 \\ 
+  hsold & 0.06064520 & 0.00645225 \\ 
+  ipi & 0.00483713 & 0.00004636 \\ 
+  joltshires & 179.06485405 & 72773.12863989 \\ 
+  kclfi & 0.36826681 & 0.31153245 \\ 
+  lfpr & 0.33725031 & 0.19095050 \\ 
+  loanscc & 0.01518229 & 0.00225512 \\ 
+  loansre & 0.00216736 & 0.00000855 \\ 
+  mnodg & 0.02991167 & 0.00183419 \\ 
+  mpce & 0.00500767 & 0.00006665 \\ 
+  oil & 11.12140903 & 173.71219846 \\ 
+  pcepi & 0.00099890 & 0.00000162 \\ 
+  pid & 0.00742623 & 0.00028176 \\ 
+  snyfed & 7.59956351 & 103.97124248 \\ 
+  sphfed & 6.64275871 & 65.09954734 \\ 
+  spy & 0.02188327 & 0.00103215 \\ 
+  stlfsi & 0.28650872 & 0.16443336 \\ 
+  stxfed & 10.61640804 & 188.24390636 \\ 
+  t01y & 0.42577771 & 0.27606945 \\ 
+  t10y & 0.42577771 & 0.27606945 \\ 
+  ue & 0.03701340 & 0.00282496 \\ 
+  uemean & 2.91457980 & 13.34413116 \\ 
+  usd & 3.34612266 & 16.84548859 \\ 
+  vix & 4.26198721 & 33.48422920 \\ 
+  vsales & 0.94146682 & 1.86923762 \\ 
+  wei & 1.20791709 & 3.65727335 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -915,13 +883,6 @@ Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the 
 
 
 
-{\centering \includegraphics[width=5in,height=2in]{D:/Onedrive/__Projects/econforecasting/model-outputs/latex-figures/unnamed-chunk-18-3} 
-
-}
-
-
-
-
 % \subsection{Nowcasting Monthly Covariates}
 % Now that we have our Kalman-smoothed factors from time $1$ through time $T^*$, we will be able to use these as covariates to model any monthly time series that we have. 
 
@@ -932,7 +893,7 @@ We begin by aggregating these monthly factors into quarterly data by taking a si
 
 In this section, we will use these now-quarterly factors to forecast our quarterly subcomponents of GDP. As discussed in the data import section, these have been transformed for stationarity, typically by taking a log-difference.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:45 2021
+% Sun May 09 00:54:33 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -997,7 +958,7 @@ The $\beta$ coefficients can be estimated with a typical OLS process, where the 
 After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
 The forecasted results are as follows.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:45 2021
+% Sun May 09 00:54:33 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -1005,33 +966,33 @@ The forecasted results are as follows.
   \hline
 Variable & 2021Q1 & 2021Q2 & 2021Q3 \\ 
   \hline
-Consumption: Goods: Durable: Motor Vehicles \& Parts &  & 0.12 & -0.02 \\ 
-  Consumption: Goods: Durable: Furnishings \& Durable Household Equipment &  & 0.07 & -0.01 \\ 
+Consumption: Goods: Durable: Motor Vehicles \& Parts &  & 0.01 & 0.01 \\ 
+  Consumption: Goods: Durable: Furnishings \& Durable Household Equipment &  & 0.04 & 0.01 \\ 
   Consumption: Goods: Durable: Recreational Goods \& Services &  & 0.03 & 0.03 \\ 
-  Consumption: Goods: Durable: Other Durable Goods &  & 0.23 & -0.07 \\ 
-  Consumption: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Use &  & -0.02 & 0.02 \\ 
-  Consumption: Goods: Nondurable Goods: Clothing &  & 0.21 & -0.06 \\ 
+  Consumption: Goods: Durable: Other Durable Goods &  & 0.01 & 0.01 \\ 
+  Consumption: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Use &  & -0.01 & 0.02 \\ 
+  Consumption: Goods: Nondurable Goods: Clothing &  & 0.15 & -0.04 \\ 
   Consumption: Goods: Nondurable Goods: Gasoline \& Energy Goods &  & -0.00 & -0.00 \\ 
   Consumption: Goods: Nondurable Goods: Other Nondurable Goods &  & 0.01 & 0.01 \\ 
   Consumption: Services: Housing \& Utilities &  & 0.00 & 0.00 \\ 
   Consumption: Services: Health Care &  & 0.01 & 0.01 \\ 
-  Consumption: Services: Transportation &  & 0.00 & 0.00 \\ 
+  Consumption: Services: Transportation &  & 0.22 & -0.05 \\ 
   Consumption: Services: Recreation &  & -0.00 & -0.00 \\ 
   Consumption: Services: Food Services \& Accomodations &  & 0.00 & 0.00 \\ 
-  Consumption: Services: Financial Services &  & 0.02 & 0.00 \\ 
+  Consumption: Services: Financial Services &  & 0.01 & 0.00 \\ 
   Consumption: Services: Other Services &  & 0.00 & 0.00 \\ 
-  Consumption: Services: Nonprofit Services &  & -0.20 & 0.04 \\ 
+  Consumption: Services: Nonprofit Services &  & -0.15 & 0.03 \\ 
   Gross Private Domestic Investment: Nonresidential Investment: Structures &  & 0.01 & -0.00 \\ 
-  Gross Private Domestic Investment: Nonresidential Investment: Equipment &  & 0.13 & -0.00 \\ 
-  Gross Private Domestic Investment: Nonresidential Investment: Intellectual Property &  & 0.01 & 0.01 \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Equipment &  & 0.10 & 0.01 \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Intellectual Property &  & 0.04 & 0.01 \\ 
   Gross Private Domestic Investment: Residential Investment &  & 0.01 & 0.01 \\ 
-  Gross Private Domestic Investment: Change in Private Inventories &  & 129.98 & 73.13 \\ 
-  Exports: Exported Goods &  & 0.01 & 0.01 \\ 
-  Exports: Exported Services &  & 0.11 & 0.01 \\ 
+  Gross Private Domestic Investment: Change in Private Inventories &  & 123.85 & 72.26 \\ 
+  Exports: Exported Goods &  & 0.15 & -0.03 \\ 
+  Exports: Exported Services &  & 0.10 & 0.02 \\ 
   Imports: Imported Goods &  & 0.01 & 0.01 \\ 
   Imports: Imported Services &  & -0.00 & -0.00 \\ 
   Government Spending: Federal &  & -0.00 & 0.00 \\ 
-  Government Spending: State \& Local &  & 0.00 & 0.00 \\ 
+  Government Spending: State \& Local &  & 0.01 & 0.00 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -1041,7 +1002,7 @@ Consumption: Goods: Durable: Motor Vehicles \& Parts &  & 0.12 & -0.02 \\
 
 We can then backtransform the data so that the units are in base values. After backtransformation, we are ready to aggregate these up to higher-level GDP components. In particular, we calculate the variables below.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:45 2021
+% Sun May 09 00:54:33 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -1076,7 +1037,7 @@ We also use a similar DFM-AR(1) specification to forecast out other economic var
 \section{Results}
 Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:45 2021
+% Sun May 09 00:54:34 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{10pt}{12pt}\selectfont
@@ -1084,45 +1045,45 @@ Our final nowcasts of GDP and its subcomponents are below. All units are reporte
   \hline
 Variable & 2021Q1 & 2021Q2 & 2021Q3 \\ 
   \hline
-\hspace{0mm} \textbf{GDP} &  & 19.89 & -0.43 \\ 
-  \hspace{0mm} \textbf{Consumption} &  & 15.54 & 0.41 \\ 
-  \hspace{8mm}  Goods &  & 29.19 & -1.55 \\ 
-  \hspace{16mm}  Durable &  & 54.29 & -4.20 \\ 
-  \hspace{24mm}  Motor Vehicles \& Parts &  & 59.10 & -8.50 \\ 
-  \hspace{24mm}  Furnishings \& Durable Household Equipment &  & 32.14 & -4.93 \\ 
+\hspace{0mm} \textbf{GDP} &  & 23.31 & -0.24 \\ 
+  \hspace{0mm} \textbf{Consumption} &  & 12.59 & 1.96 \\ 
+  \hspace{8mm}  Goods &  & 13.15 & 3.91 \\ 
+  \hspace{16mm}  Durable &  & 17.46 & 7.35 \\ 
+  \hspace{24mm}  Motor Vehicles \& Parts &  & 5.53 & 5.53 \\ 
+  \hspace{24mm}  Furnishings \& Durable Household Equipment &  & 16.63 & 4.93 \\ 
   \hspace{24mm}  Recreational Goods \& Services &  & 10.89 & 10.89 \\ 
-  \hspace{24mm}  Other Durable Goods &  & 149.18 & -23.11 \\ 
-  \hspace{16mm}  Nondurable Goods &  & 8.07 & 0.45 \\ 
-  \hspace{24mm}  Food \& Beverages for Off-Premises Use &  & -6.41 & 8.73 \\ 
-  \hspace{24mm}  Clothing &  & 133.22 & -20.96 \\ 
-  \hspace{24mm}  Gasoline \& Energy Goods &  & -0.81 & -0.81 \\ 
-  \hspace{24mm}  Other Nondurable Goods &  & 5.35 & 4.19 \\ 
-  \hspace{8mm}  Services &  & -2.00 & 1.84 \\ 
+  \hspace{24mm}  Other Durable Goods &  & 6.11 & 6.11 \\ 
+  \hspace{16mm}  Nondurable Goods &  & 4.69 & 1.55 \\ 
+  \hspace{24mm}  Food \& Beverages for Off-Premises Use &  & -5.10 & 7.43 \\ 
+  \hspace{24mm}  Clothing &  & 85.43 & -14.07 \\ 
+  \hspace{24mm}  Gasoline \& Energy Goods &  & -0.54 & -1.12 \\ 
+  \hspace{24mm}  Other Nondurable Goods &  & 5.52 & 4.32 \\ 
+  \hspace{8mm}  Services &  & 2.92 & 0.65 \\ 
   \hspace{16mm}  Housing \& Utilities &  & 1.24 & 1.24 \\ 
   \hspace{16mm}  Health Care &  & 2.06 & 2.06 \\ 
-  \hspace{16mm}  Transportation &  & 0.94 & 0.94 \\ 
+  \hspace{16mm}  Transportation &  & 145.76 & -17.35 \\ 
   \hspace{16mm}  Recreation &  & -1.51 & -1.51 \\ 
   \hspace{16mm}  Food Services \& Accomodations &  & 0.51 & 0.51 \\ 
-  \hspace{16mm}  Financial Services &  & 6.79 & 1.98 \\ 
+  \hspace{16mm}  Financial Services &  & 4.65 & 1.83 \\ 
   \hspace{16mm}  Other Services &  & 0.91 & 0.91 \\ 
-  \hspace{16mm}  Nonprofit Services &  & -54.65 & 16.61 \\ 
-  \hspace{0mm} \textbf{Gross Private Domestic Investment} &  & 55.85 & -3.40 \\ 
-  \hspace{8mm}  Nonresidential Investment &  & 39.25 & 1.78 \\ 
-  \hspace{16mm}  Structures &  & 5.24 & -0.29 \\ 
-  \hspace{16mm}  Equipment &  & 71.44 & -0.06 \\ 
-  \hspace{16mm}  Intellectual Property &  & 5.51 & 5.51 \\ 
+  \hspace{16mm}  Nonprofit Services &  & -44.06 & 12.99 \\ 
+  \hspace{0mm} \textbf{Gross Private Domestic Investment} &  & 49.67 & -1.95 \\ 
+  \hspace{8mm}  Nonresidential Investment &  & 33.29 & 3.07 \\ 
+  \hspace{16mm}  Structures &  & 4.16 & -1.46 \\ 
+  \hspace{16mm}  Equipment &  & 48.04 & 2.65 \\ 
+  \hspace{16mm}  Intellectual Property &  & 15.44 & 5.65 \\ 
   \hspace{8mm}  Residential Investment &  & 5.46 & 5.46 \\ 
-  \hspace{8mm}  Change in Private Inventories &  & 129.98 & 73.13 \\ 
-  \hspace{0mm} \textbf{Net Exports} &  & -1131.92 & -1141.24 \\ 
-  \hspace{0mm} \textbf{Exports} &  & 20.83 & 3.08 \\ 
-  \hspace{8mm}  Exported Goods &  & 2.25 & 2.25 \\ 
-  \hspace{8mm}  Exported Services &  & 54.07 & 5.29 \\ 
+  \hspace{8mm}  Change in Private Inventories &  & 123.85 & 72.26 \\ 
+  \hspace{0mm} \textbf{Net Exports} &  & -863.89 & -935.79 \\ 
+  \hspace{0mm} \textbf{Exports} &  & 85.09 & -6.54 \\ 
+  \hspace{8mm}  Exported Goods &  & 82.98 & -10.76 \\ 
+  \hspace{8mm}  Exported Services &  & 51.51 & 7.36 \\ 
   \hspace{0mm} \textbf{Imports} &  & 7.94 & 3.16 \\ 
   \hspace{8mm}  Imported Goods &  & 3.61 & 3.61 \\ 
   \hspace{8mm}  Imported Services &  & -0.10 & -0.10 \\ 
-  \hspace{0mm} \textbf{Government Spending} &  & 0.50 & 0.86 \\ 
-  \hspace{8mm}  Federal &  & -1.50 & 0.88 \\ 
-  \hspace{8mm}  State \& Local &  & 1.45 & 0.84 \\ 
+  \hspace{0mm} \textbf{Government Spending} &  & 0.67 & 1.41 \\ 
+  \hspace{8mm}  Federal &  & -1.94 & 1.52 \\ 
+  \hspace{8mm}  State \& Local &  & 2.05 & 1.33 \\ 
    \hline 
  \textit{apchg} = annualized \% change 
 \end{tabular}
@@ -1133,7 +1094,7 @@ Variable & 2021Q1 & 2021Q2 & 2021Q3 \\
 
 We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:45 2021
+% Sun May 09 00:54:34 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{11pt}{13pt}\selectfont
@@ -1141,9 +1102,9 @@ We also report nowcasts of other variables of interest, including other quarterl
   \hline
 Variable & 2021Q1 & 2021Q2 & 2021Q3 \\ 
   \hline
-Delinquency Rate on Residential Mortgages & 2.84 & 2.74 & 2.71 \\ 
-  Delinquency Rate on Credit Cards & 2.08 & 2.13 & 2.19 \\ 
-  Delinquency Rate on Commercial $\backslash$\& Industrial Loans & 1.30 & 1.22 & 1.22 \\ 
+Delinquency Rate on Residential Mortgages & 2.58 & 2.33 & 2.31 \\ 
+  Delinquency Rate on Credit Cards & 2.16 & 2.20 & 2.23 \\ 
+  Delinquency Rate on Commercial $\backslash$\& Industrial Loans & 1.28 & 1.19 & 1.19 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -1151,7 +1112,7 @@ Delinquency Rate on Residential Mortgages & 2.84 & 2.74 & 2.71 \\
 \end{table}
 
 % latex table generated in R 4.0.4 by xtable 1.8-4 package
-% Sat May 08 23:43:45 2021
+% Sun May 09 00:54:34 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{10pt}{12pt}\selectfont
@@ -1159,23 +1120,23 @@ Delinquency Rate on Residential Mortgages & 2.84 & 2.74 & 2.71 \\
   \hline
 Variable & 2010M2 & 2010M3 & 2010M4 & 2010M5 & 2010M6 & 2010M7 & 2010M8 & 2010M9 & 2010M10 & 2010M11 & 2010M12 & 2011M1 & 2011M2 & 2011M3 & 2011M4 & 2011M5 & 2011M6 & 2011M7 & 2011M8 & 2011M9 & 2011M10 & 2011M11 & 2011M12 & 2012M1 & 2012M2 & 2012M3 & 2012M4 & 2012M5 & 2012M6 & 2012M7 & 2012M8 & 2012M9 & 2012M10 & 2012M11 & 2012M12 & 2013M1 & 2013M2 & 2013M3 & 2013M4 & 2013M5 & 2013M6 & 2013M7 & 2013M8 & 2013M9 & 2013M10 & 2013M11 & 2013M12 & 2014M1 & 2014M2 & 2014M3 & 2014M4 & 2014M5 & 2014M6 & 2014M7 & 2014M8 & 2014M9 & 2014M10 & 2014M11 & 2014M12 & 2015M1 & 2015M2 & 2015M3 & 2015M4 & 2015M5 & 2015M6 & 2015M7 & 2015M8 & 2015M9 & 2015M10 & 2015M11 & 2015M12 & 2016M1 & 2016M2 & 2016M3 & 2016M4 & 2016M5 & 2016M6 & 2016M7 & 2016M8 & 2016M9 & 2016M10 & 2016M11 & 2016M12 & 2017M1 & 2017M2 & 2017M3 & 2017M4 & 2017M5 & 2017M6 & 2017M7 & 2017M8 & 2017M9 & 2017M10 & 2017M11 & 2017M12 & 2018M1 & 2018M2 & 2018M3 & 2018M4 & 2018M5 & 2018M6 & 2018M7 & 2018M8 & 2018M9 & 2018M10 & 2018M11 & 2018M12 & 2019M1 & 2019M2 & 2019M3 & 2019M4 & 2019M5 & 2019M6 & 2019M7 & 2019M8 & 2019M9 & 2019M10 & 2019M11 & 2019M12 & 2020M1 & 2020M2 & 2020M3 & 2020M4 & 2020M5 & 2020M6 & 2020M7 & 2020M8 & 2020M9 & 2020M10 & 2020M11 & 2020M12 & 2021M1 & 2021M2 & 2021M3 & 2021M4 & 2021M5 & 2021M6 & 2021M7 & 2021M8 & 2021M9 \\ 
   \hline
-PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 38.22 & 3.33 & 1.33 & 0.99 & 1.10 & 1.30 \\ 
-  PCE: Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 41.58 & 4.78 & 2.86 & 2.73 & 3.05 & 3.46 \\ 
-  PCE: Goods: Durable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 61.12 & 5.81 & 3.34 & 3.42 & 4.13 & 4.93 \\ 
-  PCE: Goods: Nondurable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 32.48 & 4.18 & 2.55 & 2.31 & 2.44 & 2.65 \\ 
-  PCE: Services \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 36.50 & 2.66 & 0.63 & 0.19 & 0.19 & 0.30 \\ 
-  Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -8.16 & 4.10 & 5.07 & 5.33 & 5.38 & 5.38 \\ 
-  Disposable Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -10.80 & 4.16 & 5.36 & 5.68 & 5.75 & 5.75 \\ 
-  Personal Outlays \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 41.38 & 5.04 & 2.94 & 2.55 & 2.63 & 2.82 \\ 
-  Personal Savings \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -80.27 & 12.77 & 27.89 & 31.89 & 32.38 & 31.92 \\ 
-  Personal Savings Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 0.28 & 0.28 & 0.28 & 0.29 & 0.29 & 0.30 \\ 
-  Case-Shiller Housing Price Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 242.52 & 243.82 & 244.97 & 246.13 & 247.31 & 248.51 & 249.74 \\ 
-  Housing Starts &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1877.47 & 1890.67 & 1895.56 & 1899.54 & 1904.59 & 1911.11 \\ 
-  Houses Sold &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1069.56 & 1074.47 & 1077.18 & 1080.41 & 1084.78 & 1090.35 \\ 
-  New Private Housing Permits &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1848.07 & 1856.96 & 1861.06 & 1865.13 & 1870.40 & 1877.05 \\ 
-  Manufacturers New Orders: Durable Goods &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 269353.10 & 269717.03 & 269278.85 & 268742.39 & 268294.38 & 267971.54 \\ 
-  Capacity Utilization: Total Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 76.14 & 76.21 & 76.15 & 76.07 & 75.98 & 75.89 \\ 
-  Total Construction Spending &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1528676.67 & 1536516.60 & 1543895.60 & 1551252.67 & 1558706.75 & 1566283.22 \\ 
+PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 38.21 & 11.11 & 5.98 & 4.17 & 3.52 & 3.29 \\ 
+  PCE: Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 41.96 & 14.64 & 9.46 & 7.64 & 6.99 & 6.77 \\ 
+  PCE: Goods: Durable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 63.92 & 22.72 & 15.27 & 12.68 & 11.77 & 11.46 \\ 
+  PCE: Goods: Nondurable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 31.87 & 10.68 & 6.56 & 5.11 & 4.59 & 4.41 \\ 
+  PCE: Services \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 36.30 & 9.43 & 4.33 & 2.54 & 1.89 & 1.66 \\ 
+  Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -8.11 & 1.66 & 3.92 & 4.76 & 5.07 & 5.19 \\ 
+  Disposable Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -10.70 & 1.15 & 3.94 & 4.97 & 5.36 & 5.50 \\ 
+  Personal Outlays \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 41.30 & 12.88 & 7.52 & 5.63 & 4.95 & 4.71 \\ 
+  Personal Savings \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -80.21 & -21.43 & 6.01 & 18.27 & 23.10 & 24.93 \\ 
+  Personal Savings Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 0.28 & 0.27 & 0.27 & 0.27 & 0.28 & 0.28 \\ 
+  Case-Shiller Housing Price Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 242.42 & 243.80 & 245.09 & 246.37 & 247.65 & 248.94 & 250.23 \\ 
+  Housing Starts &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1881.43 & 1932.44 & 1962.60 & 1985.06 & 2004.79 & 2023.64 \\ 
+  Houses Sold &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1073.46 & 1097.42 & 1115.15 & 1130.69 & 1145.56 & 1160.33 \\ 
+  New Private Housing Permits &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1851.93 & 1888.37 & 1912.22 & 1931.48 & 1949.16 & 1966.35 \\ 
+  Manufacturers New Orders: Durable Goods &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 269781.14 & 273732.53 & 275665.62 & 276854.07 & 277770.94 & 278590.26 \\ 
+  Capacity Utilization: Total Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 76.13 & 76.56 & 76.70 & 76.73 & 76.73 & 76.71 \\ 
+  Total Construction Spending &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1528822.22 & 1538592.67 & 1547094.98 & 1555160.55 & 1563094.84 & 1571010.02 \\ 
   Effective Federal Funds Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 0.06 & 0.07 & 0.08 & 0.08 & 0.08 \\ 
   Secured Overnight Financing Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 0.01 & 0.04 & 0.04 & 0.04 & 0.04 \\ 
   Treasury Yield 10Y &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1.35 & 1.37 & 1.39 & 1.40 & 1.40 \\ 
@@ -1188,29 +1149,29 @@ PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &
   Treasury Yield 1M &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -1.24 & -0.37 & 0.46 & 0.95 & 1.20 \\ 
   Treasury Yield 20Y &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1.38 & 1.39 & 1.40 & 1.40 & 1.40 \\ 
   Treasury Yield 7Y &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 1.33 & 1.36 & 1.38 & 1.39 & 1.40 \\ 
-  Vehicle Sales &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 17.70 & 17.60 & 17.53 & 17.48 & 17.44 \\ 
-  Unemployment Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 5.01 & 4.93 & 4.90 & 4.90 & 4.89 & 4.89 \\ 
-  All Employees (Nonfarm) &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 147307.06 & 147642.60 & 147764.19 & 147827.46 & 147877.84 & 147928.11 \\ 
-  Job Openings: Total Nonfarm &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 7703.45 & 8123.78 & 8177.82 & 8206.60 & 8231.22 & 8257.48 & 8286.70 \\ 
-  Hires: Total Nonfarm & 3891.29 & 4001.29 & 3909.23 & 4027.23 & 3984.98 & 4057.97 & 4114.09 & 4110.13 & 4148.82 & 4126.74 & 4154.48 & 4000.36 & 3927.84 & 4113.95 & 3935.88 & 4048.37 & 4100.12 & 4093.35 & 4174.36 & 4260.42 & 4354.46 & 4369.24 & 4438.16 & 4578.88 & 4595.45 & 4497.51 & 4558.93 & 4595.12 & 4592.85 & 4635.64 & 4601.43 & 4662.99 & 4651.03 & 4788.85 & 4718.62 & 4677.00 & 4753.67 & 4661.27 & 4757.77 & 4807.32 & 4680.22 & 4597.45 & 4622.01 & 4604.53 & 4595.45 & 4659.50 & 4590.93 & 4585.17 & 4776.46 & 4803.74 & 4814.98 & 4809.22 & 4879.66 & 4921.37 & 4859.62 & 4965.67 & 5043.00 & 5077.44 & 5180.09 & 5246.60 & 5296.42 & 5370.48 & 5347.56 & 5227.34 & 5248.19 & 5295.63 & 5322.29 & 5344.76 & 5339.98 & 5379.29 & 5395.52 & 5444.45 & 5447.69 & 5383.76 & 5469.29 & 5490.92 & 5560.10 & 5632.66 & 5558.45 & 5556.26 & 5575.02 & 5510.20 & 5575.25 & 5553.91 & 5473.20 & 5526.44 & 5544.89 & 5558.85 & 5637.33 & 5535.66 & 5545.60 & 5613.19 & 5706.20 & 5644.62 & 5598.58 & 5499.50 & 5494.98 & 5516.99 & 5491.13 & 5471.91 & 5515.16 & 5537.97 & 5606.81 & 5486.51 & 5492.83 & 5532.50 & 5468.36 & 5545.28 & 5520.16 & 5631.09 & 5632.67 & 5679.83 & 5785.49 & 5833.02 & 5917.15 & 5854.73 & 5822.14 & 5905.80 & 5861.06 & 5919.37 & 5905.76 & 4954.05 & 3593.69 & 7026.05 & 7062.29 & 6414.46 & 6231.14 & 6128.21 & 6151.63 & 5970.60 & 5854.50 & 6016.08 & 5470.61 & 5858.24 & 6008.77 & 5535.51 & 5511.57 & 5513.29 & 5521.65 & 5531.16 \\ 
-  S\&P 500 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 4218.14 & 4254.99 & 4293.02 & 4332.37 \\ 
-  VIX &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 15.35 & 15.70 & 15.99 & 16.23 \\ 
-  Crude Oil Price (West Texas Intermediate) &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 58.66 & 58.09 & 57.65 & 57.28 & 56.95 \\ 
-  Outstanding Real Estate Loans \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 3.99 & 4.03 & 4.02 & 3.99 & 3.97 \\ 
-  Outstanding Credit Card Balances \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 7.78 & 6.60 & 5.56 & 4.66 & 3.90 \\ 
-  Housing Prices: New Listed Prices \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 9.15 & 8.96 & 9.06 & 9.22 & 9.37 \\ 
-  St. Louis Fed Financial Stress Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -0.43 & -0.39 & -0.37 & -0.35 & -0.34 \\ 
-  U.S. Dollar Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 111.38 & 111.47 & 111.53 & 111.59 & 111.64 \\ 
-  Average Weeks Unemployed &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 26.22 & 25.32 & 25.20 & 25.14 & 25.10 & 25.07 \\ 
-  Retail \& Food Sales \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 52.10 & 2.58 & 0.12 & -0.06 & 0.35 & 0.86 \\ 
-  KC Fed Labor Market Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 0.69 & 0.51 & 0.47 & 0.44 & 0.41 & 0.39 \\ 
-  Consumer Confidence (OECD) &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 101.01 & 101.09 & 101.05 & 101.00 & 100.95 & 100.90 \\ 
-  PCE Price Index \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 3.15 & 1.62 & 1.50 & 1.47 & 1.47 & 1.47 \\ 
-  New York Fed: Business Conditions Manufacturing Survey &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 10.73 & 9.59 & 8.83 & 8.24 & 7.76 \\ 
-  Dallas Fed: Current General Business Activity &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 9.86 & 8.49 & 7.57 & 6.86 & 6.28 \\ 
-  Philadelphia Fed: Future Capital Expenditures Survey &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 27.36 & 26.96 & 26.65 & 26.40 & 26.19 \\ 
-  Baa Corporate Bond Yield &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 4.57 & 4.57 & 4.55 & 4.53 & 4.51 \\ 
-  Labor Force Participation Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 62.81 & 62.83 & 62.80 & 62.78 & 62.75 & 62.73 \\ 
+  Vehicle Sales &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 17.37 & 17.16 & 17.09 & 17.07 & 17.06 \\ 
+  Unemployment Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 5.04 & 4.82 & 4.74 & 4.70 & 4.69 & 4.68 \\ 
+  All Employees (Nonfarm) &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 147211.60 & 148071.76 & 148439.65 & 148626.91 & 148748.05 & 148845.00 \\ 
+  Job Openings: Total Nonfarm &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 7632.71 & 8050.99 & 8202.34 & 8293.73 & 8363.07 & 8424.51 & 8483.27 \\ 
+  Hires: Total Nonfarm & 4024.37 & 4154.74 & 4089.25 & 4146.65 & 4052.19 & 4088.33 & 4123.30 & 4118.36 & 4142.10 & 4144.82 & 4239.33 & 4076.62 & 4011.05 & 4168.65 & 4013.51 & 4078.59 & 4081.15 & 4083.72 & 4078.11 & 4135.24 & 4254.21 & 4249.65 & 4296.08 & 4461.59 & 4485.77 & 4415.63 & 4441.76 & 4456.33 & 4443.38 & 4456.42 & 4449.23 & 4494.31 & 4483.19 & 4620.79 & 4573.16 & 4581.80 & 4660.75 & 4568.30 & 4635.43 & 4685.57 & 4603.48 & 4566.49 & 4612.47 & 4618.16 & 4599.79 & 4668.34 & 4614.00 & 4621.38 & 4758.95 & 4810.99 & 4838.03 & 4813.43 & 4892.71 & 4925.12 & 4845.32 & 4983.32 & 5011.70 & 5052.56 & 5161.70 & 5181.29 & 5265.61 & 5349.20 & 5306.69 & 5202.47 & 5254.66 & 5303.39 & 5320.47 & 5357.41 & 5333.94 & 5417.32 & 5403.51 & 5413.79 & 5390.49 & 5362.98 & 5429.24 & 5454.23 & 5487.43 & 5578.91 & 5507.45 & 5505.69 & 5547.44 & 5544.19 & 5657.49 & 5643.09 & 5561.61 & 5613.10 & 5612.23 & 5635.97 & 5706.42 & 5608.73 & 5613.48 & 5658.28 & 5786.79 & 5713.09 & 5685.23 & 5610.01 & 5600.96 & 5605.17 & 5587.83 & 5609.25 & 5660.15 & 5666.08 & 5739.08 & 5644.93 & 5659.44 & 5703.48 & 5596.44 & 5652.23 & 5628.72 & 5709.08 & 5741.42 & 5732.42 & 5794.42 & 5858.27 & 5887.86 & 5852.83 & 5810.56 & 5895.88 & 5858.81 & 5890.89 & 5852.40 & 4837.65 & 3719.52 & 6831.01 & 6920.75 & 6355.25 & 6186.20 & 6046.67 & 6097.06 & 5935.63 & 5798.14 & 5918.65 & 5452.78 & 5817.28 & 6046.97 & 5683.11 & 5607.59 & 5582.47 & 5575.69 & 5575.54 \\ 
+  S\&P 500 &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 4232.57 & 4280.69 & 4328.12 & 4375.65 \\ 
+  VIX &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 17.43 & 17.71 & 17.81 & 17.84 \\ 
+  Crude Oil Price (West Texas Intermediate) &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 56.86 & 56.15 & 55.82 & 55.63 & 55.49 \\ 
+  Outstanding Real Estate Loans \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 3.43 & 3.50 & 3.54 & 3.56 & 3.58 \\ 
+  Outstanding Credit Card Balances \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 3.18 & 1.56 & 0.94 & 0.68 & 0.56 \\ 
+  Housing Prices: New Listed Prices \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 8.01 & 7.15 & 6.86 & 6.79 & 6.79 \\ 
+  St. Louis Fed Financial Stress Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & -0.40 & -0.31 & -0.28 & -0.26 & -0.26 \\ 
+  U.S. Dollar Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 111.46 & 111.45 & 111.49 & 111.54 & 111.60 \\ 
+  Average Weeks Unemployed &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 25.83 & 25.31 & 25.16 & 25.08 & 25.03 & 24.99 \\ 
+  Retail \& Food Sales \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 53.27 & 15.62 & 8.77 & 6.38 & 5.53 & 5.23 \\ 
+  KC Fed Labor Market Index &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 0.58 & 0.26 & 0.20 & 0.18 & 0.18 & 0.18 \\ 
+  Consumer Confidence (OECD) &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 100.82 & 100.59 & 100.55 & 100.54 & 100.54 & 100.54 \\ 
+  PCE Price Index \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 3.17 & 1.93 & 1.66 & 1.56 & 1.53 & 1.51 \\ 
+  New York Fed: Business Conditions Manufacturing Survey &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 8.35 & 6.24 & 5.46 & 5.17 & 5.06 \\ 
+  Dallas Fed: Current General Business Activity &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 7.05 & 4.43 & 3.48 & 3.13 & 3.00 \\ 
+  Philadelphia Fed: Future Capital Expenditures Survey &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 26.01 & 25.22 & 24.95 & 24.87 & 24.85 \\ 
+  Baa Corporate Bond Yield &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 4.39 & 4.41 & 4.42 & 4.42 & 4.42 \\ 
+  Labor Force Participation Rate &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  &  & 62.70 & 62.65 & 62.64 & 62.63 & 62.62 & 62.62 \\ 
    \hline 
  \textit{apchg} = annualized \% change 
 \end{tabular}
