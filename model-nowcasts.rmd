@@ -477,10 +477,9 @@ local({
 
 	
 	bigR =
-		# screeDf %>%
-		# dplyr::filter(., ic1 == min(ic1)) %>%
-		# .$factors + 1
-		3
+		screeDf %>%
+		dplyr::filter(., ic1 == min(ic1)) %>%
+		.$factors + 2
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
