@@ -1,6 +1,6 @@
 # Set Options
 Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
-```{r purl = FALSE}
+```{r purl = TRUE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Path to documentation .RNW file; if NULL no docs generated
@@ -479,7 +479,7 @@ local({
 	bigR =
 		screeDf %>%
 		dplyr::filter(., ic1 == min(ic1)) %>%
-		.$factors + 2
+		.$factors + 1
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -1436,7 +1436,7 @@ local({
 		password = CONST$DB_PASSWORD
 		)
 	
-	
+	# TRUNCATE nc_releases;TRUNCATE nc_params CASCADE;TRUNCATE nc_values;TRUNCATE nc_history;
 	if (RESET_ALL == TRUE) {
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_params CASCADE')
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_values')
