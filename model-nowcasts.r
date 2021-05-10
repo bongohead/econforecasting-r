@@ -459,7 +459,7 @@ local({
 	bigR =
 		screeDf %>%
 		dplyr::filter(., ic1 == min(ic1)) %>%
-		.$factors + 2
+		.$factors + 1
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -1395,7 +1395,7 @@ local({
 		password = CONST$DB_PASSWORD
 		)
 	
-	
+	# TRUNCATE nc_releases;TRUNCATE nc_params CASCADE;TRUNCATE nc_values;TRUNCATE nc_history;
 	if (RESET_ALL == TRUE) {
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_params CASCADE')
 		DBI::dbGetQuery(conn, 'TRUNCATE nc_values')
