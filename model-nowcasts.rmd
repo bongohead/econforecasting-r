@@ -133,7 +133,12 @@ local({
 		lapply(fredRes, function(x) x$releaseDf) %>%
 		dplyr::bind_rows(.) %>%
 		# Now create a column of included varnames
-		dplyr::left_join(., paramsDf[, c('varname', 'fullname', 'releaseid')], by = c('varname')) %>%
+		dplyr::inner_join(
+			.,
+			# Only included releases relevant to dfminputs
+			paramsDf %>% dplyr::filter(., dfminput == TRUE) %>% .[, c('varname', 'fullname', 'releaseid')],
+			by = c('varname')
+			) %>%
 		dplyr::group_by(., id, relname, link) %>%
 		dplyr::summarize(., count = n(), seriesnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
 		# Now create a column of included releaseDates
