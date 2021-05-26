@@ -1,5 +1,12 @@
 DIR = 'D:/OneDrive/__Projects/econforecasting'
 
+
+# Directory
+sinkFile = file(file.path(DIR, 'sink.txt'), open = 'wt')
+sink(sinkFile, type = 'output')
+sink(sinkFile, type = 'message')
+
+
 # Convert to R -> Run
 lapply(list('model-asset-contagion', 'model-baseline-forecasts', 'model-nowcasts'), function(filename) {
 	message('Started - ', filename)
@@ -9,6 +16,8 @@ lapply(list('model-asset-contagion', 'model-baseline-forecasts', 'model-nowcasts
 	file.remove(paste0(DIR, '/', filename, '.r'))
 	message('Finished - ', filename)
 })
+
+sink()
 
 
 # send.mail(
