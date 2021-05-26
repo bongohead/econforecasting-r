@@ -137,7 +137,7 @@ local({
 		ef$history$fred %>%
 		dplyr::filter(., varname == 'cpi' & freq == 'm') %>%
 		dplyr::arrange(., obsDate) %>%
-		dplyr::mutate(., value = ma(apchg(value), 3)) %>%
+		dplyr::mutate(., value = ma(apchg(value), 12)) %>%
 		dplyr::mutate(., varname = 'inf') %>% 
 		na.omit(.)
 	
@@ -632,10 +632,21 @@ local({
 		) %>%
 		purrr::transpose(.) %>%
 		purrr::map_dfr(., function(var) {
+			# message(var)
 			httr::GET(
 				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
 				# 3/30/21 - CME website now requires user-agent header
-				add_headers(c('User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:87.0) Gecko/20100101 Firefox/87.0'))
+				add_headers(c(
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0',
+					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+					'Accept-Encoding' = 'gzip, deflate, br',
+					'Accept-Language' ='en-US,en;q=0.5',
+					'Cache-Control'='no-cache',
+					'Connection'='keep-alive',
+					'Cookie'='ak_bmsc=7F4B0C1D5A31ACB51F193F8861397A7917DA5DAD647500000DAAAD600E3CB24D~plFJ4Tbept5nXUkwa+6RIih783P/+iXHDdnDNbFqJ4idRAbPKtcBJUiD526B10azgLWCwEg+2oGA2c8dUkNNPBQL5eFgss7PISIKvTy/zTslJ8TuPcXfJ7P9w5nbXA5+SN2XRX0DQBISuPhJQreV/bBXY9Zkjj06RD9NhSB0cZZ+JwNi547S+8INij+v8nFUM20ldLZ4s9Ei6XD/cMQw/u9EXyBUYTkqhras9nmMZUVZQ=',
+					'DNT' = '1',
+					'Host' = 'www.cmegroup.com'
+					))
 				) %>%
 				httr::content(., as = 'parsed') %>%
 				.$quotes %>%
@@ -747,7 +758,7 @@ local({
         }) %>%
       dplyr::bind_rows(.) %>%
       {
-        if (returnAll == FALSE) dplyr::summarise(., mape = mean(abs(resid)/abs(value))) %>% .$mape
+        if (returnAll == FALSE) dplyr::summarise(., mae = mean(abs(resid))) %>% .$mae
         else .
         } %>%
       return(.)
@@ -794,7 +805,7 @@ local({
       )
   
   # Test for 20 year forecast
-  # fittedCurve %>% dplyr::mutate(., futNetYield = dplyr::lead(cumYield, 240)/cumYield, futYield = (futNetYield^(12/240) - 1) * 100) %>% dplyr::filter(., ttm < 120) %>% ggplot(.) + geom_line(aes(x = ttm, y = futYield))
+  # fittedCurve %>% dplyr::mutate(., futNetYield = dplyr::lead(annualizedYield, 240)/cumReturn, futYield = (futNetYield^(12/240) - 1) * 100) %>% dplyr::filter(., ttm < 120) %>% ggplot(.) + geom_line(aes(x = ttm, y = futYield))
   
   # fittedCurve %>% dplyr::mutate(., futYield = (dplyr::lead(cumYield, 3)/cumYield - 1) * 100)
   

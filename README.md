@@ -10,13 +10,17 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
-# 2021-05-08 [v0.13]
+# 2021-05-25 [v0.13]
 - Added importing of releases & release dates
 - Added SQL export of releases & release dates
 - Added new shipments, new business applications
 - Added releases table to SQL
 - Added notes re: purl toggle
 - Added code to cleanup old .tex and .pdf files, as well as clean images directory
+- Added error logging to task scheduler
+- Improved 3-month -> 12-month moving-average inhistorical inflation data
+- Fixed bug caused by optimizing DNS yield curve parametrization over MAPE instead of MAE (MAPE was returning Inf values)
+- Fixed bug introduced by missing request headers for CME web scraping
 - Removed WEI index
 
 ## 2021-05-07 [v0.12]
