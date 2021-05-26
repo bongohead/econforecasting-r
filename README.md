@@ -6,10 +6,11 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # RUN NOTES
 - Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 - Run model-asset-contagion.rmd, model-baseling-forecasts.rmd, model-nowcasts-backtest.rmd daily until cron server set up
-- After finish development, nowcast model should run DAILY but backtest code can be invoked to "catch up" on days where missed for whatever reason - code does not need to be modularized for backtest ease
-
 
 # CHANGELOG
+## 2021-05-26 [v0.14]
+- Removed JOLTS new hires from inputs (missing data in 2010)
+
 ## 2021-05-25 [v0.13]
 - Added importing of releases & release dates for input data series into nowcast models
 - Added SQL export of releases & release dates
