@@ -1,0 +1,79 @@
+# Set Constants
+```{r}
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
+RESET_ALL = FALSE
+```
+
+
+# Initialize
+```{r}
+library(tidyverse)
+library(devtools)
+library(jsonlite)
+library(lubridate)
+library(httr)
+library(rvest)
+library(DBI)
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
+
+setwd(DIR)
+
+if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
+dir.create(DL_DIR, recursive = TRUE)
+
+source(file.path(INPUT_DIR, 'constants.r'))
+
+ef = list(
+	variablesDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'baseline-variables'),
+	forecastsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'baseline-forecasts'),
+	h = list(),
+	f = list()
+	) %>%
+	c(., list(variables = purrr::transpose(.$variablesDf, .names = .$variablesDf$varname)))
+```
+
+
+
+# Get Historical Data
+
+## From FRED
+```{r}
+local({
+	
+	fredRes =
+		ef$variables %>%
+		purrr::keep(., ~ .$source == 'fred') %>%
+		lapply(., function(x) {
+			
+			message('Getting data ... ', x$varname)
+
+			# Get series data
+			list(
+				q = econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = FALSE),
+				m =	{
+					if (x$freq %in% c('d', 'm'))
+						econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = FALSE) %>%
+			        	dplyr::mutate(., varname = x$varname, freq = 'm')
+					else NULL
+					},
+				d =	{
+					if (x$freq %in% c('d'))
+						econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = FALSE) %>%
+			        	dplyr::mutate(., varname = x$varname, freq = 'd')
+					else NULL
+					}
+				) %>%
+				purrr::keep(., ~ !is.null(.)) %>%
+				lapply(., function(x) x %>% dplyr::mutate(., date = obsDate) %>% dplyr::filter(., date >= as.Date('2010-01-01')))
+			})
+	
+	
+	for (varname in names(ef$variables)) {
+		ef$variables[[varname]]$rawData <<- fredRes[[varname]]
+	}
+})
+```
