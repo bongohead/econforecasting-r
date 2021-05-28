@@ -11,6 +11,7 @@ RESET_ALL = FALSE
 # Initialize
 ```{r}
 library(tidyverse)
+library(data.table)
 library(devtools)
 library(jsonlite)
 library(lubridate)
@@ -40,7 +41,7 @@ ef = list(
 
 # Get Historical Data
 
-## From FRED
+## FRED
 ```{r}
 local({
 	
@@ -52,28 +53,175 @@ local({
 			message('Getting data ... ', x$varname)
 
 			# Get series data
-			list(
-				q = econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = FALSE),
-				m =	{
-					if (x$freq %in% c('d', 'm'))
-						econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = FALSE) %>%
-			        	dplyr::mutate(., varname = x$varname, freq = 'm')
-					else NULL
-					},
-				d =	{
-					if (x$freq %in% c('d'))
-						econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = FALSE) %>%
-			        	dplyr::mutate(., varname = x$varname, freq = 'd')
-					else NULL
-					}
+			dataDf =
+				econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = x$freq) %>%
+				dplyr::transmute(., varname = x$varname, date = obsDate, freq = x$freq, value) %>%
+				dplyr::filter(., date >= as.Date('2010-01-01'))
+
+				# list(
+				# 	q = econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = x$freq),
+				# 	m =	{if (x$freq %in% c('d', 'w', 'm')) econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm') else NA},
+				# 	w =	{if (x$freq %in% c('d', 'w')) econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'w') else NA},
+				# 	d =	{if (x$freq %in% c('d')) econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd') else NA}
+				# 	) %>%
+				# purrr::keep(., ~ is_tibble(.)) %>%
+				# purrr::imap(., function(df, i)
+				# 	df %>%
+				# 		dplyr::transmute(., varname = x$varname, date = obsDate, freq = i, value) %>%
+				# 		dplyr::filter(., date >= as.Date('2010-01-01'))
+				# 	)
+			
+			# Get series release
+			releaseDf =
+				httr::RETRY(
+					'GET', 
+					paste0(
+						'https://api.stlouisfed.org/fred/series/release?',
+						'series_id=',x$sckey,'&api_key=',CONST$FRED_API_KEY,'&file_type=json'
+						),
+					times = 10
 				) %>%
-				purrr::keep(., ~ !is.null(.)) %>%
-				lapply(., function(x) x %>% dplyr::mutate(., date = obsDate) %>% dplyr::filter(., date >= as.Date('2010-01-01')))
+		        httr::content(., as = 'parsed') %>%
+				.$releases %>%
+				.[[1]] %>%
+				as_tibble(.) %>%
+				dplyr::mutate(., varname = x$varname)
+
+			list(dataDf = dataDf, releaseDf = releaseDf)
 			})
 	
 	
-	for (varname in names(ef$variables)) {
-		ef$variables[[varname]]$rawData <<- fredRes[[varname]]
+	for (varname in names(fredRes)) {
+		ef$variables[[varname]]$rawData <<- fredRes[[varname]]$dataDf
+		ef$variables[[varname]]$releasekey <<- fredRes[[varname]]$releaseDf$id
 	}
 })
 ```
+
+## Yahoo Finance
+```{r}
+local({
+	
+	res =
+		ef$variables %>%
+    	purrr::keep(., ~ .$source == 'yahoo') %>%
+		lapply(., function(x) {
+			url =
+				paste0(
+					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
+					'?period1=', '946598400', # 12/30/1999
+					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+					'&interval=1d',
+					'&events=history&includeAdjustedClose=true'
+				)
+			data.table::fread(url, showProgress = FALSE) %>%
+				.[, c('Date', 'Adj Close')]	%>%
+				setnames(., new = c('date', 'value')) %>%
+				as_tibble(.) %>%
+				dplyr::mutate(., varname = x$varname, freq = 'd') %>%
+				return(.)
+		})
+	
+	for (varname in names(res)) {
+		ef$variables[[varname]]$rawData <<- res[[varname]]
+	}
+})
+```
+
+
+
+# Aggregate Frequencies
+
+## Move to Hist Object
+```{r}
+local({
+	
+	 res =
+	 	ef$variables %>%
+	 	purrr::keep(., ~ is_tibble(.$rawData)) %>%
+	 	lapply(., function(x)
+	 		list(x$rawData) %>%
+	 			setNames(., x$freq)
+	 		)
+	 
+	for (varname in names(res)) {
+		ef$variables[[varname]]$h$base <<- res[[varname]]
+	}
+})
+```
+
+## Monthly Agg
+```{r}
+local({
+	
+    res =
+        # Get all daily/weekly varnames with pre-existing data
+        ef$variables %>%
+        purrr::keep(., ~ .$freq %in% c('d', 'w') && is_tibble(.$rawData)) %>%
+        # Add monthly values for current month
+        lapply(., function(x) {
+        	x$rawData %>%
+        		dplyr::mutate(., date = as.Date(paste0(year(date), '-', month(date), '-01'))) %>%
+        		dplyr::group_by(., date, varname) %>%
+        		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+        		dplyr::mutate(., freq = 'm') %>%
+        		{
+        			# Keep last-month aggregation despite possible mising data if set in inputs.xlsx
+        			if (x$append_eom_with_currentval == 1) .
+        			else dplyr::filter(., date != max(date))
+        		}
+        	})
+    
+	for (varname in names(res)) {
+		ef$variables[[varname]]$h$base$m <<- res[[varname]]
+	}
+})
+```
+
+## Quarterly Agg 
+```{r}
+local({
+	
+    res =
+        ef$variables %>%
+        purrr::keep(., ~ .$freq %in% c('d', 'w', 'm') && is_tibble(.$rawData)) %>%
+        lapply(., function(x) {
+        	message(x$varname)
+        	x$h$base$m %>%
+        		dplyr::mutate(., date = strdateToDate(paste0(year(date), 'Q', quarter(date)))) %>%
+        		dplyr::group_by(., date, varname) %>%
+        		dplyr::summarize(., value = mean(value), .groups = 'drop', n = n()) %>%
+        		# Only keep if all 3 monthly data exists (or imputed by previous chunk)
+        		dplyr::filter(., n == 3) %>%
+        		dplyr::select(., -n) %>%
+        		dplyr::mutate(., freq = 'q')
+        	})
+    
+	for (varname in names(res)) {
+		ef$variables[[varname]]$h$base$q <<- res[[varname]]
+	}
+    
+})
+```
+
+
+
+# Add Calculated Variables
+
+##
+```{r}
+
+```
+
+
+
+
+# Add Stationary Transformations
+## 
+
+
+
+
+
+# Download Nowcasts
+Download Existing Forecasts -> Convert to "O" Types
