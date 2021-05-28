@@ -6,6 +6,8 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # RUN NOTES
 - Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 - Run model-asset-contagion.rmd, model-baseling-forecasts.rmd, model-nowcasts-backtest.rmd daily until cron server set up
+- Import Data -> Generate Nowcasts (Using History + EOM Forecasts as "Data") -> Generate Forecasts (Use Nowcasts as "Data")
+
 
 # CHANGELOG
 ## 2021-05-26 [v0.14]

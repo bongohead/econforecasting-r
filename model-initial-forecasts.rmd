@@ -242,23 +242,24 @@ local({
   
   # Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
   yieldCurveNamesMap =
-    ef$historyDf %>% 
-    .$varname %>%
+    ef$variables %>% 
+    map_chr(., ~.$varname) %>%
     unique(.) %>%
     purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
     tibble(varname = .) %>%
     dplyr::mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
   
-  # Create training dataset - fitted on last 3 months
+  # Create training dataset from SPREAD from ffr - fitted on last 3 months
   trainDf =
-    ef$historyDf %>%
-    dplyr::filter(., varname %in% yieldCurveNamesMap$varname & freq == 'd') %>%
-    dplyr::select(., -freq) %>%
-    dplyr::bind_rows(.) %>%
-    dplyr::filter(., obsDate >= add_with_rollback(Sys.Date(), months(-3))) %>%
-    dplyr::right_join(., yieldCurveNamesMap, by = 'varname')
+	map_dfr(yieldCurveNamesMap$varname, function(x) ef$variables[[x]]$h$base$m) %>%
+  	dplyr::select(., -freq) %>%
+  	dplyr::filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
+    dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
+    dplyr::left_join(., dplyr::transmute(ef$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
+  	dplyr::mutate(., value = value - ffr) %>%
+  	dplyr::select(., -ffr)
   
-  # @df: (tibble) A tibble continuing columns obsDate, value, and ttm
+  # @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
   # @param returnAll: (boolean) FALSE by default.
   # If FALSE, will return only the MAPE (useful for optimization).
   # Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
@@ -270,7 +271,7 @@ local({
         f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm),
         f3 = f2 - exp(-1 * lambda * ttm)
         ) %>%
-      dplyr::group_by(obsDate) %>%
+      dplyr::group_by(date) %>%
       dplyr::group_split(.) %>%
       lapply(., function(x) {
         reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
@@ -285,7 +286,7 @@ local({
         } %>%
       return(.)
   }
-  
+
   # Find MAPE-minimizing lambda value
   optimLambda =
     optimize(
@@ -296,69 +297,32 @@ local({
       maximum = FALSE
       )$minimum
   
-  dnsCoefs =
-    getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
-    dplyr::filter(., obsDate == max(obsDate)) %>%
-    dplyr::select(., b1, b2, b3) %>%
-    head(., 1) %>%
-    as.list(.) 
+  mDf =
+	map_dfr(yieldCurveNamesMap$varname, function(x) ef$variables[[x]]$h$base$m) %>%
+    dplyr::select(., -freq) %>%
+    dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
+    dplyr::left_join(., dplyr::transmute(ef$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
+    dplyr::mutate(., value = value - ffr) %>%
+    dplyr::select(., -ffr) %>%
+  	getDnsFit(., lambda = optimLambda, returnAll = TRUE) %>%
+  	dplyr::group_by(., date) %>%
+  	dplyr::summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
+  	tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+  	dplyr::mutate(., freq = 'm')
+  	
+  qDf = mDf %>% monthToQuarter(.)
   
-  dnsFitChart =
-    getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
-    dplyr::filter(., obsDate == max(obsDate)) %>%
-    ggplot(.) +
-    geom_line(aes(x = ttm, y = value)) +
-    geom_point(aes(x = ttm, y = fitted))
+  mDfs =
+  	mDf %>%
+  	split(., as.factor(.$varname))
   
-  
-  # Monthly forecast up to 10 years
-  # Get cumulative return starting from curDate
-  fittedCurve =
-    tibble(ttm = seq(1: 480)) %>%
-    dplyr::mutate(., curDate = floor_date(Sys.Date(), 'months')) %>%
-    dplyr::mutate(
-      .,
-      annualizedYield = 
-        dnsCoefs$b1 +
-        dnsCoefs$b2 * (1-exp(-1 * optimLambda * ttm))/(optimLambda * ttm) +
-        dnsCoefs$b3 * ((1-exp(-1 * optimLambda * ttm))/(optimLambda * ttm) - exp(-1 * optimLambda * ttm)),
-      # Get cumulative yield
-      cumReturn = (1 + annualizedYield/100)^(ttm/12)
-      )
-  
-  # Test for 20 year forecast
-  # fittedCurve %>% dplyr::mutate(., futNetYield = dplyr::lead(annualizedYield, 240)/cumReturn, futYield = (futNetYield^(12/240) - 1) * 100) %>% dplyr::filter(., ttm < 120) %>% ggplot(.) + geom_line(aes(x = ttm, y = futYield))
-  
-  # fittedCurve %>% dplyr::mutate(., futYield = (dplyr::lead(cumYield, 3)/cumYield - 1) * 100)
-  
-  # Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
-  # and for each, iterate over the original "ttms" 1, 2, 3, 
-  # ..., 120 and for each forecast the cumulative return for the yttm period ahead. 
-  df =
-    yieldCurveNamesMap$ttm %>%
-    lapply(., function(yttm)
-      fittedCurve %>%
-        dplyr::mutate(
-          .,
-          yttmAheadCumReturn = dplyr::lead(cumReturn, yttm)/cumReturn,
-          yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/yttm) - 1) * 100
-          ) %>%
-        dplyr::filter(., ttm <= 120) %>%
-        dplyr::mutate(., yttm = yttm) %>%
-        dplyr::inner_join(., yieldCurveNamesMap, c('yttm' = 'ttm'))
-      ) %>%
-    dplyr::bind_rows(.) %>%
-    dplyr::mutate(
-      .,
-      obsDate = add_with_rollback(curDate, months(ttm - 1))
-      ) %>%
-    dplyr::transmute(
-      .,
-      varname, obsDate, value = yttmAheadAnnualizedYield,
-      fcname = 'dns', vintageDate = trainDf %>% .$obsDate %>% max(.)
-      )
-  
-  ef$forecast$dns <<- df
+  qDfs =
+  	qDf %>% split(., as.factor(.$varname))
+
+  for (varname in names(mDfs)) {
+	ef$variables[[varname]]$h$base$m <<- mDfs[[varname]]
+	ef$variables[[varname]]$h$base$q <<- qDfs[[varname]]
+  }
 })
 ```
 
@@ -367,7 +331,7 @@ local({
 # Add Stationary Transformations
 
 ## 
-
+Import D
 
 
 
