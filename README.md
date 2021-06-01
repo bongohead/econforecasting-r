@@ -10,8 +10,9 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
-## 2021-05-26 [v0.14]
-- Added bettter data import system
+## 2021-05-31 [v0.14]
+- Added better data import system
+- Added better data transform system
 - Added cleaner EOM aggregation system
 - Removed JOLTS new hires from inputs (missing data in 2010)
 
