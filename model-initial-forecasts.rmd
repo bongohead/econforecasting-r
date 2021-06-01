@@ -218,7 +218,7 @@ local({
 
 
 ## DNS Model - Interest Rates
-Let tyield = rrfr + dns_curve(ttm)
+Let tyield = ffr + dns_curve(ttm)
 Exogenously choose ffr and tyield_10y_3m (negative of 10year - 3month spread; 3-month driven heavily by ffr)
 ```{r}
 local({
@@ -292,7 +292,7 @@ local({
   	dplyr::summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
   	tidyr::pivot_longer(., -date, names_to = 'varname')
 
-  qDf = mDf %>% monthToQuarter(.)
+  qDf = mDf %>% monthlyDfToQuarterlyDf(.)
   
   mDfs = mDf %>% split(., as.factor(.$varname)) %>% lapply(., function(x) x %>% dplyr::select(., -varname))
   
@@ -302,6 +302,37 @@ local({
   for (varname in names(mDfs)) {
 	ef$variables[[varname]]$h$base$m <<- mDfs[[varname]]
 	ef$variables[[varname]]$h$base$q <<- qDfs[[varname]]
+  }
+})
+```
+
+## Other Interest Rate Spreads
+```{r}
+local({
+    
+    resDfs =
+        tribble(
+            ~varname, ~var1, ~var2,
+            't03mffrspread', 't03m', 'ffr',
+            't10yt03mspread', 't10y', 't03m',
+            'mort30ymort15yspread', 'mort30y', 'mort15y',
+            'mort15yt10yspread', 'mort15y', 't10y'
+            ) %>%
+        purrr::transpose(., .names = .$varname) %>%
+        lapply(., function(x) {
+            m =
+                dplyr::inner_join(
+                    ef$variables[[x$var1]]$h$base$m,
+                    ef$variables[[x$var2]]$h$base$m %>% dplyr::rename(., v2 = value),
+                    by = 'date'
+                ) %>%
+                dplyr::transmute(., date, value = value - v2)
+            q = monthlyDfToQuarterlyDf(m)
+            list(m = m, q = q)
+            })
+    
+  for (varname in names(resDfs)) {
+	ef$variables[[varname]]$h$base <<- resDfs[[varname]]
   }
 })
 ```
@@ -754,9 +785,206 @@ local({
 })
 ```
 
-## Cleveland Fed Einf
-```{r}
 
+## EINF Model - Cleveland Fed
+```{r}
+local({
+	
+  file = file.path(DL_DIR, paste0('inf.xls'))
+
+  download.file('https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls', file, mode = 'wb')
+
+  df =
+	readxl::read_excel(file, sheet = 'Expected Inflation') %>%
+  	dplyr::rename(., vintageDate = 'Model Output Date') %>%
+  	tidyr::pivot_longer(., -vintageDate, names_to = 'ttm', values_to = 'yield') %>%
+  	dplyr::mutate(
+  		.,
+  		vintageDate = as.Date(vintageDate), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
+  		) %>%
+  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
+  	dplyr::right_join(., tibble(ttm = 1:360), by = 'ttm') %>%
+  	dplyr::arrange(., ttm) %>%
+  	dplyr::mutate(
+  		.,
+  		yield = zoo::na.spline(yield),
+  		vintageDate = unique(na.omit(vintageDate)),
+  		curDate = floor_date(Sys.Date(), 'months'),
+  		cumReturn = (1 + yield)^(ttm/12),
+  		yttmAheadCumReturn = dplyr::lead(cumReturn, 1)/cumReturn,
+  		yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/1) - 1) * 100,
+  		obsDate = add_with_rollback(curDate, months(ttm - 1))
+  		) %>%
+  	dplyr::transmute(
+  		.,
+		fcname = 'cle',
+		varname = 'inf',
+        form = 'd1',
+		freq = 'm',
+		date = obsDate,
+  		vdate = vintageDate,
+  		value = yttmAheadAnnualizedYield,
+  		) %>%
+  	na.omit(.)
+
+    ef$e$forecasts$cle <<- df
+})
 ```
 
+
+## CME Model
+```{r}
+local({
+  
+	# First get from Quandl
+	message('Starting Quandl data scrape...')
+	df =
+		lapply(1:24, function(j) {
+			# message(j)
+			read_csv(
+				paste0(
+					'https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF', j,
+					'.csv?api_key=', CONST$QUANDL_API_KEY
+					),
+				col_types = 'Ddddddddd'
+				) %>%
+				dplyr::transmute(., vintageDate = Date, settle = Settle, j = j) %>%
+				dplyr::filter(., vintageDate >= as.Date('2010-01-01'))
+			}) %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::transmute(
+		.,
+			vintageDate,
+		# Consider the forecasted period the vintageDate + j
+		obsDate =
+			econforecasting::strdateToDate(paste0(year(vintageDate), 'M', month(vintageDate))) %>%
+			lubridate::add_with_rollback(., months(j - 1), roll_to_first = TRUE),
+		value = 100 - settle,
+		varname = 'ffr',
+		fcname = 'cme'
+		)
+	message('Completed Quandl data scrape')
+	
+	message('Starting CME data scrape...')
+	cookieVal =
+	    httr::GET(
+            'https://www.cmegroup.com/',
+            add_headers(c(
+                'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+                'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Encoding' = 'gzip, deflate, br',
+                'Accept-Language' ='en-US,en;q=0.5',
+                'Cache-Control'='no-cache',
+                'Connection'='keep-alive',
+                'DNT' = '1'
+                ))
+            ) %>%
+	    httr::cookies(.) %>% as_tibble(.) %>% dplyr::filter(., name == 'ak_bmsc') %>% .$value
+	
+	df2 =
+		tribble(
+			~ varname, ~ cmeId,
+			'ffr', '305',
+			'sofr', '8462',
+			'sofr', '8463'
+		) %>%
+		purrr::transpose(.) %>%
+		purrr::map_dfr(., function(var) {
+			# message(var)
+			httr::GET(
+				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
+				# 3/30/21 - CME website now requires user-agent header
+				add_headers(c(
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+					'Accept-Encoding' = 'gzip, deflate, br',
+					'Accept-Language' ='en-US,en;q=0.5',
+					'Cache-Control'='no-cache',
+					'Connection'='keep-alive',
+					'Cookie'=cookieVal,
+					'DNT' = '1',
+					'Host' = 'www.cmegroup.com'
+					))
+				) %>%
+				httr::content(., as = 'parsed') %>%
+				.$quotes %>%
+				purrr::map_dfr(., function(x) {
+					if (x$priorSettle %in% c('0.00', '-')) return() # Whack bug in CME website
+					tibble(
+						obsDate = lubridate::ymd(x$expirationDate),
+						value = 100 - as.numeric(x$priorSettle),
+						varname = var$varname
+						)
+					})
+			}) %>% 
+		# Now average out so that there's only one value for each (varname, obsDate) combo
+		dplyr::group_by(varname, obsDate) %>%
+		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+		dplyr::arrange(., obsDate) %>%
+		# Get rid of forecasts for old observations
+		dplyr::filter(., obsDate >= lubridate::floor_date(Sys.Date(), 'month')) %>%
+		# Assume vintagedate is the same date as the last Quandl obs
+		dplyr::mutate(., vintageDate = max(df$vintageDate), fcname = 'cme') %>%
+		dplyr::filter(., value != 100) 
+	message('Completed CME data scrape...')
+
+	# Now combine, replacing df2 with df1 if necessary
+	combinedDf =
+		dplyr::full_join(df, df2, by = c('fcname', 'vintageDate', 'obsDate', 'varname')) %>%
+		# Use quandl data if available, otherwise use other data
+		dplyr::mutate(., value = ifelse(!is.na(value.x), value.x, value.y)) %>%
+		dplyr::select(., -value.x, -value.y)
+
+  # Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
+  # df %>% tidyr::pivot_wider(., names_from = j, values_from = settle) %>% dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>% View(.)
+	
+	
+	## Add monthly interpolation
+	message('Adding monthly interpolation ...')
+
+	finalDf =
+		combinedDf %>%
+		dplyr::group_by(vintageDate, varname) %>%
+		dplyr::group_split(.) %>%
+		lapply(., function(x) {
+			x %>%
+				# Join on missing obs dates
+				dplyr::right_join(
+					.,
+					tibble(obsDate = seq(from = .$obsDate[[1]], to = tail(.$obsDate, 1), by = '1 month')) %>%
+						dplyr::mutate(n = 1:nrow(.)),
+					by = 'obsDate'
+					) %>%
+				dplyr::arrange(obsDate) %>%
+				dplyr::transmute(
+					.,
+					fcname = head(fcname, 1),
+					form = 'd1',
+					freq = 'm',
+					date = obsDate,
+					value = zoo::na.spline(value),
+					vdate = head(vintageDate, 1),
+					varname = head(varname, 1),
+					)		
+			}) %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::select(., -n)
+  
+	ef$e$forecasts$cme <<- finalDf
+})
+```
+
+
+# Generate Initial Forecasts
+
+## Create Initial Forecasts
+```{r}
+local({
+    
+    # Can use qualitative forecasts or just use raw inputs
+    tffr3mspread = c()
+    t10y3mspread = c()
+
+})
+```
 
