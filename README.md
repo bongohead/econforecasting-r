@@ -14,6 +14,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added better data import system
 - Added better data transform system
 - Added cleaner EOM aggregation system
+- Fixed WSJ forecasts since now quarterly (since April 2021)
 - Removed JOLTS new hires from inputs (missing data in 2010)
 
 ## 2021-05-25 [v0.13]
