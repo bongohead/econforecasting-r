@@ -197,22 +197,22 @@ local({
 ```{r}
 local({
 	
-	mDf =
-		ef$variables$cpi$h$base$m %>%
+    mDf =
+    	ef$variables$cpi$h$base$m %>%
     	dplyr::mutate(., value = (value/dplyr::lag(value, 13) - 1) * 100) %>%
-		na.omit(.)
-	
-	qDf =
-		mDf %>%
-		dplyr::mutate(., date = strdateToDate(paste0(year(date), 'Q', quarter(date)))) %>%
-	    dplyr::group_by(., date) %>%
-	    dplyr::summarize(., value = mean(value), .groups = 'drop', n = n()) %>%
-	    # Only keep if all 3 monthly data exists (or imputed by previous chunk)
-	    dplyr::filter(., n == 3) %>%
-	    dplyr::select(., -n)
-
-	ef$variables$inf$h$base$m <<- mDf
-	ef$variables$inf$h$base$q <<- qDf
+    	na.omit(.)
+    
+    qDf =
+    	mDf %>%
+    	dplyr::mutate(., date = strdateToDate(paste0(year(date), 'Q', quarter(date)))) %>%
+        dplyr::group_by(., date) %>%
+        dplyr::summarize(., value = mean(value), .groups = 'drop', n = n()) %>%
+        # Only keep if all 3 monthly data exists (or imputed by previous chunk)
+        dplyr::filter(., n == 3) %>%
+        dplyr::select(., -n)
+    
+    ef$variables$inf$h$base$m <<- mDf
+    ef$variables$inf$h$base$q <<- qDf
 })
 ```
 
@@ -223,86 +223,107 @@ Exogenously choose ffr and tyield_10y_3m (negative of 10year - 3month spread; 3-
 ```{r}
 local({
   
-  # Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
-  yieldCurveNamesMap =
-    ef$variables %>% 
-    map_chr(., ~.$varname) %>%
-    unique(.) %>%
-    purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
-    tibble(varname = .) %>%
-    dplyr::mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
+    # Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
+    yieldCurveNamesMap =
+        ef$variables %>% 
+        map_chr(., ~.$varname) %>%
+        unique(.) %>%
+        purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
+        tibble(varname = .) %>%
+        dplyr::mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
   
-  # Create training dataset from SPREAD from ffr - fitted on last 3 months
-  trainDf =
-	purrr::map_dfr(yieldCurveNamesMap$varname, function(x) ef$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
-  	dplyr::select(., -freq) %>%
-  	dplyr::filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
-    dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
-    dplyr::left_join(., dplyr::transmute(ef$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
-  	dplyr::mutate(., value = value - ffr) %>%
-  	dplyr::select(., -ffr)
+    # Create training dataset from SPREAD from ffr - fitted on last 3 months
+    trainDf =
+        purrr::map_dfr(yieldCurveNamesMap$varname, function(x) ef$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
+        dplyr::select(., -freq) %>%
+        dplyr::filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
+        dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
+        dplyr::left_join(., dplyr::transmute(ef$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
+        dplyr::mutate(., value = value - ffr) %>%
+        dplyr::select(., -ffr)
   
-  # @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
-  # @param returnAll: (boolean) FALSE by default.
-  # If FALSE, will return only the MAPE (useful for optimization).
-  # Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
-  getDnsFit = function(df, lambda, returnAll = FALSE) {
-    df %>%
-      dplyr::mutate(
+    # @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
+    # @param returnAll: (boolean) FALSE by default.
+    # If FALSE, will return only the MAPE (useful for optimization).
+    # Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
+    getDnsFit = function(df, lambda, returnAll = FALSE) {
+        df %>%
+        dplyr::mutate(
         .,
         f1 = 1,
         f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm),
         f3 = f2 - exp(-1 * lambda * ttm)
         ) %>%
-      dplyr::group_by(date) %>%
-      dplyr::group_split(.) %>%
-      lapply(., function(x) {
+        dplyr::group_by(date) %>%
+        dplyr::group_split(.) %>%
+        lapply(., function(x) {
         reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
         dplyr::bind_cols(x, fitted = fitted(reg)) %>%
-          dplyr::mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
-          dplyr::mutate(., resid = value - fitted)
+        dplyr::mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
+        dplyr::mutate(., resid = value - fitted)
         }) %>%
-      dplyr::bind_rows(.) %>%
-      {
-        if (returnAll == FALSE) dplyr::summarise(., mae = mean(abs(resid))) %>% .$mae
+        dplyr::bind_rows(.) %>%
+        {
+        if (returnAll == FALSE) dplyr::summarise(., mse = mean(abs(resid))) %>% .$mse
         else .
         } %>%
-      return(.)
-  }
+        return(.)
+    }
 
-  # Find MAPE-minimizing lambda value
-  optimLambda =
-    optimize(
-      getDnsFit,
-      df = trainDf,
-      returnAll = FALSE,
-      interval = c(-1, 1),
-      maximum = FALSE
-      )$minimum
+    # Find MSE-minimizing lambda value
+    optimLambda =
+        optimize(
+            getDnsFit,
+            df = trainDf,
+            returnAll = FALSE,
+            interval = c(-1, 1),
+            maximum = FALSE
+            )$minimum
   
-  mDf =
-	purrr::map_dfr(yieldCurveNamesMap$varname, function(x) ef$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
-    dplyr::select(., -freq) %>%
-    dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
-    dplyr::left_join(., dplyr::transmute(ef$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
-    dplyr::mutate(., value = value - ffr) %>%
-    dplyr::select(., -ffr) %>%
-  	getDnsFit(., lambda = optimLambda, returnAll = TRUE) %>%
-  	dplyr::group_by(., date) %>%
-  	dplyr::summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
-  	tidyr::pivot_longer(., -date, names_to = 'varname')
+    mDf =
+        purrr::map_dfr(yieldCurveNamesMap$varname, function(x) ef$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
+        dplyr::select(., -freq) %>%
+        dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
+        dplyr::left_join(., dplyr::transmute(ef$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
+        dplyr::mutate(., value = value - ffr) %>%
+        dplyr::select(., -ffr) %>%
+        getDnsFit(., lambda = optimLambda, returnAll = TRUE) %>%
+        dplyr::group_by(., date) %>%
+        dplyr::summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
+        tidyr::pivot_longer(., -date, names_to = 'varname')
 
-  qDf = mDf %>% monthlyDfToQuarterlyDf(.)
+    qDf = mDf %>% monthlyDfToQuarterlyDf(.)
+    
+    mDfs = mDf %>% split(., as.factor(.$varname)) %>% lapply(., function(x) x %>% dplyr::select(., -varname))
+    
+    qDfs = qDf %>% split(., as.factor(.$varname)) %>% lapply(., function(x) x %>% dplyr::select(., -varname))
   
-  mDfs = mDf %>% split(., as.factor(.$varname)) %>% lapply(., function(x) x %>% dplyr::select(., -varname))
+    # Store DNS coefficients
+    dnsCoefs =
+        getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
+        dplyr::filter(., date == max(date)) %>%
+        dplyr::select(., b1, b2, b3) %>%
+        head(., 1) %>%
+        as.list(.)
   
-  qDfs = qDf %>% split(., as.factor(.$varname)) %>% lapply(., function(x) x %>% dplyr::select(., -varname))
-  	
+    dnsFitChart =
+        getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
+        dplyr::filter(., date == max(date)) %>%
+        dplyr::arrange(., ttm) %>%
+        ggplot(.) +
+        geom_point(aes(x = ttm, y = value)) +
+        geom_line(aes(x = ttm, y = fitted))
 
-  for (varname in names(mDfs)) {
-	ef$variables[[varname]]$h$base$m <<- mDfs[[varname]]
-	ef$variables[[varname]]$h$base$q <<- qDfs[[varname]]
-  }
+
+
+    for (varname in names(mDfs)) {
+        ef$variables[[varname]]$h$base$m <<- mDfs[[varname]]
+        ef$variables[[varname]]$h$base$q <<- qDfs[[varname]]
+    }
+    ef$dnsLambda <<- optimLambda
+    ef$dnsCoefs <<- dnsCoefs
+    ef$dnsFitChart <<- dnsFitChart
+    ef$dnsYieldCurveNamesMap <<- yieldCurveNamesMap
 })
 ```
 
@@ -704,6 +725,7 @@ local({
 })
 ```
 
+
 ## CBO Forecasts
 ```{r}
 local({
@@ -830,7 +852,6 @@ local({
     ef$e$forecasts$cle <<- df
 })
 ```
-
 
 ## CME Model
 ```{r}
@@ -959,17 +980,16 @@ local({
 				dplyr::transmute(
 					.,
 					fcname = head(fcname, 1),
+					varname = head(varname, 1),
 					form = 'd1',
 					freq = 'm',
 					date = obsDate,
-					value = zoo::na.spline(value),
 					vdate = head(vintageDate, 1),
-					varname = head(varname, 1),
+					value = zoo::na.spline(value)
 					)		
 			}) %>%
-		dplyr::bind_rows(.) %>%
-		dplyr::select(., -n)
-  
+		dplyr::bind_rows(.)
+
 	ef$e$forecasts$cme <<- finalDf
 })
 ```
@@ -977,13 +997,93 @@ local({
 
 # Generate Initial Forecasts
 
+## Initial Forecast for Treasuries
+```{r}
+local({
+    
+    dnsCoefs = ef$dnsCoefs
+    dnsLambda = ef$dnsLambda
+    dnsYieldCurveNamesMap = ef$dnsYieldCurveNamesMap
+    
+    # Monthly forecast up to 10 years
+    # Get cumulative return starting from curDate
+    fittedCurve =
+        tibble(ttm = seq(1: 480)) %>%
+        dplyr::mutate(., curDate = floor_date(Sys.Date(), 'months')) %>%
+        dplyr::mutate(
+          .,
+          annualizedYield = 
+            dnsCoefs$b1 +
+            dnsCoefs$b2 * (1-exp(-1 * dnsLambda * ttm))/(dnsLambda * ttm) +
+            dnsCoefs$b3 * ((1-exp(-1 * dnsLambda * ttm))/(dnsLambda * ttm) - exp(-1 * dnsLambda * ttm)),
+          # Get cumulative yield
+          cumReturn = (1 + annualizedYield/100)^(ttm/12)
+          )
+    
+    # Test for 20 year forecast
+    # fittedCurve %>% dplyr::mutate(., futNetYield = dplyr::lead(annualizedYield, 240)/cumReturn, futYield = (futNetYield^(12/240) - 1) * 100) %>% dplyr::filter(., ttm < 120) %>% ggplot(.) + geom_line(aes(x = ttm, y = futYield))
+    
+    # fittedCurve %>% dplyr::mutate(., futYield = (dplyr::lead(cumYield, 3)/cumYield - 1) * 100)
+    
+    # Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
+    # and for each, iterate over the original "ttms" 1, 2, 3, 
+    # ..., 120 and for each forecast the cumulative return for the yttm period ahead. 
+    df =
+        dnsYieldCurveNamesMap$ttm %>%
+        lapply(., function(yttm)
+            fittedCurve %>%
+                dplyr::mutate(
+                    .,
+                    yttmAheadCumReturn = dplyr::lead(cumReturn, yttm)/cumReturn,
+                    yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/yttm) - 1) * 100
+                    ) %>%
+                dplyr::filter(., ttm <= 120) %>%
+                dplyr::mutate(., yttm = yttm) %>%
+                dplyr::inner_join(., dnsYieldCurveNamesMap, c('yttm' = 'ttm'))
+            ) %>%
+        dplyr::bind_rows(.) %>%
+        dplyr::mutate(
+            .,
+            obsDate = add_with_rollback(curDate, months(ttm - 1))
+            ) %>%
+        dplyr::transmute(
+            .,
+            fcname = 'dns',
+            varname,
+            form = 'd1',
+            freq = 'm',
+            date = obsDate,
+            vdate = Sys.Date(),
+            value = yttmAheadAnnualizedYield
+            )
+    
+    ef$e$forecasts$dns <<- df
+})
+```
+
 ## Create Initial Forecasts
 ```{r}
 local({
     
     # Can use qualitative forecasts or just use raw inputs
-    tffr3mspread = c()
-    t10y3mspread = c()
+    # Included: 
+    # Federal Funds Rate, 3M - FFR Spread, 10y - 3M Spread,
+    # DPI, UE
+    # SPY, Expected 1-Year Forward GDP,
+    # Inflation
+    
+    initialForecasts = list(
+        ffr = ef$e$forecasts$cme %>% dplyr::filter(., varname == 'ffr'),
+        t03mffrspread =
+            ef$h$base$m %>%
+            dplyr::select(., date, t03mffrspread) %>%
+            na.omit(.) %>%
+            {tibble(
+                date = seq(add_with_rollback(max(.$date), months(1)), by = '1 month', length.out = 100),
+                value = as.numeric(predict(arima(x = .[[2]], order = c(12, 0, 0)), 100)$pred)
+                )},
+        t10yt03mspread = c()
+        )
 
 })
 ```
