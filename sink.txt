@@ -62,6 +62,8 @@ Writing NAMESPACE
 800
 900
 1000
+2021-06-01 20:53:23
+2021-06-01 20:53:24
 Finished - model-asset-contagion
 Started - model-baseline-forecasts
 
@@ -119,9 +121,9 @@ t20y
 t07y
 2021-03-01
 trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0321.xls'
-Content type 'application/octet-stream' length 112640 bytes (110 KB)
+Content type 'application/octet-stream' length 112128 bytes (109 KB)
 ==================================================
-downloaded 110 KB
+downloaded 109 KB
 
 New names:
 * `` -> ...2
