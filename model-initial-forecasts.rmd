@@ -1074,6 +1074,7 @@ local({
     
     initialForecasts = list(
         ffr = ef$e$forecasts$cme %>% dplyr::filter(., varname == 'ffr'),
+        sofr = ef$e$forecasts$cme %>% dplyr::filter(., varname == 'sofr'),
         t03mffrspread =
             ef$h$base$m %>%
             dplyr::select(., date, t03mffrspread) %>%

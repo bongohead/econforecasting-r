@@ -62,8 +62,8 @@ Writing NAMESPACE
 800
 900
 1000
-2021-06-01 20:53:23
-2021-06-01 20:53:24
+2021-06-03 20:53:25
+2021-06-03 20:53:26
 Finished - model-asset-contagion
 Started - model-baseline-forecasts
 
