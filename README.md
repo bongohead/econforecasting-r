@@ -8,9 +8,11 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Run model-asset-contagion.rmd, model-baseling-forecasts.rmd, model-nowcasts-backtest.rmd daily until cron server set up
 - Import Data -> Generate Nowcasts (Using History + EOM Forecasts as "Data") -> Generate Forecasts (Use Nowcasts as "Data")
 
+# Dev Notes
+- Separate "future implied forecasts" from baseline and scenario forecasts
 
 # CHANGELOG
-## 2021-05-31 [v0.14]
+## 2021-06-17 [v0.14]
 - Added better data import system
 - Added better data transform system
 - Added cleaner EOM aggregation system

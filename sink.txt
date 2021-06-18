@@ -62,8 +62,8 @@ Writing NAMESPACE
 800
 900
 1000
-2021-06-07 20:53:14
-2021-06-07 20:53:16
+2021-06-11 20:53:05
+2021-06-11 20:53:06
 Finished - model-asset-contagion
 Started - model-baseline-forecasts
 
@@ -588,9 +588,9 @@ New names:
 * `` -> ...2
 * `` -> ...3
 trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
-Content type 'application/vnd.ms-excel' length 392704 bytes (383 KB)
+Content type 'application/vnd.ms-excel' length 394752 bytes (385 KB)
 ==================================================
-downloaded 383 KB
+downloaded 385 KB
 
 Starting Quandl data scrape...
 Completed Quandl data scrape
