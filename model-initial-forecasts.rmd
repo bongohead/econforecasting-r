@@ -998,6 +998,8 @@ local({
 Calculated TDNS1: TYield_10y
 Calculated TDNS2: -1 * (t10y - t3m)
 Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
+Keep these treasury yield forecasts as the external forecasts ->
+note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to og
 ```{r}
 local({
     
@@ -1044,21 +1046,36 @@ local({
         dplyr::bind_rows(.) %>%
         dplyr::mutate(
             .,
-            obsDate = add_with_rollback(curDate, months(ttm - 1))
+            date = add_with_rollback(curDate, months(ttm - 1))
             ) %>%
         dplyr::transmute(
             .,
             fcname = 'dns',
             varname,
+            date,
             form = 'd1',
             freq = 'm',
-            date = obsDate,
             vdate = Sys.Date(),
             value = yttmAheadAnnualizedYield
             )
     
+    # Calculate TDNS yield forecasts
+    df1 =
+        df %>%
+        dplyr::select(., varname, date, value) %>%
+        tidyr::pivot_wider(., names_from = 'varname') %>%
+        dplyr::transmute(
+            .,
+            date,
+            tdns1 = t10y,
+            tdns2 = -1 * (t10y - t03m),
+            tdns3 = .3 * (2 * t02y - t03m - t10y)
+            ) %>%
+        tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+        dplyr::transmute(., fcname = 'dns', varname, date, form = 'd1', freq = 'm', vdate = Sys.Date(), value)
     
-    ef$e$forecasts$dns <<- df
+    
+    ef$e$forecasts$dns <<- dplyr::bind_rows(df, df1)
 })
 ```
 
