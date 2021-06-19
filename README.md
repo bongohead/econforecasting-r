@@ -10,6 +10,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 # Dev Notes
 - Separate "future implied forecasts" from baseline and scenario forecasts
+- Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong)
 
 # CHANGELOG
 ## 2021-06-17 [v0.14]
@@ -17,7 +18,6 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added better data transform system
 - Added cleaner EOM aggregation system
 - Added automatic cookie scraping from CME site to bypass block
-- Added new seperation of external/market implied forecasts from exogenous/initial forecasts
 - Fixed WSJ forecasts since now quarterly (since April 2021)
 - Removed JOLTS new hires from inputs (missing data in 2010)
 

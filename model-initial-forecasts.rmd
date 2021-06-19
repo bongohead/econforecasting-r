@@ -994,10 +994,10 @@ local({
 })
 ```
 
-
-# Generate Initial Forecasts
-
-## Initial Forecast for TDNS1, TDNS2, TDNS3, ...
+## DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, and Spreads
+Calculated TDNS1: TYield_10y
+Calculated TDNS2: -1 * (t10y - t3m)
+Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 ```{r}
 local({
     
@@ -1061,6 +1061,9 @@ local({
     ef$e$forecasts$dns <<- df
 })
 ```
+
+
+# Generate Initial Forecasts
 
 ## Create Initial Forecasts
 ```{r}
