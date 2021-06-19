@@ -1,14 +1,15 @@
-Started - model-asset-contagion
+Run :2021-06-18
+Started - model-asset-contagion: 2021-06-18 20:24:45
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
   |                                                                              |                                                                      |   0%  |                                                                              |.....                                                                 |   7%  |                                                                              |.........                                                             |  13%  |                                                                              |..............                                                        |  20%  |                                                                              |...................                                                   |  27%  |                                                                              |.......................                                               |  33%  |                                                                              |............................                                          |  40%  |                                                                              |.................................                                     |  47%  |                                                                              |.....................................                                 |  53%  |                                                                              |..........................................                            |  60%  |                                                                              |...............................................                       |  67%  |                                                                              |...................................................                   |  73%  |                                                                              |........................................................              |  80%  |                                                                              |.............................................................         |  87%  |                                                                              |.................................................................     |  93%  |                                                                              |......................................................................| 100%
 output file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.r
 
--- Attaching packages ------------------------------------------------------------------------------- tidyverse 1.3.0 --
+-- Attaching packages ------------------------------------------------------------------------------- tidyverse 1.3.1 --
 v ggplot2 3.3.3     v purrr   0.3.4
-v tibble  3.0.6     v dplyr   1.0.4
-v tidyr   1.1.2     v stringr 1.4.0
+v tibble  3.1.2     v dplyr   1.0.6
+v tidyr   1.1.3     v stringr 1.4.0
 v readr   1.4.0     v forcats 0.5.1
 -- Conflicts ---------------------------------------------------------------------------------- tidyverse_conflicts() --
 x dplyr::filter() masks stats::filter()
@@ -44,9 +45,9 @@ The following object is masked from 'package:purrr':
 
     transpose
 
-Loading econforecasting
-Updating econforecasting documentation
-Loading econforecasting
+i Loading econforecasting
+i Updating econforecasting documentation
+i Loading econforecasting
 Writing NAMESPACE
 Writing NAMESPACE
 100
@@ -62,536 +63,3 @@ Writing NAMESPACE
 800
 900
 1000
-2021-06-11 20:53:05
-2021-06-11 20:53:06
-Finished - model-asset-contagion
-Started - model-baseline-forecasts
-
-
-processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
-  |                                                                              |                                                                      |   0%  |                                                                              |..                                                                    |   3%  |                                                                              |....                                                                  |   5%  |                                                                              |.....                                                                 |   8%  |                                                                              |.......                                                               |  10%  |                                                                              |.........                                                             |  13%  |                                                                              |...........                                                           |  15%  |                                                                              |.............                                                         |  18%  |                                                                              |..............                                                        |  21%  |                                                                              |................                                                      |  23%  |                                                                              |..................                                                    |  26%  |                                                                              |....................                                                  |  28%  |                                                                              |......................                                                |  31%  |                                                                              |.......................                                               |  33%  |                                                                              |.........................                                             |  36%  |                                                                              |...........................                                           |  38%  |                                                                              |.............................                                         |  41%  |                                                                              |...............................                                       |  44%  |                                                                              |................................                                      |  46%  |                                                                              |..................................                                    |  49%  |                                                                              |....................................                                  |  51%  |                                                                              |......................................                                |  54%  |                                                                              |.......................................                               |  56%  |                                                                              |.........................................                             |  59%  |                                                                              |...........................................                           |  62%  |                                                                              |.............................................                         |  64%  |                                                                              |...............................................                       |  67%  |                                                                              |................................................                      |  69%  |                                                                              |..................................................                    |  72%  |                                                                              |....................................................                  |  74%  |                                                                              |......................................................                |  77%  |                                                                              |........................................................              |  79%  |                                                                              |.........................................................             |  82%  |                                                                              |...........................................................           |  85%  |                                                                              |.............................................................         |  87%  |                                                                              |...............................................................       |  90%  |                                                                              |.................................................................     |  92%  |                                                                              |..................................................................    |  95%  |                                                                              |....................................................................  |  97%  |                                                                              |......................................................................| 100%
-output file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.r
-
-Loading required package: xml2
-
-Attaching package: 'rvest'
-
-The following object is masked from 'package:purrr':
-
-    pluck
-
-The following object is masked from 'package:readr':
-
-    guess_encoding
-
-Loading econforecasting
-Updating econforecasting documentation
-Loading econforecasting
-Writing NAMESPACE
-Writing NAMESPACE
-Getting data ... gdp
-Getting data ... ffr
-Getting data ... sofr
-Getting data ... t10y
-Getting data ... t30y
-Getting data ... t05y
-Getting data ... t02y
-Getting data ... t01y
-Getting data ... t06m
-Getting data ... t03m
-Getting data ... t01m
-Getting data ... t20y
-Getting data ... t07y
-Getting data ... mort15y
-Getting data ... mort30y
-Getting data ... mort5yr
-Getting data ... hstarts
-Getting data ... cpi
-ffr
-sofr
-t10y
-t30y
-t05y
-t02y
-t01y
-t06m
-t03m
-t01m
-t20y
-t07y
-2021-03-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0321.xls'
-Content type 'application/octet-stream' length 112128 bytes (109 KB)
-==================================================
-downloaded 109 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2021` -> `June 2021...3`
-* `Dec 2021` -> `Dec 2021...4`
-* `June 2022` -> `June 2022...5`
-* `Dec 2022` -> `Dec 2022...6`
-* `June 2023` -> `June 2023...7`
-* ...
-2021-02-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0221.xls'
-Content type 'application/octet-stream' length 111104 bytes (108 KB)
-==================================================
-downloaded 108 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2021` -> `June 2021...3`
-* `Dec 2021` -> `Dec 2021...4`
-* `June 2022` -> `June 2022...5`
-* `Dec 2022` -> `Dec 2022...6`
-* `June 2023` -> `June 2023...7`
-* ...
-2021-01-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0121.xls'
-Content type 'application/octet-stream' length 116736 bytes (114 KB)
-==================================================
-downloaded 114 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2021` -> `June 2021...3`
-* `Dec 2021` -> `Dec 2021...4`
-* `June 2022` -> `June 2022...5`
-* `Dec 2022` -> `Dec 2022...6`
-* `June 2023` -> `June 2023...7`
-* ...
-2020-12-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon1220.xls'
-Content type 'application/octet-stream' length 115200 bytes (112 KB)
-==================================================
-downloaded 112 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-11-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon1120.xls'
-Content type 'application/octet-stream' length 114176 bytes (111 KB)
-==================================================
-downloaded 111 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-10-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon1020.xls'
-Content type 'application/octet-stream' length 113152 bytes (110 KB)
-==================================================
-downloaded 110 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-09-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0920.xls'
-Content type 'application/octet-stream' length 112640 bytes (110 KB)
-==================================================
-downloaded 110 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-08-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0820.xls'
-Content type 'application/octet-stream' length 108032 bytes (105 KB)
-==================================================
-downloaded 105 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-07-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0720.xls'
-Content type 'application/octet-stream' length 110080 bytes (107 KB)
-==================================================
-downloaded 107 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-06-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0620.xls'
-Content type 'application/octet-stream' length 105984 bytes (103 KB)
-==================================================
-downloaded 103 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-05-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0520.xls'
-Content type 'application/octet-stream' length 72192 bytes (70 KB)
-==================================================
-downloaded 70 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-04-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0420.xls'
-Content type 'application/octet-stream' length 69632 bytes (68 KB)
-==================================================
-downloaded 68 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-03-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0320.xls'
-Content type 'application/octet-stream' length 64512 bytes (63 KB)
-==================================================
-downloaded 63 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-02-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0220.xls'
-Content type 'application/octet-stream' length 75776 bytes (74 KB)
-==================================================
-downloaded 74 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-01-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0120.xls'
-Content type 'application/octet-stream' length 77824 bytes (76 KB)
-==================================================
-downloaded 76 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-trying URL 'https://www.cbo.gov/system/files/2021-02/51135-2021-02-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 127273 bytes (124 KB)
-==================================================
-downloaded 124 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2020-07/51135-2020-07-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 121801 bytes (118 KB)
-==================================================
-downloaded 118 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2020-01/51135-2020-01-economicprojections_0.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 123810 bytes (120 KB)
-==================================================
-downloaded 120 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2019-08/51135-2019-08-economicprojections_1.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 110794 bytes (108 KB)
-==================================================
-downloaded 108 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2019-01/51135-2019-01-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 102030 bytes (99 KB)
-==================================================
-downloaded 99 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2018-08/51135-2018-08-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 100053 bytes (97 KB)
-==================================================
-downloaded 97 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2018-06/51135-2018-04-economicprojections_0.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 97695 bytes (95 KB)
-==================================================
-downloaded 95 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
-Content type 'application/vnd.ms-excel' length 394752 bytes (385 KB)
-==================================================
-downloaded 385 KB
-
-Starting Quandl data scrape...
-Completed Quandl data scrape
-Starting CME data scrape...

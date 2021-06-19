@@ -6,10 +6,12 @@ sinkFile = file(file.path(DIR, 'sink.txt'), open = 'wt')
 sink(sinkFile, type = 'output')
 sink(sinkFile, type = 'message')
 
+message('Run :', Sys.Date())
+
 
 # Convert to R -> Run
 lapply(list('model-asset-contagion', 'model-baseline-forecasts', 'model-nowcasts'), function(filename) {
-	message('Started - ', filename)
+	message('Started - ', filename, ': ', Sys.time())
 	if (file.exists(paste0(DIR, '/', filename, '.r'))) file.remove(paste0(DIR, '/', filename, '.r'))
 	knitr::purl(input = paste0(DIR, '/', filename, '.rmd'), output = paste0(DIR, '/', filename, '.r'))
 	source(paste0(DIR, '/', filename, '.r'))
