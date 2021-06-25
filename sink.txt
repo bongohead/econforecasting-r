@@ -1,5 +1,5 @@
-Run :2021-06-18
-Started - model-asset-contagion: 2021-06-18 20:24:45
+Run :2021-06-24
+Started - model-asset-contagion: 2021-06-24 20:00:00
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
@@ -63,10 +63,10 @@ Writing NAMESPACE
 800
 900
 1000
-2021-06-18 20:28:05
-2021-06-18 20:28:07
+2021-06-24 20:03:08
+2021-06-24 20:03:10
 Finished - model-asset-contagion
-Started - model-baseline-forecasts: 2021-06-18 20:28:07
+Started - model-baseline-forecasts: 2021-06-24 20:03:10
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
@@ -591,3 +591,740 @@ downloaded 385 KB
 Starting Quandl data scrape...
 Completed Quandl data scrape
 Starting CME data scrape...
+Completed CME data scrape...
+Adding monthly interpolation ...
+SQL Code Finished
+Finished - model-baseline-forecasts
+Started - model-nowcasts: 2021-06-24 20:05:28
+
+
+processing file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.rmd
+  |                                                                              |                                                                      |   0%  |                                                                              |.                                                                     |   2%  |                                                                              |...                                                                   |   4%  |                                                                              |....                                                                  |   6%  |                                                                              |......                                                                |   9%  |                                                                              |.......                                                               |  11%  |                                                                              |.........                                                             |  13%  |                                                                              |..........                                                            |  15%  |                                                                              |............                                                          |  17%  |                                                                              |.............                                                         |  19%  |                                                                              |...............                                                       |  21%  |                                                                              |................                                                      |  23%  |                                                                              |..................                                                    |  26%  |                                                                              |...................                                                   |  28%  |                                                                              |.....................                                                 |  30%  |                                                                              |......................                                                |  32%  |                                                                              |........................                                              |  34%  |                                                                              |.........................                                             |  36%  |                                                                              |...........................                                           |  38%  |                                                                              |............................                                          |  40%  |                                                                              |..............................                                        |  43%  |                                                                              |...............................                                       |  45%  |                                                                              |.................................                                     |  47%  |                                                                              |..................................                                    |  49%  |                                                                              |....................................                                  |  51%  |                                                                              |.....................................                                 |  53%  |                                                                              |.......................................                               |  55%  |                                                                              |........................................                              |  57%  |                                                                              |..........................................                            |  60%  |                                                                              |...........................................                           |  62%  |                                                                              |.............................................                         |  64%  |                                                                              |..............................................                        |  66%  |                                                                              |................................................                      |  68%  |                                                                              |.................................................                     |  70%  |                                                                              |...................................................                   |  72%  |                                                                              |....................................................                  |  74%  |                                                                              |......................................................                |  77%  |                                                                              |.......................................................               |  79%  |                                                                              |.........................................................             |  81%  |                                                                              |..........................................................            |  83%  |                                                                              |............................................................          |  85%  |                                                                              |.............................................................         |  87%  |                                                                              |...............................................................       |  89%  |                                                                              |................................................................      |  91%  |                                                                              |..................................................................    |  94%  |                                                                              |...................................................................   |  96%  |                                                                              |..................................................................... |  98%  |                                                                              |......................................................................| 100%
+output file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.r
+
+
+Attaching package: 'glue'
+
+The following object is masked from 'package:dplyr':
+
+    collapse
+
+i Loading econforecasting
+i Updating econforecasting documentation
+i Loading econforecasting
+Writing NAMESPACE
+Writing NAMESPACE
+Getting data ... gdp
+Getting data ... pce
+Getting data ... pceg
+Getting data ... pcegd
+Getting data ... pcegdmotor
+Getting data ... pcegdfurnish
+Getting data ... pcegdrec
+Getting data ... pcegdother
+Getting data ... pcegn
+Getting data ... pcegnfood
+Getting data ... pcegnclothing
+Getting data ... pcegngas
+Getting data ... pcegnother
+Getting data ... pces
+Getting data ... pceshousing
+Getting data ... pceshealth
+Getting data ... pcestransport
+Getting data ... pcesrec
+Getting data ... pcesfood
+Getting data ... pcesfinal
+Getting data ... pcesother
+Getting data ... pcesnonprofit
+Getting data ... pdi
+Getting data ... pdin
+Getting data ... pdinstruct
+Getting data ... pdinequip
+Getting data ... pdinip
+Getting data ... pdir
+Getting data ... pceschange
+Getting data ... nx
+Getting data ... ex
+Getting data ... exg
+Getting data ... exs
+Getting data ... im
+Getting data ... img
+Getting data ... ims
+Getting data ... govt
+Getting data ... govtf
+Getting data ... govts
+Getting data ... mpce
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 1.7 seconds...
+Request failed [429]. Retrying in 7 seconds...
+Getting data ... mpceg
+Getting data ... mpcegd
+Getting data ... mpcegn
+Getting data ... mpces
+Getting data ... pi
+Getting data ... pid
+Getting data ... po
+Getting data ... ps
+Getting data ... psr
+Getting data ... hpi
+Getting data ... houst
+Getting data ... hsold
+Getting data ... hpermits
+Getting data ... mnodg
+Getting data ... cu
+Getting data ... cons
+Getting data ... ffr
+Getting data ... sofr
+Getting data ... t10y
+Getting data ... t30y
+Getting data ... t05y
+Getting data ... t02y
+Getting data ... t01y
+Getting data ... t06m
+Getting data ... t03m
+Getting data ... t01m
+Getting data ... t20y
+Getting data ... t07y
+Getting data ... vsales
+Getting data ... ue
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 2.1 seconds...
+Request failed [429]. Retrying in 4.3 seconds...
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 23.4 seconds...
+Getting data ... emp
+Getting data ... jolts
+Getting data ... wei
+Getting data ... oil
+Getting data ... loansre
+Getting data ... loanscc
+Getting data ... hpils
+Getting data ... stlfsi
+Getting data ... usd
+Getting data ... uemean
+Getting data ... advsales
+Getting data ... kclfi
+Getting data ... csent
+Getting data ... ipi
+Getting data ... pcepi
+Getting data ... delinqrer
+Getting data ... delinqcc
+Getting data ... delinqci
+Getting data ... snyfed
+Getting data ... stxfed
+Getting data ... sphfed
+Getting data ... cfnai
+Getting data ... baa
+Getting data ... lfpr
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 3.3 seconds...
+Request failed [429]. Retrying in 6.8 seconds...
+Request failed [429]. Retrying in 7.7 seconds...
+Request failed [429]. Retrying in 10.7 seconds...
+st
+advsales
+advsales
+baa
+baa
+cfnai
+cfnai
+cons
+cons
+csent
+csent
+cu
+cu
+delinqcc
+delinqci
+delinqrer
+emp
+emp
+ex
+exg
+exs
+ffr
+ffr
+gdp
+govt
+govtf
+govts
+houst
+houst
+hpermits
+hpermits
+hpi
+hpi
+hpils
+hpils
+hsold
+hsold
+im
+img
+ims
+ipi
+ipi
+jolts
+jolts
+kclfi
+kclfi
+lfpr
+lfpr
+loanscc
+loanscc
+loansre
+loansre
+mnodg
+mnodg
+mpce
+mpce
+mpceg
+mpceg
+mpcegd
+mpcegd
+mpcegn
+mpcegn
+mpces
+mpces
+nx
+oil
+oil
+pce
+pceg
+pcegd
+pcegdfurnish
+pcegdmotor
+pcegdother
+pcegdrec
+pcegn
+pcegnclothing
+pcegnfood
+pcegngas
+pcegnother
+pcepi
+pcepi
+pces
+pceschange
+pcesfinal
+pcesfood
+pceshealth
+pceshousing
+pcesnonprofit
+pcesother
+pcesrec
+pcestransport
+pdi
+pdin
+pdinequip
+pdinip
+pdinstruct
+pdir
+pi
+pi
+pid
+pid
+po
+po
+ps
+ps
+psr
+psr
+snyfed
+snyfed
+sofr
+sofr
+sphfed
+sphfed
+spy
+spy
+stlfsi
+stlfsi
+stxfed
+stxfed
+t01m
+t01m
+t01y
+t01y
+t02y
+t02y
+t03m
+t03m
+t05y
+t05y
+t06m
+t06m
+t07y
+t07y
+t10y
+t10y
+t20y
+t20y
+t30y
+t30y
+ue
+ue
+uemean
+uemean
+usd
+usd
+vix
+vix
+vsales
+vsales
+wei
+wei
+d1
+advsales
+advsales
+baa
+baa
+cfnai
+cfnai
+cons
+cons
+csent
+csent
+cu
+cu
+delinqcc
+delinqci
+delinqrer
+emp
+emp
+ex
+exg
+exs
+ffr
+ffr
+gdp
+govt
+govtf
+govts
+houst
+houst
+hpermits
+hpermits
+hpi
+hpi
+hpils
+hpils
+hsold
+hsold
+im
+img
+ims
+ipi
+ipi
+jolts
+jolts
+kclfi
+kclfi
+lfpr
+lfpr
+loanscc
+loanscc
+loansre
+loansre
+mnodg
+mnodg
+mpce
+mpce
+mpceg
+mpceg
+mpcegd
+mpcegd
+mpcegn
+mpcegn
+mpces
+mpces
+nx
+oil
+oil
+pce
+pceg
+pcegd
+pcegdfurnish
+pcegdmotor
+pcegdother
+pcegdrec
+pcegn
+pcegnclothing
+pcegnfood
+pcegngas
+pcegnother
+pcepi
+pcepi
+pces
+pceschange
+pcesfinal
+pcesfood
+pceshealth
+pceshousing
+pcesnonprofit
+pcesother
+pcesrec
+pcestransport
+pdi
+pdin
+pdinequip
+pdinip
+pdinstruct
+pdir
+pi
+pi
+pid
+pid
+po
+po
+ps
+ps
+psr
+psr
+snyfed
+snyfed
+sofr
+sofr
+sphfed
+sphfed
+spy
+spy
+stlfsi
+stlfsi
+stxfed
+stxfed
+t01m
+t01m
+t01y
+t01y
+t02y
+t02y
+t03m
+t03m
+t05y
+t05y
+t06m
+t06m
+t07y
+t07y
+t10y
+t10y
+t20y
+t20y
+t30y
+t30y
+ue
+ue
+uemean
+uemean
+usd
+usd
+vix
+vix
+vsales
+vsales
+wei
+wei
+d2
+advsales
+advsales
+baa
+baa
+cfnai
+cfnai
+cons
+cons
+csent
+csent
+cu
+cu
+delinqcc
+delinqci
+delinqrer
+emp
+emp
+ex
+exg
+exs
+ffr
+ffr
+gdp
+govt
+govtf
+govts
+houst
+houst
+hpermits
+hpermits
+hpi
+hpi
+hpils
+hpils
+hsold
+hsold
+im
+img
+ims
+ipi
+ipi
+jolts
+jolts
+kclfi
+kclfi
+lfpr
+lfpr
+loanscc
+loanscc
+loansre
+loansre
+mnodg
+mnodg
+mpce
+mpce
+mpceg
+mpceg
+mpcegd
+mpcegd
+mpcegn
+mpcegn
+mpces
+mpces
+nx
+oil
+oil
+pce
+pceg
+pcegd
+pcegdfurnish
+pcegdmotor
+pcegdother
+pcegdrec
+pcegn
+pcegnclothing
+pcegnfood
+pcegngas
+pcegnother
+pcepi
+pcepi
+pces
+pceschange
+pcesfinal
+pcesfood
+pceshealth
+pceshousing
+pcesnonprofit
+pcesother
+pcesrec
+pcestransport
+pdi
+pdin
+pdinequip
+pdinip
+pdinstruct
+pdir
+pi
+pi
+pid
+pid
+po
+po
+ps
+ps
+psr
+psr
+snyfed
+snyfed
+sofr
+sofr
+sphfed
+sphfed
+spy
+spy
+stlfsi
+stlfsi
+stxfed
+stxfed
+t01m
+t01m
+t01y
+t01y
+t02y
+t02y
+t03m
+t03m
+t05y
+t05y
+t06m
+t06m
+t07y
+t07y
+t10y
+t10y
+t20y
+t20y
+t30y
+t30y
+ue
+ue
+uemean
+uemean
+usd
+usd
+vix
+vix
+vsales
+vsales
+wei
+wei
+`summarise()` has grouped output by 'varname'. You can override using the `.groups` argument.
+Note: Using an external vector in selections is ambiguous.
+i Use `all_of(.varname)` instead of `.varname` to silence this message.
+i See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
+This message is displayed once per session.
+
+
+processing file: D:/Onedrive/__Projects/econforecasting/documentation-templates/nowcast.rnw
+  |                                                                              |                                                                      |   0%  |                                                                              |.                                                                     |   2%
+   inline R code fragments
+
+  |                                                                              |...                                                                   |   4%
+label: unnamed-chunk-1 (with options) 
+List of 4
+ $ echo   : logi FALSE
+ $ results: chr "hide"
+ $ message: logi FALSE
+ $ warning: logi FALSE
+
+  |                                                                              |....                                                                  |   6%
+  ordinary text without R code
+
+  |                                                                              |......                                                                |   8%
+label: unnamed-chunk-2
+  |                                                                              |.......                                                               |  10%
+   inline R code fragments
+
+  |                                                                              |.........                                                             |  12%
+label: unnamed-chunk-3
+  |                                                                              |..........                                                            |  15%
+  ordinary text without R code
+
+  |                                                                              |............                                                          |  17%
+label: unnamed-chunk-4
+  |                                                                              |.............                                                         |  19%
+  ordinary text without R code
+
+  |                                                                              |...............                                                       |  21%
+label: unnamed-chunk-5
+  |                                                                              |................                                                      |  23%
+  ordinary text without R code
+
+  |                                                                              |..................                                                    |  25%
+label: unnamed-chunk-6
+  |                                                                              |...................                                                   |  27%
+  ordinary text without R code
+
+  |                                                                              |....................                                                  |  29%
+label: unnamed-chunk-7 (with options) 
+List of 1
+ $ fig.cap: chr "Factor Selection"
+
+  |                                                                              |......................                                                |  31%
+  ordinary text without R code
+
+  |                                                                              |.......................                                               |  33%
+label: unnamed-chunk-8
+  |                                                                              |.........................                                             |  35%
+   inline R code fragments
+
+  |                                                                              |..........................                                            |  38%
+label: unnamed-chunk-9
+  |                                                                              |............................                                          |  40%
+  ordinary text without R code
+
+  |                                                                              |.............................                                         |  42%
+label: unnamed-chunk-10
+  |                                                                              |...............................                                       |  44%
+  ordinary text without R code
+
+  |                                                                              |................................                                      |  46%
+label: unnamed-chunk-11
+  |                                                                              |..................................                                    |  48%
+  ordinary text without R code
+
+  |                                                                              |...................................                                   |  50%
+label: unnamed-chunk-12
+  |                                                                              |....................................                                  |  52%
+  ordinary text without R code
+
+  |                                                                              |......................................                                |  54%
+label: unnamed-chunk-13 (with options) 
+List of 1
+ $ fig.cap: chr "Factor VAR Residuals"
+
+  |                                                                              |.......................................                               |  56%
+  ordinary text without R code
+
+  |                                                                              |.........................................                             |  58%
+label: unnamed-chunk-14
+  |                                                                              |..........................................                            |  60%
+  ordinary text without R code
+
+  |                                                                              |............................................                          |  62%
+label: unnamed-chunk-15
+  |                                                                              |.............................................                         |  65%
+  ordinary text without R code
+
+  |                                                                              |...............................................                       |  67%
+label: unnamed-chunk-16
+  |                                                                              |................................................                      |  69%
+  ordinary text without R code
+
+  |                                                                              |..................................................                    |  71%
+label: unnamed-chunk-17
+  |                                                                              |...................................................                   |  73%
+  ordinary text without R code
+
+  |                                                                              |....................................................                  |  75%
+label: unnamed-chunk-18
+  |                                                                              |......................................................                |  77%
+  ordinary text without R code
+
+  |                                                                              |.......................................................               |  79%
+label: unnamed-chunk-19
+  |                                                                              |.........................................................             |  81%
+  ordinary text without R code
+
+  |                                                                              |..........................................................            |  83%
+label: unnamed-chunk-20
+  |                                                                              |............................................................          |  85%
+  ordinary text without R code
+
+  |                                                                              |.............................................................         |  88%
+label: unnamed-chunk-21
+  |                                                                              |...............................................................       |  90%
+  ordinary text without R code
+
+  |                                                                              |................................................................      |  92%
+label: unnamed-chunk-22
+  |                                                                              |..................................................................    |  94%
+label: unnamed-chunk-23
+  |                                                                              |...................................................................   |  96%
+  ordinary text without R code
+
+  |                                                                              |..................................................................... |  98%
+label: unnamed-chunk-24
+  |                                                                              |......................................................................| 100%
+  ordinary text without R code
+
+
+output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-06-24-nowcast.tex
+
+Finished - model-nowcasts
+[[1]]
+NULL
+
+[[2]]
+NULL
+
+[[3]]
+NULL
+
+There were 11 warnings (use warnings() to see them)

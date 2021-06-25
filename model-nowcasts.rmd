@@ -7,7 +7,7 @@ DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Pat
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
 RESET_ALL = FALSE
-VINTAGE_DATE = Sys.Date() #as.Date('2021-05-21') # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
+VINTAGE_DATE = Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
 ```
 
 
@@ -287,13 +287,14 @@ local({
 	flat = list()
 
 	flat =
-		lapply(list('st', 'd1', 'd2') %>% setNames(., .), function(.form)
+		lapply(list('st', 'd1', 'd2') %>% setNames(., .), function(.form) {
+		    message(.form)
 			ef$h$seasDf %>%
 				dplyr::left_join(., ef$paramsDf[, c('varname', .form)], by = c('varname')) %>%
 				dplyr::group_by(varname, freq) %>%
 				dplyr::group_split(.) %>%
 				lapply(., function(x) {
-					# message(x$varname[[1]])
+					message(x$varname[[1]])
 					if (head(x, 1)[[.form]] == 'none') return(NA)
 					x %>%
 						dplyr::arrange(., date) %>%
@@ -306,6 +307,7 @@ local({
 								else if (head(., 1)[[.form]] == 'diff2') diff2(value)
 								else if (head(., 1)[[.form]] == 'ma2') ma2(value)
 								else if (head(., 1)[[.form]] == 'lma2') lma2(value)
+								else if (head(., 1)[[.form]] == 'pchg') pchg(value)
 								else if (head(., 1)[[.form]] == 'apchg') apchg(value)
 								else stop ('Error')
 								}
@@ -314,7 +316,7 @@ local({
 				purrr::keep(., ~ !all(is.na(.))) %>%
 				dplyr::bind_rows(.) %>%
 				dplyr::select(., -all_of(c(.form)))
-			)
+			})
 	
 	flat$ut = ef$h$seasDf
 
@@ -1363,6 +1365,7 @@ local({
 					!!.varname := 
 						{
 	                        if (transform == 'apchg') apchg(.[[2]], 12)
+							else if (transform == 'pchg') pchg(.[[2]])
 							else if (transform == 'base') .[[2]]
 							else stop('Err: ', .varname)
 							}
@@ -1547,6 +1550,16 @@ local({
 			to = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
 			overwrite = TRUE
 			)
+		
+
+		# Upload via SFTP
+		RCurl::ftpUpload(
+			what = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
+			to = paste0(CONST$SFTP_PATH_PUBLIC, 'nowcast-documentation.pdf')
+			)
+		
+		unlink(tempPath)
+
 
 	}
 })
