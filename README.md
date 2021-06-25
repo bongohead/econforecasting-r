@@ -14,13 +14,14 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
-## 2021-06-17 [v0.14]
+## 2021-06-24 [v0.14]
 - Added better data import system
 - Added better data transform system
 - Added cleaner EOM aggregation system
 - Added automatic cookie scraping from CME site to bypass block
 - Added separation of external forecasts from initial forecasts
 - Added initial forecasts framework in DB
+- Added nowcast SFTP upload
 - Fixed WSJ forecasts since now quarterly (since April 2021)
 - Fixed bug with CME scrape (removed cookie set)
 - Removed JOLTS new hires from inputs (missing data in 2010)
@@ -93,7 +94,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added SOFR web scraping
 - Fixed some issues with inconsistent variable names
 
-## 2021-02-03 [v0.05] (Prepping Forecasts For Website Display)
+## 2021-02-03 [v0.05]
 - Added dynamic Nelson-Siegel interest rate decomposition & forecasting model
 - Added code to allow for SPF pulling for more variables
 - Added code to pull historical data of multiple frequencies
