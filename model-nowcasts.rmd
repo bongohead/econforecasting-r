@@ -1557,9 +1557,6 @@ local({
 			what = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
 			to = paste0(CONST$SFTP_PATH_PUBLIC, 'nowcast-documentation.pdf')
 			)
-		
-		unlink(tempPath)
-
 
 	}
 })
