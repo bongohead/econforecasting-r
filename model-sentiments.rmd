@@ -30,33 +30,18 @@ setwd(DIR)
 
 # Read constants
 source(file.path(INPUT_DIR, 'constants.r'))
-
-# Create top level variables
-ef = list(
-  h = list(),
-  f = list()
-)
 ```
 
 # Text analysis
 ```{r}
 local({
 	
-	sentimentsDf =
-		get_sentiments('nrc') %>%
-		dplyr::mutate(
-			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
-			sentiment = ifelse(sentiment == 'sadness', 'negative', sentiment),
-			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
-			sentiment = ifelse(sentiment == 'anticipation', 'neutral', sentiment),
-
-		)
-		
 	rawDf =
 		# Iterate through pages
-		purrr::map_dfr(1:1000, function(page) {
+		purrr::map_dfr(1:3000, function(page) {
+		    if (page %% 20 == 1) message(page)
 			pageContent =
-				httr::GET(paste0('https://www.reuters.com/news/archive/businessnews?view=page&page=', page)) %>%
+				httr::GET(paste0('https://www.reuters.com/news/archive/businessnews?view=page&page=', page, '&pageSize=10')) %>%
 				httr::content(.) %>%
 				rvest::html_node(., 'div.column1')
 			
@@ -67,11 +52,10 @@ local({
     				article2 = html_text(html_nodes(pageContent, 'div.story-content > p'), trim = TRUE),
     				date = html_text(html_nodes(pageContent, 'span.timestamp'), trim = TRUE)
 					)
-			
 			return(res)
 			})
 	
-	# finalDf =
+	emotionsPlot =
 		rawDf %>%
 		dplyr::mutate(
 			.,
@@ -81,7 +65,17 @@ local({
 			) %>%
 		tidytext::unnest_tokens(., word, article) %>%
 		dplyr::anti_join(., stop_words, by = 'word') %>%
-		dplyr::inner_join(., sentimentsDf, by = 'word') %>%
+		dplyr::inner_join(
+		    .,
+    		get_sentiments('nrc') %>%
+        		dplyr::mutate(
+        			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
+        			sentiment = ifelse(sentiment == 'sadness', 'negative', sentiment),
+        			sentiment = ifelse(sentiment == 'disgust', 'negative', sentiment),
+        			sentiment = ifelse(sentiment == 'anticipation', 'neutral', sentiment),
+        		),
+		    by = 'word'
+		    ) %>%
 		dplyr::left_join(
 			.,
 			dplyr::group_by(., date) %>%
@@ -91,11 +85,55 @@ local({
 		dplyr::group_by(., sentiment, date) %>%
 		dplyr::summarize(., count = n(), dateTotal = unique(dateTotal), .groups = 'drop') %>%
 		dplyr::mutate(., percent = count/dateTotal) %>%
-	
 		ggplot(.) + geom_line(aes(x = date, y = percent, color = sentiment, group = sentiment))
 
-
 	
+
+	rawDf %>%
+		dplyr::mutate(
+			.,
+			article = paste0(article1, ' ', article2),
+			date = ifelse(str_detect(date, coll('EDT')) == TRUE, format(Sys.Date(), '%b %d %Y'), date),
+			date = as.Date(parse_date_time2(date, '%b %d %Y'))
+			) %>%
+		tidytext::unnest_tokens(., word, article) %>%
+		dplyr::anti_join(., stop_words, by = 'word') %>%
+		dplyr::inner_join(
+		    .,
+    		get_sentiments('nrc') %>%
+	        	dplyr::mutate(
+	        	    sentiment = case_when(
+	        	        sentiment == 'disgust' ~ -1,
+	        	        sentiment == 'sadness' ~ -1,
+	        	        sentiment == 'anticipation' ~ 0,
+	        	        sentiment == 'anger' ~ -2,
+	        	        sentiment == 'fear' ~ -2,
+	        	        sentiment == 'joy' ~ 1,
+	        	        sentiment == 'surprise' ~ 0,
+	        	        sentiment == 'trust' ~ 1,
+	        	        sentiment == 'positive' ~ 1,
+	        	        sentiment == 'negative' ~ -1,
+	        	        sentiment == 'neutral' ~ 0,
+	        	        TRUE ~ 0
+	        	        )
+        	    	),
+		    by = 'word') %>%
+		dplyr::left_join(
+			.,
+			dplyr::group_by(., date) %>%
+				dplyr::summarize(., dateTotal = n(), .groups = 'drop'),
+			by = 'date'
+		) %>%
+		dplyr::group_by(., sentiment, date) %>%
+		dplyr::summarize(., count = n(), dateTotal = unique(dateTotal), .groups = 'drop') %>%
+		dplyr::mutate(., percent = count/dateTotal) %>%
+	    dplyr::mutate(., weightedSentiment = sentiment * percent) %>%
+	    dplyr::group_by(date) %>%
+	    dplyr::summarize(., sentimentIndex = sum(weightedSentiment), .groups = 'drop') %>%
+	    dplyr::mutate(., sentimentIndexLagged = roll::roll_mean(sentimentIndex, 7)) %>%
+	    ggplot(.) +
+	    geom_line(aes(x = date, y = sentimentIndexLagged))
+
 })
 ```
 
