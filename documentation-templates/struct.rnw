@@ -1,0 +1,174 @@
+\documentclass[11pt, letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage[parfill]{parskip}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{appendix}
+\graphicspath{{\Sexpr{paste0('D:/OneDrive/__Projects/econforecasting/documentation-templates/images/')}}}
+\newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
+\definecolor{econgreen}{RGB}{55, 91, 1}
+
+\geometry{left=2.6cm, right = 2.6cm, top = 3cm, bottom = 3cm}
+
+\fancypagestyle{plain}{
+	\let\oldheadrule\headrule% Copy \headrule into \oldheadrule
+	\renewcommand{\headrule}{\color{econgreen}\oldheadrule}
+	\lhead{\small{\textcolor{black}{\leftmark}}}
+	%\chead{}
+	\rhead{\small{\textcolor{black}{\thepage}}}
+	\lfoot{}
+	\cfoot{}
+	\rfoot{\textit{charles@cmefi.com}}
+	\renewcommand{\headrulewidth}{0.5pt}
+	%\renewcommand{\footrulewidth}{0.5pt}
+}\pagestyle{plain}
+\begin{document}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{titlepage}
+\thispagestyle{empty}
+\newgeometry{left=5cm, top=5cm} %defines the geometry for the titlepage
+\pagecolor{econgreen}
+\noindent
+\includegraphics[width=2cm]{cmefi_short.png} \\[-1em]
+\color{white}
+\makebox[0pt][l]{\rule{1.3\textwidth}{1pt}}
+\par
+\noindent
+%\textbf{\textsf{A Macroeconomic Nowcasting Model}} 
+%\vskip5cm
+{\Huge \textsf{A Nowcasting Model for Time Series with Ragged-Edge Data}}
+\vskip\baselineskip
+\noindent
+\textsf{Model Run Date: \Sexpr{format(Sys.Date(), '%B %d, %Y')}}\\
+\textsf{charles@cmefi.com}
+\restoregeometry % restores the geometry
+\nopagecolor% Use this to restore the color pages to white
+\end{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+<<echo=F,results='hide',message=F, warning=F>>=
+    library(tidyverse)
+    library(xtable)
+
+    OUTPUT_DIR =  'D:/OneDrive/__Projects/econforecasting/documentation-templates'
+    # Settings for PDF compilation
+    knitr::opts_chunk$set(
+      echo = F, results = 'asis',
+      root.dir = OUTPUT_DIR,
+      fig.path = paste0(OUTPUT_DIR, '/latex-figures/'),
+      cache.path = paste0(OUTPUT_DIR, '/latex-cache/'),
+      fig.width = 10, fig.height = 4, out.width = '5in', out.height = '2in',
+      fig.pos = 'H', fig.align = 'center', warnings = F, message = F
+      )
+    options(xtable.include.rownames = F)
+    options(xtable.size = 'footnotesize')
+    options(xtable.table.placement = 'H')
+    
+    # rds = readRDS('D:/Onedrive/__Projects/econforecasting/nowcast.rds')
+
+@
+
+\tableofcontents
+\newpage
+\listoftables
+\listoffigures
+\newpage
+\section{Central Structural Model}
+\subsection{Equations}
+
+Consider the following structural equations:
+\begin{align*}
+    dlog(\vv{gdp}_t) &= \frac{\vv{pce}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{pce}_t) + \frac{\vv{pdi}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{pdi}_t) + \frac{\vv{im}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{im}_t) -\\
+    &\quad{} \frac{\vv{ex}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{ex}_t) + \frac{\vv{govt}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{govt}_t)\\
+   	dlog(\vv{pce_t}) &= \widehat{\beta_0} + \widehat{\beta_1} \frac{1}{4} \sum_{j=1}^4 dlog(\vv{dpi}_{t-j}) + e_t\\
+   	dlog(\vv{pdi_t}) &= \widehat{\beta_0}  + \widehat{\beta_1} \vv{pdi}_{t-1} + e_t\\
+   	dlog(\vv{govt_t}) &=  \widehat{\beta_0}  + \widehat{\beta_1} \vv{govt}_{t-1} + e_t\\
+   	dlog(\vv{ex_t}) &=  \widehat{\beta_0}  + \widehat{\beta_1} \vv{ex}_{t-1} + e_t\\
+   	dlog(\vv{im_t}) &=  \widehat{\beta_0}  + \widehat{\beta_1} \vv{im}_{t-1} + e_t
+\end{align*}
+
+
+\begin{align*}
+    dlog(ue_t) = 
+\end{align*}
+
+The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016). As before, $R$ will refer to the total number of factors we extracted in the previous section, and $f^i_t$ for $i = 1, \dots, R$ will refer to the value of factor $i$ at time $t$.
+
+We will use a VAR(1) model of the following form.
+\begin{align*}
+\underbrace{\begin{bmatrix}
+	f^1_{t}\\
+	f^2_{t}\\
+	\vdots \\
+	f^R_{t}
+\end{bmatrix}}_{z_t}
+=
+B
+\underbrace{\begin{bmatrix}
+	f^1_{t-1}\\
+	f^2_{t-1}\\
+	\vdots \\
+	f^R_{t-1}
+\end{bmatrix}}_{z_{t-1}}
++
+C
++
+\underbrace{\begin{bmatrix}
+v^1_t\\
+v^2_t\\
+\vdots\\
+v^R_t
+\end{bmatrix}}_{v_t},\\
+\text{where $z_t$ is the $R \times 1$ matrix of time $t$ factors,}\\
+\text{$B$ is the $R \times R$ coefficient matrix,}\\
+\text{$C$ is the $R \times 1$ constant matrix,}\\
+\text{and $v_t$ is the $R \times 1$ matrix of errors for time $t$.}
+\end{align*}
+
+
+We wish to estimate the coefficient matrices $B$ and $C$. This can be done via OLS estimation. We first rewrite the data as the standard linear equation,
+\begin{align*}
+\underbrace{\begin{bmatrix}
+f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
+\vdots & \vdots & \vdots & \vdots \\
+f^1_{T} & f^2_{T} & \dots & f^R_{T}
+\end{bmatrix}}_{\Gamma}
+=
+\underbrace{\begin{bmatrix}
+1 & f^1_{1} & f^2_{1} & \dots & f^R_{1}\\
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+\vdots & \vdots & \vdots & \vdots & \vdots \\
+1 & f^1_{T-1} & f^2_{T-1} & \dots & f^R_{T-1}
+\end{bmatrix}}_{\Psi}
+\underbrace{\begin{bmatrix}
+C'\\
+B'
+\end{bmatrix}}_{\Lambda}
+ +
+\underbrace{\begin{bmatrix}
+v^1_2 & v^2_2 & \dots & v^R_2\\
+v^1_3 & v^2_3 & \dots & v^R_3\\
+\vdots\\
+v^1_T & v^2_T & \dots & v^R_T\\
+\end{bmatrix}}_{V},\\
+\text{where $\Gamma$ is the $T-1 \times R$ dependent data matrix,}\\
+\text{$\Psi$ is the $T-1 \times R+1$ independent data matrix,}\\
+\text{$\Lambda$ is the $R+1 \times R$ matrix of coefficient weightings,}\\
+\text{and $V$ is the $T-1 \times R$ matrix of residuals.}
+\end{align*}
+The coefficient matrix $\Lambda$ can be estimated by the standard OLS estimator.
+\begin{align*}
+\widehat{\Lambda} = (\Psi' \Psi)^{-1} (\Psi'\Gamma)
+\end{align*}
+It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which can then be transposed to derive our estimates of the original coefficient matrices B and C, $\widehat{B}$ and $\widehat{C}$.
+
+
+Finally, we perform a qualitative check of the fitted values and residuals. It is important that factors that are predictable --- i.e., factors 2 and 3, since they represent output --- have a good fit. Since factor 1 represents the COVID-19 shock, we should expect that the fit is poor; such a shock should not be predictable simply from the time dynamics of the factors; so if the fit is good, our model is likely overfitted.
+
+\end{document}

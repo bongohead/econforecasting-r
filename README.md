@@ -11,6 +11,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # Dev Notes
 - Add: Survey of Consumer Expectations (Has expected inflation at well updated intervals, plus home price change expectations @ one year, 3 year ahead point predictions)
 - Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong) - try later, for now use standard and see if tdns estimates are too off from actual construction
+- Add: DFM package for R
 
 
 # CHANGELOG
@@ -22,6 +23,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added separation of external forecasts from initial forecasts
 - Added initial forecasts framework in DB
 - Added nowcast SFTP upload
+- Added some updates to sentiments model
 - Fixed WSJ forecasts since now quarterly (since April 2021)
 - Fixed bug with CME scrape (removed cookie set)
 - Removed JOLTS new hires from inputs (missing data in 2010)

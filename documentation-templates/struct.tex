@@ -1,0 +1,277 @@
+\documentclass[11pt, letterpaper]{article}\usepackage[]{graphicx}\usepackage[]{color}
+% maxwidth is the original width if it is less than linewidth
+% otherwise use linewidth (to make sure the graphics do not exceed the margin)
+\makeatletter
+\def\maxwidth{ %
+  \ifdim\Gin@nat@width>\linewidth
+    \linewidth
+  \else
+    \Gin@nat@width
+  \fi
+}
+\makeatother
+
+\definecolor{fgcolor}{rgb}{0.345, 0.345, 0.345}
+\newcommand{\hlnum}[1]{\textcolor[rgb]{0.686,0.059,0.569}{#1}}%
+\newcommand{\hlstr}[1]{\textcolor[rgb]{0.192,0.494,0.8}{#1}}%
+\newcommand{\hlcom}[1]{\textcolor[rgb]{0.678,0.584,0.686}{\textit{#1}}}%
+\newcommand{\hlopt}[1]{\textcolor[rgb]{0,0,0}{#1}}%
+\newcommand{\hlstd}[1]{\textcolor[rgb]{0.345,0.345,0.345}{#1}}%
+\newcommand{\hlkwa}[1]{\textcolor[rgb]{0.161,0.373,0.58}{\textbf{#1}}}%
+\newcommand{\hlkwb}[1]{\textcolor[rgb]{0.69,0.353,0.396}{#1}}%
+\newcommand{\hlkwc}[1]{\textcolor[rgb]{0.333,0.667,0.333}{#1}}%
+\newcommand{\hlkwd}[1]{\textcolor[rgb]{0.737,0.353,0.396}{\textbf{#1}}}%
+\let\hlipl\hlkwb
+
+\usepackage{framed}
+\makeatletter
+\newenvironment{kframe}{%
+ \def\at@end@of@kframe{}%
+ \ifinner\ifhmode%
+  \def\at@end@of@kframe{\end{minipage}}%
+  \begin{minipage}{\columnwidth}%
+ \fi\fi%
+ \def\FrameCommand##1{\hskip\@totalleftmargin \hskip-\fboxsep
+ \colorbox{shadecolor}{##1}\hskip-\fboxsep
+     % There is no \\@totalrightmargin, so:
+     \hskip-\linewidth \hskip-\@totalleftmargin \hskip\columnwidth}%
+ \MakeFramed {\advance\hsize-\width
+   \@totalleftmargin\z@ \linewidth\hsize
+   \@setminipage}}%
+ {\par\unskip\endMakeFramed%
+ \at@end@of@kframe}
+\makeatother
+
+\definecolor{shadecolor}{rgb}{.97, .97, .97}
+\definecolor{messagecolor}{rgb}{0, 0, 0}
+\definecolor{warningcolor}{rgb}{1, 0, 1}
+\definecolor{errorcolor}{rgb}{1, 0, 0}
+\newenvironment{knitrout}{}{} % an empty environment to be redefined in TeX
+
+\usepackage{alltt}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage[parfill]{parskip}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{appendix}
+\graphicspath{{D:/OneDrive/__Projects/econforecasting/documentation-templates/images/}}
+\newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
+\definecolor{econgreen}{RGB}{55, 91, 1}
+
+\geometry{left=2.0cm, right = 2.0cm, top = 3cm, bottom = 3cm}
+
+\fancypagestyle{plain}{
+	\let\oldheadrule\headrule% Copy \headrule into \oldheadrule
+	\renewcommand{\headrule}{\color{econgreen}\oldheadrule}
+	\lhead{\small{\textcolor{black}{\leftmark}}}
+	%\chead{}
+	\rhead{\small{\textcolor{black}{\thepage}}}
+	\lfoot{}
+	\cfoot{}
+	\rfoot{\textit{charles@cmefi.com}}
+	\renewcommand{\headrulewidth}{0.5pt}
+	%\renewcommand{\footrulewidth}{0.5pt}
+}\pagestyle{plain}
+\IfFileExists{upquote.sty}{\usepackage{upquote}}{}
+\begin{document}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{titlepage}
+\thispagestyle{empty}
+\newgeometry{left=5cm, top=5cm} %defines the geometry for the titlepage
+\pagecolor{econgreen}
+\noindent
+\includegraphics[width=2cm]{cmefi_short.png} \\[-1em]
+\color{white}
+\makebox[0pt][l]{\rule{1.3\textwidth}{1pt}}
+\par
+\noindent
+%\textbf{\textsf{A Macroeconomic Nowcasting Model}} 
+%\vskip5cm
+{\Huge \textsf{A Nowcasting Model for Time Series with Ragged-Edge Data}}
+\vskip\baselineskip
+\noindent
+\textsf{Model Run Date: June 25, 2021}\\
+\textsf{charles@cmefi.com}
+\restoregeometry % restores the geometry
+\nopagecolor% Use this to restore the color pages to white
+\end{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+
+\tableofcontents
+\newpage
+\listoftables
+\listoffigures
+\newpage
+\section{Central Structural Model}
+\subsection{Equations}
+
+Consider the following structural equations:
+\begin{align*}
+    dlog(\vv{gdp}_t) &= \frac{\vv{pce}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{pce}_t) + \frac{\vv{pdi}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{pdi}_t) + \frac{\vv{im}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{im}_t) -\\
+    &\quad{} \frac{\vv{ex}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{ex}_t) + \frac{\vv{govt}_{ss}}{\vv{gdp}_{ss}} dlog(\vv{govt}_t)\\
+   	dlog(\vv{pce_t}) &= \widehat{\beta_0} + \widehat{\beta_1} \frac{1}{4} \sum_{j=0}^1 dlog(\vv{dpi}_{t-j}) + e_t\\
+   	dlog(\vv{pdi_t}) &= \widehat{\beta_0}  + \widehat{\beta_1} \vv{pdi}_{t-1} + e_t\\
+   	dlog(\vv{govt_t}) &=  \widehat{\beta_0}  + \widehat{\beta_1} \vv{govt}_{t-1} + e_t\\
+   	dlog(\vv{ex_t}) &=  \widehat{\beta_0}  + \widehat{\beta_1} \vv{ex}_{t-1} + e_t\\
+   	dlog(\vv{im_t}) &=  \widehat{\beta_0}  + \widehat{\beta_1} \vv{im}_{t-1} + e_t
+\end{align*}
+
+
+We can move this into matrix form:
+\setcounter{MaxMatrixCols}{20}
+\begin{align*}
+\begin{bmatrix}
+	0\\
+	\widehat{\beta^2_0}\\
+	\widehat{\beta^3_0}\\
+	\widehat{\beta^4_0}\\
+	\widehat{\beta^5_0}\\
+	\widehat{\beta^6_0}
+\end{bmatrix}
+=
+\begin{bmatrix}
+	1 & -\frac{pce}{gdp} & -\frac{pdi}{gdp} & -\frac{im}{gdp} & \frac{ex}{gdp} & -\frac{govt}{gdp} & 0 & 0 & 0 & 0 & 0 & 0 & 0\\
+	0 & 1 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & -\widehat{\beta^2_1} & -\widehat{\beta^2_1}\\
+	0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0
+\end{bmatrix}
+\begin{bmatrix}
+	gdp_{t}\\
+	pce_{t}\\
+	pdi_{t}\\
+	im_{t}\\
+	ex_{t}\\
+	govt_{t}\\
+	pce_{t-1}\\
+	pdi_{t-1}\\
+	im_{t-1}\\
+	ex_{t-1}\\
+	govt_{t-1}\\
+	dpi_{t}\\
+	dpi_{t-1}
+\end{bmatrix}
+\end{align*}
+%\begin{align*}
+%\underbrace{\begin{bmatrix}
+%		gdp_{t}\\
+%		pce_{t}\\
+%		pdi_{t}\\
+%		govt_{t}\\
+%		ex_{t}\\
+%		im_{t}
+%\end{bmatrix}}_{z_t}
+%=
+%\begin{bmatrix}
+%	0 & \frac{\vv{pce}_{ss}}{\vv{gdp}_{ss}} & \frac{\vv{pdi}_{ss}}{\vv{gdp}_{ss}} & \frac{\vv{im}_{ss}}{\vv{gdp}_{ss}} & -\frac{\vv{ex}_{ss}}{\vv{gdp}_{ss}} & \frac{\vv{govt}_{ss}}{\vv{gdp}_{ss}}\\
+%	0 & 0 & 0 & 0 & 0 & 0
+%\end{bmatrix}
+%\underbrace{\begin{bmatrix}
+%		gdp_{t-1}\\
+%		pce_{t-1}\\
+%		pdi_{t-1}\\
+%		govt_{t-1}\\
+%		ex_{t-1}\\
+%		im_{t-1}
+%\end{bmatrix}}_{z_{t-1}}
+%+
+%\begin{bmatrix}
+%	0 & 0\\
+%	\widehat{\beta^2_0} & 0\\
+%	\widehat{\beta^3_0} & \widehat{\beta^3_1}\\
+%	\widehat{\beta^4_0} & 0\\
+%	\widehat{\beta^5_0} & 0\\
+%	\widehat{\beta^6_0} & 0
+%\end{bmatrix}
+%\begin{bmatrix}
+%	1\\
+%	\vv{dpi}_t
+%\end{bmatrix}
+%\end{align*}
+
+
+
+\begin{align*}
+    dlog(ue_t) = 
+\end{align*}
+
+The next step is to model the transition of the factors over time. To do so, we utilize a vector-autoregressive (VAR) process, following Stock and Watson (2016). As before, $R$ will refer to the total number of factors we extracted in the previous section, and $f^i_t$ for $i = 1, \dots, R$ will refer to the value of factor $i$ at time $t$.
+
+We will use a VAR(1) model of the following form.
+\begin{align*}
+\underbrace{\begin{bmatrix}
+	f^1_{t}\\
+	f^2_{t}\\
+	\vdots \\
+	f^R_{t}
+\end{bmatrix}}_{z_t}
+=
+B
+\underbrace{\begin{bmatrix}
+	f^1_{t-1}\\
+	f^2_{t-1}\\
+	\vdots \\
+	f^R_{t-1}
+\end{bmatrix}}_{z_{t-1}}
++
+C
++
+\underbrace{\begin{bmatrix}
+v^1_t\\
+v^2_t\\
+\vdots\\
+v^R_t
+\end{bmatrix}}_{v_t},\\
+\text{where $z_t$ is the $R \times 1$ matrix of time $t$ factors,}\\
+\text{$B$ is the $R \times R$ coefficient matrix,}\\
+\text{$C$ is the $R \times 1$ constant matrix,}\\
+\text{and $v_t$ is the $R \times 1$ matrix of errors for time $t$.}
+\end{align*}
+
+
+We wish to estimate the coefficient matrices $B$ and $C$. This can be done via OLS estimation. We first rewrite the data as the standard linear equation,
+\begin{align*}
+\underbrace{\begin{bmatrix}
+f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+f^1_{3} & f^2_{3} & \dots & f^R_{3}\\
+\vdots & \vdots & \vdots & \vdots \\
+f^1_{T} & f^2_{T} & \dots & f^R_{T}
+\end{bmatrix}}_{\Gamma}
+=
+\underbrace{\begin{bmatrix}
+1 & f^1_{1} & f^2_{1} & \dots & f^R_{1}\\
+1 & f^1_{2} & f^2_{2} & \dots & f^R_{2}\\
+\vdots & \vdots & \vdots & \vdots & \vdots \\
+1 & f^1_{T-1} & f^2_{T-1} & \dots & f^R_{T-1}
+\end{bmatrix}}_{\Psi}
+\underbrace{\begin{bmatrix}
+C'\\
+B'
+\end{bmatrix}}_{\Lambda}
+ +
+\underbrace{\begin{bmatrix}
+v^1_2 & v^2_2 & \dots & v^R_2\\
+v^1_3 & v^2_3 & \dots & v^R_3\\
+\vdots\\
+v^1_T & v^2_T & \dots & v^R_T\\
+\end{bmatrix}}_{V},\\
+\text{where $\Gamma$ is the $T-1 \times R$ dependent data matrix,}\\
+\text{$\Psi$ is the $T-1 \times R+1$ independent data matrix,}\\
+\text{$\Lambda$ is the $R+1 \times R$ matrix of coefficient weightings,}\\
+\text{and $V$ is the $T-1 \times R$ matrix of residuals.}
+\end{align*}
+The coefficient matrix $\Lambda$ can be estimated by the standard OLS estimator.
+\begin{align*}
+\widehat{\Lambda} = (\Psi' \Psi)^{-1} (\Psi'\Gamma)
+\end{align*}
+It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which can then be transposed to derive our estimates of the original coefficient matrices B and C, $\widehat{B}$ and $\widehat{C}$.
+
+
+Finally, we perform a qualitative check of the fitted values and residuals. It is important that factors that are predictable --- i.e., factors 2 and 3, since they represent output --- have a good fit. Since factor 1 represents the COVID-19 shock, we should expect that the fit is poor; such a shock should not be predictable simply from the time dynamics of the factors; so if the fit is good, our model is likely overfitted.
+
+\end{document}

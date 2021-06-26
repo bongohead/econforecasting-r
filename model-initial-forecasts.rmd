@@ -1205,6 +1205,10 @@ local({
         # Splinal interpolate
         dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
         tail(., -4)
+    
+    initial$spy =
+        ef$variables$ue$h$base$m %>%
+        dplyr::filter(., )
 
     ef$initialQualBaseline <<- initial 
 })
@@ -1223,6 +1227,80 @@ local({
 ```{r}
 local({
     
+    
+})
+```
+
+
+## Structural Model Test
+```{r}
+local({
+    
+    
+    histDf =
+        ef$h$st$q %>% 
+        na.omit(.)
+    
+    # Merge exog df
+    exogDf =
+        tibble(
+            date = seq(add_with_rollback(tail(histDf$date, 1), months(3)), by = '3 month', length.out = 60)
+        )
+    
+    
+    # Now create coefficient matrices
+    # Get steady-state values
+    
+    coefMatsIdentity =
+        list(
+            gdp =
+                tibble(gdp = 1, pce = -ss$pce/ss$gdp, pdi = -ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -ss$ex/ss$gdp, govt = -ss$govt/ss$gdp),
+        )
+    
+    
+    histDfAll =
+        histDf %>%
+        dplyr::bind_cols(
+            .,
+            constant = 1,
+            lapply(1:4, function(l)
+                dplyr::transmute_if(histDf, is.numeric, function(x) dplyr::lag(x, l)) %>%
+                    dplyr::rename_with(., function(x) paste0(x, '.l', l))
+                )
+            ) %>%
+        dplyr::bind_cols(
+            .,
+            dplyr::transmute_if(histDf, is.numeric, function(x) ma2(x)) %>%
+                dplyr::rename_with(., function(x) paste0('ma2.', x))
+            )
+
+    eqn = 'pce = constant + ma2.dpi + pce.l1'
+    
+    yCoef = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 1] %>% str_squish(.)
+    xCoefs = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 2] %>% str_split(., '\\+') %>% .[[1]] %>% str_squish(.)
+
+    inputDf = histDfAll %>% dplyr::select(., date, all_of(c(yCoef, xCoefs))) %>% na.omit(.)
+    
+    yMat = inputDf %>% dplyr::select(., yCoef) %>% as.matrix(.)
+    xMat = inputDf %>% dplyr::select(., xCoefs) %>% as.matrix(.)
+    
+    coefMat =
+        solve(t(xMat) %*% xMat) %*% (t(xMat) %*% yMat) %>%
+        t(.) %>%
+        as.data.frame(.) %>%
+        as_tibble(.) %>%
+        dplyr::bind_cols(!!yCoef := 1, .)
+    
+    
+    # Now bind to single coefficient mat
+    coefMatsEstimated =
+        
+        
+        
+        
+    # Seperate endogeneous (estimated) and exogenous matrices
+        
+        
     
 })
 ```
