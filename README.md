@@ -24,6 +24,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added initial forecasts framework in DB
 - Added nowcast SFTP upload
 - Added some updates to sentiments model
+- Added more imports to WSJ
 - Fixed WSJ forecasts since now quarterly (since April 2021)
 - Fixed bug with CME scrape (removed cookie set)
 - Removed JOLTS new hires from inputs (missing data in 2010)
