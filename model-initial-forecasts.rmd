@@ -415,7 +415,7 @@ local({
 				purrr::compact(.)
 			})
 
-	for (varname in names(resDfs)) {
+    for (varname in names(resDfs)) {
 		for (form in names(resDfs[[varname]])) {
 			ef$variables[[varname]]$h[[form]] <<- resDfs[[varname]][[form]]
 		}
@@ -735,7 +735,10 @@ local({
                     ) %>%
                 dplyr::right_join(., orgsDf, by = 'fcfullname') %>%
                 dplyr::select(., -fcfullname)
+        }) %>%
+        dplyr::bind_rows(.)
 
+            
     m$ext$sources$wsj <<- df   
 })
 ```
@@ -774,11 +777,13 @@ local({
       ~ varname, ~ cboCategory, ~ cboname, ~ cboUnits,
       'gdp', 'Output', 'Real GDP', 'Percentage change, annual rate',
       'pcepi', 'Prices', 'Price Index, Personal Consumption Expenditures (PCE)', 'Percentage change, annual rate',
-      'cpiu', 'Prices', 'Consumer Price Index, All Urban Consumers (CPI-U)', 'Percentage change, annual rate',
+      'inf', 'Prices', 'Consumer Price Index, All Urban Consumers (CPI-U)', 'Percentage change, annual rate',
       'wti', 'Prices', 'Price of Crude Oil, West Texas Intermediate (WTI)', 'Dollars per barrel',
-      'unemp', 'Labor', 'Unemployment Rate, Civilian, 16 Years or Older', 'Percent',
+      'ue', 'Labor', 'Unemployment Rate, Civilian, 16 Years or Older', 'Percent',
       'ffr', 'Interest Rates', 'Federal Funds Rate', 'Percent',
-      'pce', 'Components of GDP (Real)', 'Personal Consumption Expenditures', 'Percentage change, annual rate'
+      'pce', 'Components of GDP (Real)', 'Personal Consumption Expenditures', 'Percentage change, annual rate',
+      't10y', 'Interest Rates', '10-Year Treasury Note', 'Percent',
+      't03m', 'Interest Rates', '3-Month Treasury Bill', 'Percent'
       )
   
   
@@ -791,11 +796,11 @@ local({
           
       # Starts earlier form Jan 2019
       xl =
-        readxl::read_excel(
+        suppressMessages(readxl::read_excel(
           tempPath,
           sheet = '1. Quarterly',
           skip = {if (as.Date(x$date, origin = lubridate::origin) == '2019-01-01') 5 else 6}
-          ) %>%
+          )) %>%
         dplyr::rename(., cboCategory = 1, cboname = 2, cboname2 = 3, cboUnits = 4) %>%
         dplyr::mutate(., cboname = ifelse(is.na(cboname), cboname2, cboname)) %>%
         dplyr::select(., -cboname2) %>%
@@ -818,7 +823,8 @@ local({
   # Count number of forecasts per group
   # df %>% dplyr::group_by(vintageDate, varname) %>% dplyr::summarize(., n = n()) %>% View(.)
   
-  ef$e$forecasts$cbo <<- df
+    
+  m$ext$sources$cbo <<- df   
 })
 ```
 
@@ -864,7 +870,7 @@ local({
   		) %>%
   	na.omit(.)
 
-    ef$e$forecasts$cle <<- df
+    m$ext$sources$cle <<- df
 })
 ```
 
@@ -1005,7 +1011,7 @@ local({
 			}) %>%
 		dplyr::bind_rows(.)
 
-	ef$e$forecasts$cme <<- finalDf
+	m$ext$sources$cme <<- finalDf
 })
 ```
 
@@ -1019,9 +1025,9 @@ note that later these will be "regenerated" in the baseline calculation, may be 
 ```{r}
 local({
     
-    dnsCoefs = ef$dnsCoefs
-    dnsLambda = ef$dnsLambda
-    dnsYieldCurveNamesMap = ef$dnsYieldCurveNamesMap
+    dnsCoefs = m$dnsCoefs
+    dnsLambda = m$dnsLambda
+    dnsYieldCurveNamesMap = m$dnsYieldCurveNamesMap
     
     # Monthly forecast up to 10 years
     # Get cumulative return starting from curDate
@@ -1081,7 +1087,7 @@ local({
         dplyr::select(., varname, date, value) %>%
         dplyr::left_join(
             .,
-            ef$e$forecasts$cme %>%
+            m$ext$sources$cme %>%
                 dplyr::filter(., vdate == max(vdate)) %>%
                 dplyr::filter(., varname == 'ffr') %>%
                 dplyr::transmute(., ffr = value, date),
@@ -1115,7 +1121,7 @@ local({
         dplyr::transmute(., fcname = 'dns', varname, date, form = 'd1', freq = 'm', vdate = Sys.Date(), value)
     
     
-    ef$e$forecasts$dns <<- dplyr::bind_rows(df1, df2)
+    m$ext$sources$dns <<- dplyr::bind_rows(df1, df2)
 })
 ```
 
@@ -1129,14 +1135,14 @@ local({
     initial = list()
     
     initial$ffr =
-        ef$e$forecasts$cme %>%
+        m$ext$sources$cme %>%
         dplyr::filter(., varname == 'ffr') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(ef$variables$ffr$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
     initial$sofr =
-        ef$e$forecasts$cme %>%
+        m$ext$sources$cme %>%
         dplyr::filter(., varname == 'sofr') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(ef$variables$sofr$h$base$m$date)) %>%
@@ -1144,28 +1150,28 @@ local({
     
     
     initial$inf =
-        ef$e$forecasts$cle %>%
+        m$ext$sources$cle %>%
         dplyr::filter(., varname == 'inf') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(ef$variables$inf$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
     initial$tdns1 =
-        ef$e$forecasts$dns %>%
+        m$ext$sources$dns %>%
         dplyr::filter(., varname == 'tdns1') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(ef$variables$tdns1$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
     initial$tdns2 =
-        ef$e$forecasts$dns %>%
+        m$ext$sources$dns %>%
         dplyr::filter(., varname == 'tdns2') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(ef$variables$tdns2$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
     initial$tdns3 =
-        ef$e$forecasts$dns %>%
+        m$ext$sources$dns %>%
         dplyr::filter(., varname == 'tdns3') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(ef$variables$tdns3$h$base$m$date)) %>%
@@ -1209,7 +1215,7 @@ local({
         # Now join with external forecast, but use historical data if external forecast has same dates
         dplyr::left_join(
             .,
-            ef$e$forecasts$spf %>%
+            m$ext$sources$spf %>%
                 dplyr::filter(., vdate == max(vdate) & varname == 'unemp') %>%
                 dplyr::transmute(., form, date, value2 = value),
             by = c('form', 'date')
@@ -1225,7 +1231,7 @@ local({
         ef$variables$ue$h$base$m %>%
         dplyr::filter(., )
 
-    ef$initialQualBaseline <<- initial 
+    m$initialQualBaseline <<- initial 
 })
 ```
 
@@ -1234,7 +1240,7 @@ local({
 local({
     
     
-    ef$initialQual 
+    m$initialQual 
 })
 ```
 
