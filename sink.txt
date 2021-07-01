@@ -1,5 +1,5 @@
-Run :2021-06-25
-Started - model-asset-contagion: 2021-06-25 20:00:00
+Run :2021-06-30
+Started - model-asset-contagion: 2021-06-30 20:00:00
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
@@ -63,10 +63,10 @@ Writing NAMESPACE
 800
 900
 1000
-2021-06-25 20:03:03
-2021-06-25 20:03:04
+2021-06-30 20:03:33
+2021-06-30 20:03:36
 Finished - model-asset-contagion
-Started - model-baseline-forecasts: 2021-06-25 20:03:04
+Started - model-baseline-forecasts: 2021-06-30 20:03:36
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
@@ -595,7 +595,7 @@ Completed CME data scrape...
 Adding monthly interpolation ...
 SQL Code Finished
 Finished - model-baseline-forecasts
-Started - model-nowcasts: 2021-06-25 20:05:26
+Started - model-nowcasts: 2021-06-30 20:06:07
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.rmd
@@ -654,9 +654,9 @@ Getting data ... govt
 Getting data ... govtf
 Getting data ... govts
 Getting data ... mpce
-Request failed [429]. Retrying in 1.3 seconds...
+Request failed [429]. Retrying in 1.6 seconds...
 Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 5.3 seconds...
+Request failed [429]. Retrying in 4.9 seconds...
 Getting data ... mpceg
 Getting data ... mpcegd
 Getting data ... mpcegn
@@ -687,11 +687,6 @@ Getting data ... t20y
 Getting data ... t07y
 Getting data ... vsales
 Getting data ... ue
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 2 seconds...
-Request failed [429]. Retrying in 13.2 seconds...
-Request failed [429]. Retrying in 15.7 seconds...
 Getting data ... emp
 Getting data ... jolts
 Getting data ... wei
@@ -716,12 +711,9 @@ Getting data ... sphfed
 Getting data ... cfnai
 Getting data ... baa
 Getting data ... lfpr
-Request failed [429]. Retrying in 1.7 seconds...
 Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 3.3 seconds...
-Request failed [429]. Retrying in 11 seconds...
-Request failed [429]. Retrying in 22.8 seconds...
+Request failed [429]. Retrying in 3.2 seconds...
+Request failed [429]. Retrying in 3 seconds...
 st
 advsales
 advsales
@@ -1320,9 +1312,16 @@ label: unnamed-chunk-24
   ordinary text without R code
 
 
-output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-06-25-nowcast.tex
+output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-06-30-nowcast.tex
 
-Error in unlink(tempPath) : object 'tempPath' not found
-Calls: lapply ... eval.parent -> eval -> eval -> eval -> eval -> unlink
-In addition: There were 11 warnings (use warnings() to see them)
-Execution halted
+Finished - model-nowcasts
+[[1]]
+NULL
+
+[[2]]
+NULL
+
+[[3]]
+NULL
+
+There were 11 warnings (use warnings() to see them)
