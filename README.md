@@ -15,6 +15,9 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
+## 2021-07-01 [v0.15]
+
+
 ## 2021-06-24 [v0.14]
 - Added better data import system
 - Added better data transform system
