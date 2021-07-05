@@ -1,5 +1,5 @@
-Run :2021-06-30
-Started - model-asset-contagion: 2021-06-30 20:00:00
+Run :2021-07-02
+Started - model-asset-contagion: 2021-07-02 20:00:00
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
@@ -63,10 +63,10 @@ Writing NAMESPACE
 800
 900
 1000
-2021-06-30 20:03:33
-2021-06-30 20:03:36
+2021-07-02 20:03:09
+2021-07-02 20:03:10
 Finished - model-asset-contagion
-Started - model-baseline-forecasts: 2021-06-30 20:03:36
+Started - model-baseline-forecasts: 2021-07-02 20:03:10
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
@@ -520,6 +520,15 @@ New names:
 * `Dec 2021` -> `Dec 2021...6`
 * `June 2022` -> `June 2022...7`
 * ...
+trying URL 'https://www.cbo.gov/system/files/2021-07/51135-2021-07-economicprojections.xlsx'
+Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 127024 bytes (124 KB)
+==================================================
+downloaded 124 KB
+
+New names:
+* `` -> ...1
+* `` -> ...2
+* `` -> ...3
 trying URL 'https://www.cbo.gov/system/files/2021-02/51135-2021-02-economicprojections.xlsx'
 Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 127273 bytes (124 KB)
 ==================================================
@@ -595,7 +604,7 @@ Completed CME data scrape...
 Adding monthly interpolation ...
 SQL Code Finished
 Finished - model-baseline-forecasts
-Started - model-nowcasts: 2021-06-30 20:06:07
+Started - model-nowcasts: 2021-07-02 20:05:34
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.rmd
@@ -654,9 +663,8 @@ Getting data ... govt
 Getting data ... govtf
 Getting data ... govts
 Getting data ... mpce
-Request failed [429]. Retrying in 1.6 seconds...
 Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 4.9 seconds...
+Request failed [429]. Retrying in 3.2 seconds...
 Getting data ... mpceg
 Getting data ... mpcegd
 Getting data ... mpcegn
@@ -687,6 +695,11 @@ Getting data ... t20y
 Getting data ... t07y
 Getting data ... vsales
 Getting data ... ue
+Request failed [429]. Retrying in 1.4 seconds...
+Request failed [429]. Retrying in 1.1 seconds...
+Request failed [429]. Retrying in 1.7 seconds...
+Request failed [429]. Retrying in 12.6 seconds...
+Request failed [429]. Retrying in 22.6 seconds...
 Getting data ... emp
 Getting data ... jolts
 Getting data ... wei
@@ -711,9 +724,11 @@ Getting data ... sphfed
 Getting data ... cfnai
 Getting data ... baa
 Getting data ... lfpr
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 3.2 seconds...
-Request failed [429]. Retrying in 3 seconds...
+Request failed [429]. Retrying in 1.7 seconds...
+Request failed [429]. Retrying in 3.9 seconds...
+Request failed [429]. Retrying in 5.5 seconds...
+Request failed [429]. Retrying in 5.1 seconds...
+Request failed [429]. Retrying in 11.8 seconds...
 st
 advsales
 advsales
@@ -1312,7 +1327,7 @@ label: unnamed-chunk-24
   ordinary text without R code
 
 
-output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-06-30-nowcast.tex
+output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-07-02-nowcast.tex
 
 Finished - model-nowcasts
 [[1]]
