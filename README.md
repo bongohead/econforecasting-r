@@ -16,7 +16,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 # CHANGELOG
 ## 2021-07-01 [v0.15]
-
+- Added rewrite of model flow: (1) data -> (2) external/qual forecasts; (3) nowcasts; (4) csm
 
 ## 2021-06-24 [v0.14]
 - Added better data import system

@@ -4,7 +4,9 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
+OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
 RESET_ALL = FALSE
+VINTAGE_DATE = Sys.Date()
 ```
 
 
@@ -30,7 +32,8 @@ source(file.path(INPUT_DIR, 'constants.r'))
 
 ef = list(
 	variablesDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'all-variables'),
-	forecastsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'ext-forecasts')
+	forecastsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'ext-forecasts'),
+	VINTAGE_DATE = VINTAGE_DATE
 	) %>%
 	c(., list(variables = purrr::transpose(.$variablesDf, .names = .$variablesDf$varname)))
 h = list()
@@ -1129,7 +1132,8 @@ local({
 
 # Generate Initial Forecasts
 
-## Baseline Forecasts (Qual)
+## CMEFI Baseline Forecasts (Qual)
+Display in website those variables not taken from "external" source - e.g. unemp
 ```{r}
 local({
 
@@ -1199,6 +1203,8 @@ local({
         ) %>%
         tail(., -4)
     
+    
+    # Display in website
     initial$ue =
         # Take last four quarters of historical data
         ef$variables$ue$h$base$m %>%
@@ -1237,7 +1243,7 @@ local({
 })
 ```
 
-## Other Scenario Forecsts (Qual)
+## Other Scenario Forecasts (Qual)
 ```{r}
 local({
     
