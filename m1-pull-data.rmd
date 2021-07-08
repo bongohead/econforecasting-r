@@ -99,8 +99,9 @@ local({
 				dplyr::summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop')
 				,
 			by = 'relkey'
-		) 
-
+		)
+	
+	p$releasesDf <<- releaseDf
 })
 ```
 
@@ -155,6 +156,7 @@ local({
 				.[, c('Date', 'Adj Close')]	%>%
 				setnames(., new = c('date', 'value')) %>%
 				as_tibble(.) %>%
+				dplyr::filter(., date <= p$VINTAGE_DATE)
 				return(.)
 		})
 	
@@ -286,7 +288,7 @@ local({
     trainDf =
         purrr::map_dfr(yieldCurveNamesMap$varname, function(x) p$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
         dplyr::select(., -freq) %>%
-        dplyr::filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
+        dplyr::filter(., date >= add_with_rollback(p$VINTAGE_DATE, months(-3))) %>%
         dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
         dplyr::left_join(., dplyr::transmute(p$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
         dplyr::mutate(., value = value - ffr) %>%
@@ -368,6 +370,8 @@ local({
         p$variables[[varname]]$h$base$q <<- qDfs[[varname]]
     }
 
+    dnsFitChart
+    
     m$dnsLambda <<- optimLambda
     m$dnsCoefs <<- dnsCoefs
     m$dnsFitChart <<- dnsFitChart
@@ -545,21 +549,21 @@ local({
       ) %>%
     dplyr::bind_rows(.)
 
-  m$ext$sources$atl <<- df
+	m$ext$sources$atl <<- df
 })
 ```
 
 ## St. Louis Fed
 ```{r}
 local({
-  
-  df =
-      getDataFred('STLENI', CONST$FRED_API_KEY, .returnVintages = TRUE) %>%
-      dplyr::filter(., obsDate >= .$vintageDate - months(3)) %>%
-      dplyr::transmute(., fcname = 'stl', varname = 'gdp', form = 'd1', freq = 'q', date = obsDate, vdate = vintageDate, value)
+ 
+	df =
+		getDataFred('STLENI', CONST$FRED_API_KEY, .returnVintages = TRUE) %>%
+		dplyr::filter(., obsDate >= .$vintageDate - months(3)) %>%
+		dplyr::transmute(., fcname = 'stl', varname = 'gdp', form = 'd1', freq = 'q', date = obsDate, vdate = vintageDate, value
 
     
-  m$ext$sources$stl <<- df
+	m$ext$sources$stl <<- df
 })
 ```
 
@@ -622,38 +626,39 @@ local({
           )
   
   
-    df = lapply(c('level', 'growth'), function(m) {
-    
-    file = file.path(DL_DIR, paste0('spf-', m, '.xlsx'))
-        httr::GET(
-            paste0(
-                'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/historical-data/median', m, '.xlsx?la=en'),
-                httr::write_disk(file, overwrite = TRUE)
-            )
+	df =
+		lapply(c('level', 'growth'), function(m) {
+		    file = file.path(DL_DIR, paste0('spf-', m, '.xlsx'))
+	        httr::GET(
+	            paste0(
+	                'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/historical-data/median', m, '.xlsx?la=en'),
+	                httr::write_disk(file, overwrite = TRUE)
+	            )
+	        
+	        lapply(paramsDf %>% dplyr::filter(., method == m) %>% purrr::transpose(.), function(x) {
+	            readxl::read_excel(file, na = '#N/A', sheet = x$spfname) %>%
+	            dplyr::select(
+	            .,
+	            c('YEAR', 'QUARTER', {
+	              if (m == 'level') paste0(x$spfname, 2:6) else paste0('d', str_to_lower(x$spfname), 2:6)
+	              })
+	            ) %>%
+	            dplyr::mutate(., releaseDate = econforecasting::strdateToDate(paste0(YEAR, 'Q', QUARTER))) %>%
+	            dplyr::select(., -YEAR, -QUARTER) %>%
+	            tidyr::pivot_longer(., -releaseDate, names_to = 'fcPeriods') %>%
+	            dplyr::mutate(., fcPeriods = as.numeric(str_sub(fcPeriods, -1)) - 2) %>%
+	            dplyr::mutate(., obsDate = add_with_rollback(releaseDate, months(fcPeriods * 3))) %>%
+	            na.omit(.) %>%
+	            dplyr::inner_join(., vintageDf, by = 'releaseDate') %>%
+	            dplyr::transmute(., fcname = 'spf', varname = x$varname, form = 'd1', vdate = vintageDate, date = obsDate, value)
+	            }) %>%
+	            dplyr::bind_rows(.) %>%
+	            return(.)
+	        
+	        }) %>%
+	        dplyr::bind_rows(.)
         
-        lapply(paramsDf %>% dplyr::filter(., method == m) %>% purrr::transpose(.), function(x) {
-            readxl::read_excel(file, na = '#N/A', sheet = x$spfname) %>%
-            dplyr::select(
-            .,
-            c('YEAR', 'QUARTER', {
-              if (m == 'level') paste0(x$spfname, 2:6) else paste0('d', str_to_lower(x$spfname), 2:6)
-              })
-            ) %>%
-            dplyr::mutate(., releaseDate = econforecasting::strdateToDate(paste0(YEAR, 'Q', QUARTER))) %>%
-            dplyr::select(., -YEAR, -QUARTER) %>%
-            tidyr::pivot_longer(., -releaseDate, names_to = 'fcPeriods') %>%
-            dplyr::mutate(., fcPeriods = as.numeric(str_sub(fcPeriods, -1)) - 2) %>%
-            dplyr::mutate(., obsDate = add_with_rollback(releaseDate, months(fcPeriods * 3))) %>%
-            na.omit(.) %>%
-            dplyr::inner_join(., vintageDf, by = 'releaseDate') %>%
-            dplyr::transmute(., fcname = 'spf', varname = x$varname, form = 'd1', vdate = vintageDate, date = obsDate, value)
-            }) %>%
-            dplyr::bind_rows(.) %>%
-            return(.)
-        }) %>%
-        dplyr::bind_rows(.)
-        
-    m$ext$sources$spf <<- df
+	m$ext$sources$spf <<- df
 })
 ```
 
@@ -669,7 +674,7 @@ local({
         )
     
     filePaths =
-        seq(as.Date('2021-01-01'), to = add_with_rollback(Sys.Date(), months(-1)), by = '3 months') %>%
+        seq(as.Date('2021-01-01'), to = add_with_rollback(p$VINTAGE_DATE, months(-1)), by = '3 months') %>%
         purrr::map(., function(x)
             list(
                 date = x,
@@ -900,7 +905,7 @@ local({
   		.,
   		yield = zoo::na.spline(yield),
   		vintageDate = unique(na.omit(vintageDate)),
-  		curDate = floor_date(Sys.Date(), 'months'),
+  		curDate = floor_date(p$VINTAGE_DATE, 'months'),
   		cumReturn = (1 + yield)^(ttm/12),
   		yttmAheadCumReturn = dplyr::lead(cumReturn, 1)/cumReturn,
   		yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/1) - 1) * 100,
@@ -943,16 +948,17 @@ local({
 			}) %>%
 		dplyr::bind_rows(.) %>%
 		dplyr::transmute(
-		.,
+			.,
 			vintageDate,
 		# Consider the forecasted period the vintageDate + j
-		obsDate =
-			econforecasting::strdateToDate(paste0(year(vintageDate), 'M', month(vintageDate))) %>%
-			lubridate::add_with_rollback(., months(j - 1), roll_to_first = TRUE),
-		value = 100 - settle,
-		varname = 'ffr',
-		fcname = 'cme'
-		)
+			obsDate =
+				econforecasting::strdateToDate(paste0(year(vintageDate), 'M', month(vintageDate))) %>%
+				lubridate::add_with_rollback(., months(j - 1), roll_to_first = TRUE),
+			value = 100 - settle,
+			varname = 'ffr',
+			fcname = 'cme'
+			)
+	
 	message('Completed Quandl data scrape')
 	
 	message('Starting CME data scrape...')
@@ -971,6 +977,25 @@ local({
             ) %>%
 	    httr::cookies(.) %>% as_tibble(.) %>% dplyr::filter(., name == 'ak_bmsc') %>% .$value
 	
+	
+	# Get CME Vintage Date
+	lastTradeDate =
+		httr::GET(
+			paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
+			add_headers(c(
+				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+				'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+				'Accept-Encoding' = 'gzip, deflate, br',
+				'Accept-Language' ='en-US,en;q=0.5',
+				'Cache-Control'='no-cache',
+				'Connection'='keep-alive',
+				'Cookie'=cookieVal,
+				'DNT' = '1',
+				'Host' = 'www.cmegroup.com'
+			))
+		) %>% content(., 'parsed') %>% .$tradeDate %>% lubridate::parse_date_time(., 'd-b-Y') %>% as_date(.)
+		
+	
 	df2 =
 		tribble(
 			~ varname, ~ cmeId,
@@ -981,22 +1006,25 @@ local({
 		purrr::transpose(.) %>%
 		purrr::map_dfr(., function(var) {
 			# message(var)
-			httr::GET(
-				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
-				# 3/30/21 - CME website now requires user-agent header
-				add_headers(c(
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-					'Accept-Encoding' = 'gzip, deflate, br',
-					'Accept-Language' ='en-US,en;q=0.5',
-					'Cache-Control'='no-cache',
-					'Connection'='keep-alive',
-					'Cookie'=cookieVal,
-					'DNT' = '1',
-					'Host' = 'www.cmegroup.com'
-					))
-				) %>%
-				httr::content(., as = 'parsed') %>%
+			content =
+				httr::GET(
+					paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
+					# 3/30/21 - CME website now requires user-agent header
+					add_headers(c(
+						'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+						'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+						'Accept-Encoding' = 'gzip, deflate, br',
+						'Accept-Language' ='en-US,en;q=0.5',
+						'Cache-Control'='no-cache',
+						'Connection'='keep-alive',
+						'Cookie'=cookieVal,
+						'DNT' = '1',
+						'Host' = 'www.cmegroup.com'
+						))
+					) %>%
+					httr::content(., as = 'parsed')
+			
+			content %>%
 				.$quotes %>%
 				purrr::map_dfr(., function(x) {
 					if (x$priorSettle %in% c('0.00', '-')) return() # Whack bug in CME website
@@ -1005,7 +1033,8 @@ local({
 						value = 100 - as.numeric(x$priorSettle),
 						varname = var$varname
 						)
-					})
+					}) %>%
+				return(.)
 			}) %>% 
 		# Now average out so that there's only one value for each (varname, obsDate) combo
 		dplyr::group_by(varname, obsDate) %>%
@@ -1014,10 +1043,12 @@ local({
 		# Get rid of forecasts for old observations
 		dplyr::filter(., obsDate >= lubridate::floor_date(Sys.Date(), 'month')) %>%
 		# Assume vintagedate is the same date as the last Quandl obs
-		dplyr::mutate(., vintageDate = max(df$vintageDate), fcname = 'cme') %>%
-		dplyr::filter(., value != 100) 
+		dplyr::mutate(., vintageDate = lastTradeDate, fcname = 'cme') %>%
+		dplyr::filter(., value != 100)
+	
+	
 	message('Completed CME data scrape...')
-
+	
 	# Now combine, replacing df2 with df1 if necessary
 	combinedDf =
 		dplyr::full_join(df, df2, by = c('fcname', 'vintageDate', 'obsDate', 'varname')) %>%
@@ -1025,10 +1056,11 @@ local({
 		dplyr::mutate(., value = ifelse(!is.na(value.x), value.x, value.y)) %>%
 		dplyr::select(., -value.x, -value.y)
 
-  # Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
-  df %>%
-tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
-      dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>% View(.)
+	# Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
+# 	df %>%
+#   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
+#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
+# 		View(.)
 	
 	
 	## Add monthly interpolation
@@ -1059,7 +1091,8 @@ tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
 					value = zoo::na.spline(value)
 					)		
 			}) %>%
-		dplyr::bind_rows(.)
+		dplyr::bind_rows(.) %>%
+		dplyr::filter(., vdate <= p$VINTAGE_DATE)
 
 	m$ext$sources$cme <<- finalDf
 })
@@ -1083,7 +1116,7 @@ local({
     # Get cumulative return starting from curDate
     fittedCurve =
         tibble(ttm = seq(1: 480)) %>%
-        dplyr::mutate(., curDate = floor_date(Sys.Date(), 'months')) %>%
+        dplyr::mutate(., curDate = floor_date(p$VINTAGE_DATE, 'months')) %>%
         dplyr::mutate(
           .,
           annualizedYield = 
@@ -1127,7 +1160,7 @@ local({
             date,
             form = 'd1',
             freq = 'm',
-            vdate = Sys.Date(),
+            vdate = p$VINTAGE_DATE,
             value = yttmAheadAnnualizedYield
             )
     
@@ -1151,7 +1184,7 @@ local({
             date,
             form = 'd1',
             freq = 'm',
-            vdate = Sys.Date(),
+            vdate = p$VINTAGE_DATE,
             value
             )
 
@@ -1168,8 +1201,7 @@ local({
             tdns3 = .3 * (2 * t02y - t03m - t10y)
             ) %>%
         tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-        dplyr::transmute(., fcname = 'dns', varname, date, form = 'd1', freq = 'm', vdate = Sys.Date(), value)
-    
+        dplyr::transmute(., fcname = 'dns', varname, date, form = 'd1', freq = 'm', vdate = p$VINTAGE_DATE, value)
     
     m$ext$sources$dns <<- dplyr::bind_rows(df1, df2)
 })
@@ -1182,7 +1214,13 @@ local({
 local({
   
     
-    saveRDS
+    saveRDS(
+    	list(
+    		ef = ef,
+    		m = m,
+    		
+    	)
+    )
       
     
 })
