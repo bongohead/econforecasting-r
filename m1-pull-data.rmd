@@ -37,16 +37,73 @@ source(file.path(INPUT_DIR, 'constants.r'))
 p = list(
 	variablesDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'all-variables'),
 	forecastsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'ext-forecasts'),
+	releasesDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'releases'),
 	VINTAGE_DATE = VINTAGE_DATE
 	) %>%
 	c(., list(variables = purrr::transpose(.$variablesDf, .names = .$variablesDf$varname)))
 
 h = list()
 m = list()
+
+
+# Check that each variable has a correct release
+dplyr::left_join(p$variablesDf, p$releasesDf, by = 'relkey') %>%
+	.$relname %>%
+	keep(., ~ is.na(.)) %>%
+	{if(length(.) != 0) stop('Error')}
 ```
 
 
 # Get Historical Data
+
+## FRED Releases
+```{r}
+local({
+	
+	releaseDf =
+		p$variablesDf %>%
+		dplyr::group_by(., relkey) %>%
+		dplyr::summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
+		dplyr::left_join(
+			.,
+			p$variablesDf %>%
+				dplyr::filter(., nc_dfm_input == 1) %>%
+				dplyr::group_by(., relkey) %>%
+				dplyr::summarize(., n_dfm_varnames = n(), dfm_varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
+			by = 'relkey'
+		) %>%
+		dplyr::left_join(
+			.,
+			p$releasesDf,
+			by = 'relkey'
+		) %>%
+		# Now create a column of included releaseDates
+		dplyr::left_join(
+			.,
+			purrr::map_dfr(purrr::transpose(dplyr::filter(., relsc == 'fred')), function(x)
+				httr::RETRY(
+					'GET', 
+					str_glue(
+						'https://api.stlouisfed.org/fred/release/dates?',
+						'release_id={x$relsckey}&realtime_start=2020-01-01',
+						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
+						 ),
+					times = 10
+					) %>%
+			        httr::content(., as = 'parsed') %>%
+					.$release_dates %>%
+					sapply(., function(y) y$date) %>%
+					tibble(relkey = x$relkey, reldates = .)
+				) %>%
+				dplyr::group_by(., relkey) %>%
+				dplyr::summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop')
+				,
+			by = 'relkey'
+		) 
+
+})
+```
+
 
 ## FRED
 ```{r}
@@ -68,28 +125,12 @@ local({
 				dplyr::transmute(., date = obsDate, value) %>%
 				dplyr::filter(., date >= as.Date('2010-01-01'))
 
-			# Get series release
-			releaseDf =
-				httr::RETRY(
-					'GET', 
-					paste0(
-						'https://api.stlouisfed.org/fred/series/release?',
-						'series_id=',x$sckey,'&api_key=',CONST$FRED_API_KEY,'&file_type=json'
-						),
-					times = 10
-				) %>%
-		        httr::content(., as = 'parsed') %>%
-				.$releases %>%
-				.[[1]] %>%
-				as_tibble(.)
-
-			list(dataDf = dataDf, releaseDf = releaseDf)
+			list(dataDf = dataDf)
 			})
 	
 	
 	for (varname in names(fredRes)) {
 		p$variables[[varname]]$rawData <<- fredRes[[varname]]$dataDf
-		p$variables[[varname]]$releasekey <<- fredRes[[varname]]$releaseDf$id
 	}
 })
 ```
