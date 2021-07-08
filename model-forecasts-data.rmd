@@ -4,7 +4,7 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
-OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
+OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs/v0.15'
 RESET_ALL = FALSE
 VINTAGE_DATE = Sys.Date()
 ```
@@ -39,7 +39,6 @@ ef = list(
 h = list()
 m = list()
 ```
-
 
 
 # Get Historical Data

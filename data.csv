@@ -1,0 +1,44 @@
+id,realtime_start,realtime_end,name,press_release,link,notes
+53,2021-07-07,2021-07-07,Gross Domestic Product,TRUE,https://www.bea.gov/data/gdp/gross-domestic-product,
+54,2021-07-07,2021-07-07,Personal Income and Outlays,TRUE,https://www.bea.gov/data/income-saving/personal-income,
+199,2021-07-07,2021-07-07,S&P/Case-Shiller Home Price Indices,TRUE,https://us.spindices.com/index-family/sp-corelogic-case-shiller/sp-corelogic-case-shiller-composite,
+27,2021-07-07,2021-07-07,New Residential Construction,TRUE,http://www.census.gov/construction/nrc/,
+97,2021-07-07,2021-07-07,New Residential Sales,TRUE,http://www.census.gov/construction/nrs/,
+95,2021-07-07,2021-07-07,"Manufacturer's Shipments, Inventories, and Orders (M3) Survey",TRUE,http://www.census.gov/indicator/www/m3/,
+13,2021-07-07,2021-07-07,G.17 Industrial Production and Capacity Utilization,TRUE,http://www.federalreserve.gov/releases/g17/,
+229,2021-07-07,2021-07-07,Construction Spending,TRUE,http://www.census.gov/construction/c30/c30index.html,
+93,2021-07-07,2021-07-07,"Supplemental Estimates, Motor Vehicles",TRUE,https://www.bea.gov/data/gdp/gross-domestic-product#collapse86,
+50,2021-07-07,2021-07-07,Employment Situation,TRUE,http://www.bls.gov/ces/,
+192,2021-07-07,2021-07-07,Job Openings and Labor Turnover Survey,TRUE,http://www.bls.gov/jlt/,
+465,2021-07-07,2021-07-07,Weekly Economic Index (Lewis-Mertens-Stock),TRUE,https://www.newyorkfed.org/research/policy/weekly-economic-index,"The WEI is an index of real economic activity using timely and relevant high-frequency data. It represents the common component of ten different daily and weekly series covering consumer behavior, the labor market, and production. The WEI is scaled to the four-quarter GDP growth rate; for example, if the WEI reads -2 percent and the current level of the WEI persists for an entire quarter, we would expect, on average, GDP that quarter to be 2 percent lower than a year previously. 
+
+The WEI is a composite of 10 weekly economic indicators: Redbook same-store sales, Rasmussen Consumer Index, new claims for unemployment insurance, continued claims for unemployment insurance, adjusted income/employment tax withholdings (from Booth Financial Consulting), railroad traffic originated (from the Association of American Railroads), the American Staffing Association Staffing Index, steel production, wholesale sales of gasoline, diesel, and jet fuel, and weekly average US electricity load (with the remaining data supplied by Haver Analytics). All series are represented as year-over-year percentage changes. These series are combined into a single index of weekly economic activity.
+
+For additional details, including an analysis of the performance of the model, see Lewis, Mertens, and Stock (2020), “U.S. Economic Activity during the Early Weeks of the SARS-Cov-2 Outbreak.” at https://www.newyorkfed.org/research/staff_reports/sr920.
+
+This index has been developed by Daniel Lewis, an economist in the Federal Reserve Bank of New York, Karel Mertens, a senior economic policy advisor at the Federal Reserve Bank of Dallas, and James Stock, the Harold Hitchings Burbank Professor of Political Economy, Faculty of Arts and Sciences of Harvard University.
+
+The index is not an official forecast of the Federal Reserve Bank of New York, its president, the Federal Reserve System, or the Federal Open Market Committee."
+212,2021-07-07,2021-07-07,Spot Prices,FALSE,http://www.eia.doe.gov/dnav/pet/pet_pri_spt_s1_d.htm,
+22,2021-07-07,2021-07-07,H.8 Assets and Liabilities of Commercial Banks in the United States,TRUE,http://www.federalreserve.gov/releases/h8/,
+187,2021-07-07,2021-07-07,St. Louis Fed Financial Stress Index,FALSE,,"To obtain detailed information regarding the construction of the St. Louis Financial Stress Index, please see the online appendix at
+https://files.stlouisfed.org/files/htdocs/publications/net/NETJan2010Appendix.pdf"
+15,2021-07-07,2021-07-07,G.5 Foreign Exchange Rates,TRUE,http://www.federalreserve.gov/releases/g5/,
+92,2021-07-07,2021-07-07,Selected Real Retail Sales Series,FALSE,,
+341,2021-07-07,2021-07-07,Kansas City Fed Labor Market Conditions Indicators,TRUE,https://www.kansascityfed.org/data-and-trends/labor-market-conditions-indicators/,"The Kansas City Fed Labor Market Conditions Indicators (LMCI) are two monthly measures of labor market conditions based on 24 labor market variables. One indicator measures the level of activity in labor markets and the other indicator measures momentum in labor markets.
+
+A positive value indicates that labor market conditions are above their long-run average, while a negative value signifies that labor market conditions are below their long-run average."
+205,2021-07-07,2021-07-07,Main Economic Indicators,FALSE,http://www.oecd-ilibrary.org/economics/data/main-economic-indicators/main-economic-indicators-complete-database_data-00052-en,
+231,2021-07-07,2021-07-07,Charge-Off and Delinquency Rates on Loans and Leases at Commercial Banks,TRUE,http://www.federalreserve.gov/releases/chargeoff/default.htm,
+321,2021-07-07,2021-07-07,Empire State Manufacturing Survey,TRUE,http://www.newyorkfed.org/survey/empire/empiresurvey_overview.html,"Participants from across the state in a variety of industries respond to a questionnaire and report the change in a variety of indicators from the previous month. Respondents also state the likely direction of these same indicators six months ahead. April 2002 is the first report, although survey data date back to July 2001.
+
+The survey is sent on the first day of each month to the same pool of about 200 manufacturing executives in New York State, typically the president or CEO. About 100 responses are received. Most are completed by the tenth, although surveys are accepted until the fifteenth."
+374,2021-07-07,2021-07-07,Texas Manufacturing Outlook Survey,TRUE,https://www.dallasfed.org/research/surveys/tmos.aspx,"The Texas Manufacturing Outlook Survey (TMOS) is a monthly survey of area manufacturers. Firm executives report on how business conditions have changed for a number of indicators, such as production, new orders, employment, prices and company outlook. Respondents are also asked to report on how they perceive broader economic conditions to have changed (general business activity). For all questions, participants are asked whether the indicator has increased, decreased or remained unchanged. Answers cover changes over the previous month and expectations for activity six months into the future. Participants are given the opportunity to submit comments on current issues that may be affecting their business."
+351,2021-07-07,2021-07-07,Manufacturing Business Outlook Survey,TRUE,https://www.philadelphiafed.org/research-and-data/regional-economy/business-outlook-survey/,"The Manufacturing Business Outlook Survey is a monthly survey of manufacturers in the Third Federal Reserve District. Participants indicate the direction of change in overall business activity and in the various measures of activity at their plants: employment, working hours, new and unfilled orders, shipments, inventories, delivery times, prices paid, and prices received. The survey has been conducted each month since May 1968."
+219,2021-07-07,2021-07-07,Chicago Fed National Activity Index,TRUE,http://www.chicagofed.org/webpages/publications/cfnai/index.cfm,
+427,2021-07-07,2021-07-07,Moody's Daily Corporate Bond Yield Averages,FALSE,,
+378,2021-07-07,2021-07-07,Federal Funds Data,FALSE,https://apps.newyorkfed.org/markets/autorates/fed%20funds,
+445,2021-07-07,2021-07-07,Secured Overnight Financing Rate Data,TRUE,https://apps.newyorkfed.org/markets/autorates/sofr,
+18,2021-07-07,2021-07-07,H.15 Selected Interest Rates,TRUE,http://www.federalreserve.gov/releases/h15/,
+190,2021-07-07,2021-07-07,Primary Mortgage Market Survey,TRUE,http://www.freddiemac.com/pmms/,
+10,2021-07-07,2021-07-07,Consumer Price Index,TRUE,http://www.bls.gov/cpi/,
