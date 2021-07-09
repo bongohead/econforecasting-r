@@ -5,7 +5,6 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-RESET_ALL = FALSE
 VINTAGE_DATE = Sys.Date()
 ```
 
@@ -1091,8 +1090,7 @@ local({
 					value = zoo::na.spline(value)
 					)		
 			}) %>%
-		dplyr::bind_rows(.) %>%
-		dplyr::filter(., vdate <= p$VINTAGE_DATE)
+		dplyr::bind_rows(.)
 
 	m$ext$sources$cme <<- finalDf
 })
@@ -1189,6 +1187,7 @@ local({
             )
 
     # Calculate TDNS yield forecasts
+    # Forecast vintage date should be bound to historical data vintage date since reliant purely on historical data
     df2 =
         df0 %>%
         dplyr::select(., varname, date, value) %>%
@@ -1213,15 +1212,10 @@ local({
 ```{r}
 local({
   
-    
     saveRDS(
-    	list(
-    		ef = ef,
-    		m = m,
-    		
+    	list(p = p, h = h, m = m),
+    	str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m1.rds')
     	)
-    )
-      
     
 })
 ```
