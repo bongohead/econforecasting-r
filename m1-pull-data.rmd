@@ -155,7 +155,7 @@ local({
 				.[, c('Date', 'Adj Close')]	%>%
 				setnames(., new = c('date', 'value')) %>%
 				as_tibble(.) %>%
-				dplyr::filter(., date <= p$VINTAGE_DATE)
+				dplyr::filter(., date <= p$VINTAGE_DATE) %>%
 				return(.)
 		})
 	

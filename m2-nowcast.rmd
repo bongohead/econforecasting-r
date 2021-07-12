@@ -1,4 +1,5 @@
-# Set Options
+# Initialize
+## Set Options
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
@@ -7,7 +8,6 @@ PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to packa
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
 ```
-
 
 # Initialize
 ```{r}
@@ -35,313 +35,17 @@ setwd(DIR)
 
 # Read constants
 source(file.path(INPUT_DIR, 'constants.r'))
-
-# Load RDS
-
 ```
 
-
-# Get Historical Data
-
-## From FRED
+## Load RDS
 ```{r}
 local({
 	
-	fredRes =
-		readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'params') %>%
-		purrr::transpose(., .names = .$varname)  %>%
-		purrr::keep(., ~ .$source == 'fred') %>%
-		lapply(., function(x) {
-			
-			message('Getting data ... ', x$varname)
+	rds = readRDS(M1_PATH)
 
-			# Get series data
-			dataDf =
-			  econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
-			  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
-			  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
-			  	dplyr::select(., -vintageDate) %>%
-			    dplyr::mutate(., varname = x$varname, freq = 'q') %>%
-			    {if (x$freq %in% c('d', 'm'))
-			      dplyr::bind_rows(
-			        .,
-			        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
-						dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
-						dplyr::filter(., vintageDate == max(vintageDate)) %>%
-						dplyr::select(., -vintageDate) %>%
-				        dplyr::mutate(., varname = x$varname, freq = 'm')
-			        )
-			      else .
-			    } %>%
-			    {if (x$freq %in% c('d'))
-			      dplyr::bind_rows(
-			        .,
-			        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
-					  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
-					  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
-					  	dplyr::select(., -vintageDate) %>%
-				        dplyr::mutate(., varname = x$varname, freq = 'd')
-			        )
-			      else .
-			    }
-			
-			# Get series release
-			releaseDf =
-				httr::RETRY(
-					'GET', 
-					glue('https://api.stlouisfed.org/fred/series/release?series_id={x$sckey}&api_key={CONST$FRED_API_KEY}&file_type=json'),
-					times = 10
-				) %>%
-		        httr::content(., as = 'parsed') %>%
-				.$releases %>%
-				.[[1]] %>%
-				as_tibble(.) %>%
-				dplyr::mutate(., varname = x$varname)
-
-			list(dataDf = dataDf, releaseDf = releaseDf)
-		}) %>%
-		lapply(., function(x) list(dataDf = x$dataDf, releaseDf = x$releaseDf %>% dplyr::rename(., relname = name)))
-	
-	
-	
-	paramsDf =
-		readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx')) %>%
-		dplyr::left_join(
-			.,
-			lapply(fredRes, function(x) x$releaseDf) %>%
-			    dplyr::bind_rows(.) %>%
-				dplyr::transmute(., varname, releaseid = id),
-			by = 'varname'
-		)
-	
-	params = paramsDf %>% purrr::transpose(., .names = .$varname)
-
-	
-	
-	dataDf =
-		lapply(fredRes, function(x) x$dataDf) %>%
-		dplyr::bind_rows(.) %>%
-		dplyr::rename(., date = obsDate) %>%
-		dplyr::filter(., date >= as.Date('2010-01-01'))
-	
-	releaseDf =
-		lapply(fredRes, function(x) x$releaseDf) %>%
-		dplyr::bind_rows(.) %>%
-		# Now create a column of included varnames
-		dplyr::inner_join(
-			.,
-			# Only included releases relevant to dfminputs
-			paramsDf %>% dplyr::filter(., dfminput == TRUE) %>% .[, c('varname', 'fullname', 'releaseid')],
-			by = c('varname')
-			) %>%
-		dplyr::group_by(., id, relname, link) %>%
-		dplyr::summarize(., count = n(), seriesnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
-		# Now create a column of included releaseDates
-		dplyr::inner_join(
-			.,
-			purrr::map_dfr(.$id, function(id)
-				httr::RETRY(
-					'GET', 
-					glue(
-						'https://api.stlouisfed.org/fred/release/dates?',
-						'release_id={id}&realtime_start=2020-01-01',
-						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
-						 ),
-					times = 10
-					) %>%
-			        httr::content(., as = 'parsed') %>%
-					.$release_dates %>%
-					sapply(., function(y) y$date) %>%
-					tibble(id = id, reldates = .)
-				),
-			by = 'id'
-		) %>%
-		dplyr::group_by(., id, relname, link, count, seriesnames) %>%
-		dplyr::summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop')
-
-
-	# Run below in console to get list of GDP subcomponents
-	# httr::GET('https://fred.stlouisfed.org/release/tables?rid=53&eid=14961#snid=14966') %>%
-	# 	httr::content(.) %>%
-	# 	rvest::html_nodes('#release-elements-tree tbody tr') %>%
-	# 	map_dfr(., function(x)
-	# 		tibble(
-	# 			a =
-	# 				x %>% rvest::html_nodes('td') %>% .[3] %>%
-	# 				html_text(.) %>% str_replace_all(., '\n', '') %>% trimws(.),
-	# 			fred =
-	# 				x %>% rvest::html_nodes('td') %>% .[3] %>%
-	# 				rvest::html_nodes('span a') %>% rvest::html_attr('href') %>% str_replace(., '/series/', '')
-	# 			)
-	# 		)
-
-	
-	ef$paramsDf <<- paramsDf
-	ef$params <<- params
-
-	ef$h$source$fred <<- dataDf
-	ef$releaseDf <<- releaseDf
-})
-```
-
-## Yahoo Finance - use last available data point as value
-```{r}
-local({
-	
-	df =
-		ef$params %>%
-    	purrr::keep(., ~ .$source == 'yahoo') %>%
-		lapply(., function(x) {
-		
-			url =
-				paste0(
-					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
-					'?period1=', '946598400', # 12/30/1999
-					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
-					'&interval=1d',
-					'&events=history&includeAdjustedClose=true'
-				)
-			
-			df0 =
-				data.table::fread(url) %>%
-				.[, c('Date', 'Adj Close')]	%>%
-				setnames(., new = c('date', 'value')) %>%
-				as_tibble(.) %>%
-				dplyr::filter(., date <= VINTAGE_DATE)
-			
-			qDf = 
-				df0 %>%
-				dplyr::mutate(
-					.,
-					date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'Q', lubridate::quarter(date)))
-					) %>%
-				dplyr::group_by(., date) %>%
-				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
-				dplyr::mutate(., freq = 'q')
-			
-			mDf =
-				df0 %>%
-				dplyr::mutate(
-					.,
-					date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'M', lubridate::month(date)))
-					) %>%
-				dplyr::group_by(., date) %>%
-				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
-				dplyr::mutate(., freq = 'm')
-		
-			df =
-				dplyr::bind_rows(mDf, qDf) %>%
-				dplyr::mutate(., varname = x$varname)
-		}) %>%
-		dplyr::bind_rows(.)
-	
-	ef$h$source$yahoo <<- df
-})
-```
-
-
-## Aggregate raw data
-```{r}
-local({
-	ef$h$sourceDf <<- dplyr::bind_rows(ef$h$source)
-})
-```
-
-
-# Seasonal & Stationary Transformations
-
-## Deseasonalize
-```{r}
-local({
-	
-	seasDf =
-		ef$h$sourceDf %>%
-		dplyr::filter(., varname == 'hpils') %>%
-		dplyr::mutate(
-			.,
-			seas = 
-			{ts(.$value, start = c(year(.$date[1]), month(.$date[1])), freq = 12)} %>%
-			seasonal::seas(.) %>%
-			predict(.)
-			) %>%
-		dplyr::select(., -value)
-	
-	df =
-		dplyr::left_join(ef$h$sourceDf, seasDf, by = c('date', 'varname', 'freq')) %>%
-		dplyr::mutate(., value = ifelse(is.na(seas), value, seas)) %>%
-		dplyr::select(., -seas)
-
-	ef$h$seasDf <<- df
-})
-```
-
-## Stationary transformations
-```{r}
-local({
-
-	flat = list()
-
-	flat =
-		lapply(list('st', 'd1', 'd2') %>% setNames(., .), function(.form) {
-		    message(.form)
-			ef$h$seasDf %>%
-				dplyr::left_join(., ef$paramsDf[, c('varname', .form)], by = c('varname')) %>%
-				dplyr::group_by(varname, freq) %>%
-				dplyr::group_split(.) %>%
-				lapply(., function(x) {
-					message(x$varname[[1]])
-					if (head(x, 1)[[.form]] == 'none') return(NA)
-					x %>%
-						dplyr::arrange(., date) %>%
-						dplyr::mutate(
-							.,
-							value = {
-								if (head(., 1)[[.form]] == 'base') value
-								else if (head(., 1)[[.form]] == 'dlog') dlog(value)
-								else if (head(., 1)[[.form]] == 'diff1') diff1(value)
-								else if (head(., 1)[[.form]] == 'diff2') diff2(value)
-								else if (head(., 1)[[.form]] == 'ma2') ma2(value)
-								else if (head(., 1)[[.form]] == 'lma2') lma2(value)
-								else if (head(., 1)[[.form]] == 'pchg') pchg(value)
-								else if (head(., 1)[[.form]] == 'apchg') apchg(value)
-								else stop ('Error')
-								}
-							)
-					}) %>%
-				purrr::keep(., ~ !all(is.na(.))) %>%
-				dplyr::bind_rows(.) %>%
-				dplyr::select(., -all_of(c(.form)))
-			})
-	
-	flat$ut = ef$h$seasDf
-
-	
-	flatDf = purrr::imap_dfr(flat, function(x, form) x %>% mutate(., form = form)) %>% na.omit(.)
-
-	ef$h$flatDf <<- flatDf
-})
-```
-
-## Create monthly/quarterly matrixes
-```{r}
-local({
-	
-	wide =
-		ef$h$flatDf %>%
-		as.data.table(.) %>%
-		split(., by = 'freq') %>%
-		lapply(., function(x)
-			split(x, by = 'form') %>%
-				lapply(., function(y)
-					as_tibble(y) %>%
-						dplyr::select(., -freq, -form) %>%
-						tidyr::pivot_wider(., names_from = varname) %>%
-						dplyr::arrange(., date)
-					)
-			)
-
-	ef$h$m <<- wide$m
-	ef$h$q <<- wide$q
+	p <<- rds$p
+	m <<- rds$m
+	h <<- rds$h
 })
 ```
 
@@ -354,10 +58,10 @@ local({
 	
 	quartersForward = 1
 	
-	pcaVarnames = ef$paramsDf %>% dplyr::filter(., dfminput == TRUE) %>% .$varname
+	pcaVarnames = p$variablesDf %>% dplyr::filter(., nc_dfm_input == TRUE) %>% .$varname
 	
 	pcaVariablesDf =
-		ef$h$m$st %>%
+		h$st$m %>%
 		dplyr::select(., date, all_of(pcaVarnames)) %>%
 		dplyr::filter(., date >= as.Date('2010-01-01'))
 	
