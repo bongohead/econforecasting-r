@@ -559,7 +559,7 @@ local({
 	df =
 		getDataFred('STLENI', CONST$FRED_API_KEY, .returnVintages = TRUE) %>%
 		dplyr::filter(., obsDate >= .$vintageDate - months(3)) %>%
-		dplyr::transmute(., fcname = 'stl', varname = 'gdp', form = 'd1', freq = 'q', date = obsDate, vdate = vintageDate, value
+		dplyr::transmute(., fcname = 'stl', varname = 'gdp', form = 'd1', freq = 'q', date = obsDate, vdate = vintageDate, value)
 
     
 	m$ext$sources$stl <<- df
