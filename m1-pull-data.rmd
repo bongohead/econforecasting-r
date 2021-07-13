@@ -203,7 +203,7 @@ local({
         		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
         		dplyr::mutate(., freq = 'm') %>%
         		{
-        			# Keep last-month aggregation despite possible mising data if set in inputs.xlsx
+        			# Keep last-month aggregation despite possible missing data if set in inputs.xlsx
         			if (x$append_eom_with_currentval == 1) .
         			else dplyr::filter(., date != max(date))
         		}
