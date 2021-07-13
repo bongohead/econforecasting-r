@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-11] m1.rds'
+M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-12] m1.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -1014,8 +1014,8 @@ local({
 		m$ncpred0$m$base %>%
 		dplyr::transmute(
 			.,
-			date,
-			psr = ps/pid
+			date#,
+			#psr = ps/pid
 		)
 	
 	m$ncpred1$m$base <<- mDf
@@ -1111,7 +1111,7 @@ local({
 				)
 			) %>%
 		na.omit(.)
-						
+
 	m$ncpredFlat <<- flat
 })
 ```
