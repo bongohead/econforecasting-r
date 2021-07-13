@@ -1,16 +1,15 @@
-# Initialize
-## Set Options
-```{r purl = TRUE}
+## ----purl = TRUE--------------------------------------------------------------
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-11] m1.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
-INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
-OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-```
+DOC_DIR = 'D:/Onedrive/__Projects/econforecasting/documentation-templates' # Path to documentation .RNW file; if NULL no docs generated
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with inputs.r, constants.r (SQL DB info, SFTP info, etc.)
+OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
+RESET_ALL = FALSE
+VINTAGE_DATE = Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
 
-# Initialize
-```{r}
+
+## -----------------------------------------------------------------------------
 # General purpose
 library(tidyverse) # General
 library(data.table) # General
@@ -35,33 +34,315 @@ setwd(DIR)
 
 # Read constants
 source(file.path(INPUT_DIR, 'constants.r'))
-```
 
-## Load RDS
-```{r}
+# Create top level variables
+ef = list(
+  h = list(),
+  f = list()
+)
+
+
+## -----------------------------------------------------------------------------
 local({
 	
-	rds = readRDS(M1_PATH)
+	fredRes =
+		readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'params') %>%
+		purrr::transpose(., .names = .$varname)  %>%
+		purrr::keep(., ~ .$source == 'fred') %>%
+		lapply(., function(x) {
+			
+			message('Getting data ... ', x$varname)
 
-	p <<- rds$p
-	m <<- rds$m
-	h <<- rds$h
+			# Get series data
+			dataDf =
+			  econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'q', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+			  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
+			  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
+			  	dplyr::select(., -vintageDate) %>%
+			    dplyr::mutate(., varname = x$varname, freq = 'q') %>%
+			    {if (x$freq %in% c('d', 'm'))
+			      dplyr::bind_rows(
+			        .,
+			        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'm', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+						dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
+						dplyr::filter(., vintageDate == max(vintageDate)) %>%
+						dplyr::select(., -vintageDate) %>%
+				        dplyr::mutate(., varname = x$varname, freq = 'm')
+			        )
+			      else .
+			    } %>%
+			    {if (x$freq %in% c('d'))
+			      dplyr::bind_rows(
+			        .,
+			        econforecasting::getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = 'd', .returnVintages = TRUE, .vintageDate = VINTAGE_DATE) %>%
+					  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
+					  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
+					  	dplyr::select(., -vintageDate) %>%
+				        dplyr::mutate(., varname = x$varname, freq = 'd')
+			        )
+			      else .
+			    }
+			
+			# Get series release
+			releaseDf =
+				httr::RETRY(
+					'GET', 
+					glue('https://api.stlouisfed.org/fred/series/release?series_id={x$sckey}&api_key={CONST$FRED_API_KEY}&file_type=json'),
+					times = 10
+				) %>%
+		        httr::content(., as = 'parsed') %>%
+				.$releases %>%
+				.[[1]] %>%
+				as_tibble(.) %>%
+				dplyr::mutate(., varname = x$varname)
+
+			list(dataDf = dataDf, releaseDf = releaseDf)
+		}) %>%
+		lapply(., function(x) list(dataDf = x$dataDf, releaseDf = x$releaseDf %>% dplyr::rename(., relname = name)))
+	
+	
+	
+	paramsDf =
+		readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx')) %>%
+		dplyr::left_join(
+			.,
+			lapply(fredRes, function(x) x$releaseDf) %>%
+			    dplyr::bind_rows(.) %>%
+				dplyr::transmute(., varname, releaseid = id),
+			by = 'varname'
+		)
+	
+	params = paramsDf %>% purrr::transpose(., .names = .$varname)
+
+	
+	
+	dataDf =
+		lapply(fredRes, function(x) x$dataDf) %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::rename(., date = obsDate) %>%
+		dplyr::filter(., date >= as.Date('2010-01-01'))
+	
+	releaseDf =
+		lapply(fredRes, function(x) x$releaseDf) %>%
+		dplyr::bind_rows(.) %>%
+		# Now create a column of included varnames
+		dplyr::inner_join(
+			.,
+			# Only included releases relevant to dfminputs
+			paramsDf %>% dplyr::filter(., dfminput == TRUE) %>% .[, c('varname', 'fullname', 'releaseid')],
+			by = c('varname')
+			) %>%
+		dplyr::group_by(., id, relname, link) %>%
+		dplyr::summarize(., count = n(), seriesnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
+		# Now create a column of included releaseDates
+		dplyr::inner_join(
+			.,
+			purrr::map_dfr(.$id, function(id)
+				httr::RETRY(
+					'GET', 
+					glue(
+						'https://api.stlouisfed.org/fred/release/dates?',
+						'release_id={id}&realtime_start=2020-01-01',
+						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
+						 ),
+					times = 10
+					) %>%
+			        httr::content(., as = 'parsed') %>%
+					.$release_dates %>%
+					sapply(., function(y) y$date) %>%
+					tibble(id = id, reldates = .)
+				),
+			by = 'id'
+		) %>%
+		dplyr::group_by(., id, relname, link, count, seriesnames) %>%
+		dplyr::summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop')
+
+
+	# Run below in console to get list of GDP subcomponents
+	# httr::GET('https://fred.stlouisfed.org/release/tables?rid=53&eid=14961#snid=14966') %>%
+	# 	httr::content(.) %>%
+	# 	rvest::html_nodes('#release-elements-tree tbody tr') %>%
+	# 	map_dfr(., function(x)
+	# 		tibble(
+	# 			a =
+	# 				x %>% rvest::html_nodes('td') %>% .[3] %>%
+	# 				html_text(.) %>% str_replace_all(., '\n', '') %>% trimws(.),
+	# 			fred =
+	# 				x %>% rvest::html_nodes('td') %>% .[3] %>%
+	# 				rvest::html_nodes('span a') %>% rvest::html_attr('href') %>% str_replace(., '/series/', '')
+	# 			)
+	# 		)
+
+	
+	ef$paramsDf <<- paramsDf
+	ef$params <<- params
+
+	ef$h$source$fred <<- dataDf
+	ef$releaseDf <<- releaseDf
 })
-```
 
 
-# Nowcast
+## -----------------------------------------------------------------------------
+local({
+	
+	df =
+		ef$params %>%
+    	purrr::keep(., ~ .$source == 'yahoo') %>%
+		lapply(., function(x) {
+		
+			url =
+				paste0(
+					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
+					'?period1=', '946598400', # 12/30/1999
+					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+					'&interval=1d',
+					'&events=history&includeAdjustedClose=true'
+				)
+			
+			df0 =
+				data.table::fread(url) %>%
+				.[, c('Date', 'Adj Close')]	%>%
+				setnames(., new = c('date', 'value')) %>%
+				as_tibble(.) %>%
+				dplyr::filter(., date <= VINTAGE_DATE)
+			
+			qDf = 
+				df0 %>%
+				dplyr::mutate(
+					.,
+					date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'Q', lubridate::quarter(date)))
+					) %>%
+				dplyr::group_by(., date) %>%
+				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+				dplyr::mutate(., freq = 'q')
+			
+			mDf =
+				df0 %>%
+				dplyr::mutate(
+					.,
+					date = econforecasting::strdateToDate(paste0(lubridate::year(date), 'M', lubridate::month(date)))
+					) %>%
+				dplyr::group_by(., date) %>%
+				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+				dplyr::mutate(., freq = 'm')
+		
+			df =
+				dplyr::bind_rows(mDf, qDf) %>%
+				dplyr::mutate(., varname = x$varname)
+		}) %>%
+		dplyr::bind_rows(.)
+	
+	ef$h$source$yahoo <<- df
+})
 
-## Get dates
-```{r}
+
+## -----------------------------------------------------------------------------
+local({
+	ef$h$sourceDf <<- dplyr::bind_rows(ef$h$source)
+})
+
+
+## -----------------------------------------------------------------------------
+local({
+	
+	seasDf =
+		ef$h$sourceDf %>%
+		dplyr::filter(., varname == 'hpils') %>%
+		dplyr::mutate(
+			.,
+			seas = 
+			{ts(.$value, start = c(year(.$date[1]), month(.$date[1])), freq = 12)} %>%
+			seasonal::seas(.) %>%
+			predict(.)
+			) %>%
+		dplyr::select(., -value)
+	
+	df =
+		dplyr::left_join(ef$h$sourceDf, seasDf, by = c('date', 'varname', 'freq')) %>%
+		dplyr::mutate(., value = ifelse(is.na(seas), value, seas)) %>%
+		dplyr::select(., -seas)
+
+	ef$h$seasDf <<- df
+})
+
+
+## -----------------------------------------------------------------------------
+local({
+
+	flat = list()
+
+	flat =
+		lapply(list('st', 'd1', 'd2') %>% setNames(., .), function(.form) {
+		    message(.form)
+			ef$h$seasDf %>%
+				dplyr::left_join(., ef$paramsDf[, c('varname', .form)], by = c('varname')) %>%
+				dplyr::group_by(varname, freq) %>%
+				dplyr::group_split(.) %>%
+				lapply(., function(x) {
+					message(x$varname[[1]])
+					if (head(x, 1)[[.form]] == 'none') return(NA)
+					x %>%
+						dplyr::arrange(., date) %>%
+						dplyr::mutate(
+							.,
+							value = {
+								if (head(., 1)[[.form]] == 'base') value
+								else if (head(., 1)[[.form]] == 'dlog') dlog(value)
+								else if (head(., 1)[[.form]] == 'diff1') diff1(value)
+								else if (head(., 1)[[.form]] == 'diff2') diff2(value)
+								else if (head(., 1)[[.form]] == 'ma2') ma2(value)
+								else if (head(., 1)[[.form]] == 'lma2') lma2(value)
+								else if (head(., 1)[[.form]] == 'pchg') pchg(value)
+								else if (head(., 1)[[.form]] == 'apchg') apchg(value)
+								else stop ('Error')
+								}
+							)
+					}) %>%
+				purrr::keep(., ~ !all(is.na(.))) %>%
+				dplyr::bind_rows(.) %>%
+				dplyr::select(., -all_of(c(.form)))
+			})
+	
+	flat$ut = ef$h$seasDf
+
+	
+	flatDf = purrr::imap_dfr(flat, function(x, form) x %>% mutate(., form = form)) %>% na.omit(.)
+
+	ef$h$flatDf <<- flatDf
+})
+
+
+## -----------------------------------------------------------------------------
+local({
+	
+	wide =
+		ef$h$flatDf %>%
+		as.data.table(.) %>%
+		split(., by = 'freq') %>%
+		lapply(., function(x)
+			split(x, by = 'form') %>%
+				lapply(., function(y)
+					as_tibble(y) %>%
+						dplyr::select(., -freq, -form) %>%
+						tidyr::pivot_wider(., names_from = varname) %>%
+						dplyr::arrange(., date)
+					)
+			)
+
+	ef$h$m <<- wide$m
+	ef$h$q <<- wide$q
+})
+
+
+## -----------------------------------------------------------------------------
 local({
 	
 	quartersForward = 1
 	
-	pcaVarnames = p$variablesDf %>% dplyr::filter(., nc_dfm_input == TRUE) %>% .$varname
+	pcaVarnames = ef$paramsDf %>% dplyr::filter(., dfminput == TRUE) %>% .$varname
 	
 	pcaVariablesDf =
-		h$st$m %>%
+		ef$h$m$st %>%
 		dplyr::select(., date, all_of(pcaVarnames)) %>%
 		dplyr::filter(., date >= as.Date('2010-01-01'))
 	
@@ -98,27 +379,26 @@ local({
 	
 	
 
-	m$nc$pcaVariablesDf <<- pcaVariablesDf
-	m$nc$pcaVarnames <<- pcaVarnames
-	m$nc$quartersForward <<- quartersForward
-	m$nc$bigTDates <<- bigTDates
-	m$nc$bigTauDates <<- bigTauDates
-	m$nc$bigTStarDates <<- bigTStarDates
-	m$nc$bigTDate <<- bigTDate
-	m$nc$bigTauDate <<- bigTauDate
-	m$nc$bigTStarDate <<- bigTStarDate
-	m$nc$bigT <<- bigT
-	m$nc$bigTau <<- bigTau
-	m$nc$bigTStar <<- bigTStar
-	m$nc$timeDf <<- timeDf
+	ef$nc$pcaVariablesDf <<- pcaVariablesDf
+	ef$nc$pcaVarnames <<- pcaVarnames
+	ef$nc$quartersForward <<- quartersForward
+	ef$nc$bigTDates <<- bigTDates
+	ef$nc$bigTauDates <<- bigTauDates
+	ef$nc$bigTStarDates <<- bigTStarDates
+	ef$nc$bigTDate <<- bigTDate
+	ef$nc$bigTauDate <<- bigTauDate
+	ef$nc$bigTStarDate <<- bigTStarDate
+	ef$nc$bigT <<- bigT
+	ef$nc$bigTau <<- bigTau
+	ef$nc$bigTStar <<- bigTStar
+	ef$nc$timeDf <<- timeDf
 })
-```
 
-## Extract factors
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
-	xDf = m$nc$pcaVariablesDf %>% dplyr::filter(., date %in% m$nc$bigTDates)
+	xDf = ef$nc$pcaVariablesDf %>% dplyr::filter(., date %in% ef$nc$bigTDates)
 	
 	xMat =
 		xDf %>%
@@ -232,22 +512,21 @@ local({
 		dplyr::select(., paste0('f', 1:bigR))
 	
 	
-	m$nc$factorWeightsDf <<- factorWeightsDf
-	m$nc$screeDf <<- screeDf
-	m$nc$screePlot <<- screePlot
-	m$nc$bigR <<- bigR
-	m$nc$pcaInputDf <<- xDf
-	m$nc$zDf <<- zDf
-	m$nc$zPlots <<- zPlots
+	ef$nc$factorWeightsDf <<- factorWeightsDf
+	ef$nc$screeDf <<- screeDf
+	ef$nc$screePlot <<- screePlot
+	ef$nc$bigR <<- bigR
+	ef$nc$pcaInputDf <<- xDf
+	ef$nc$zDf <<- zDf
+	ef$nc$zPlots <<- zPlots
 })
-```
 
-## Run as VAR(1)
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	inputDf =
-		m$nc$zDf %>%
+		ef$nc$zDf %>%
     	econforecasting::addLags(., 1, TRUE) %>%
 		na.omit(.) #%>%
 		# dplyr::filter(., date <= '2020-02-01' | date >= '2020-09-01')
@@ -289,7 +568,7 @@ local({
     	fitted(.) %>%
 		as_tibble(.) %>%
 		dplyr::bind_cols(date = inputDf$date, ., type = 'Fitted Values') %>%
-		dplyr::bind_rows(., m$nc$zDf %>% dplyr::mutate(., type = 'Data')) %>%
+		dplyr::bind_rows(., ef$nc$zDf %>% dplyr::mutate(., type = 'Data')) %>%
 		tidyr::pivot_longer(., -c('type', 'date')) %>% 
 		as.data.table(.) %>%
 		split(., by = 'name') %>%
@@ -318,23 +597,21 @@ local({
 		{purrr::reduce(., function(x, y) x + y)/length(.)}
 	
 	
-	m$nc$varFittedPlots <<- fittedPlots
-	m$nc$varResidPlot <<- residPlot
-	m$nc$varGofDf <<- gofDf
-	m$nc$varCoefDf <<- coefDf
-	m$nc$qMat <<- qMat 
-	m$nc$bMat <<- bMat
-	m$nc$cMat <<- cMat
+	ef$nc$varFittedPlots <<- fittedPlots
+	ef$nc$varResidPlot <<- residPlot
+	ef$nc$varGofDf <<- gofDf
+	ef$nc$varCoefDf <<- coefDf
+	ef$nc$qMat <<- qMat 
+	ef$nc$bMat <<- bMat
+	ef$nc$cMat <<- cMat
 })
-```
 
 
-## Run DFM on monthly variables included in PCA
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
-	yMat = m$nc$pcaInputDf %>% dplyr::select(., -date) %>% as.matrix(.)
-	xDf = m$nc$zDf %>% dplyr::select(., -date) %>% dplyr::bind_cols(constant = 1, .)
+	yMat = ef$nc$pcaInputDf %>% dplyr::select(., -date) %>% as.matrix(.)
+	xDf = ef$nc$zDf %>% dplyr::select(., -date) %>% dplyr::bind_cols(constant = 1, .)
 	
 	coefDf =
 		lm(yMat ~ . - 1, xDf) %>%
@@ -348,8 +625,8 @@ local({
 		lm(yMat ~ . - 1, xDf) %>%
 	    fitted(.) %>%
 	    as_tibble(.) %>%
-	    dplyr::bind_cols(date = m$nc$zDf$date, ., type = 'Fitted Values') %>%
-	    dplyr::bind_rows(., m$nc$pcaInputDf %>% dplyr::mutate(., type = 'Data')) %>%
+	    dplyr::bind_cols(date = ef$nc$zDf$date, ., type = 'Fitted Values') %>%
+	    dplyr::bind_rows(., ef$nc$pcaInputDf %>% dplyr::mutate(., type = 'Data')) %>%
 		tidyr::pivot_longer(., -c('type', 'date')) %>%
 		as.data.table(.) %>%
 		split(., by = 'name') %>%
@@ -389,55 +666,54 @@ local({
 		lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
 		{purrr::reduce(., function(x, y) x + y)/length(.)}
 	
-	rMatDiag = tibble(varname = m$nc$pcaVarnames, variance = diag(rMat0))
+	rMatDiag = tibble(varname = ef$nc$pcaVarnames, variance = diag(rMat0))
 
 	
 	rMats =
-		lapply(m$nc$bigTauDates, function(d)
-			sapply(m$nc$pcaVarnames, function(v)
-				h$st$m %>%
+		lapply(ef$nc$bigTauDates, function(d)
+			sapply(ef$nc$pcaVarnames, function(v)
+				ef$h$m$st %>%
 					dplyr::filter(., date == (d)) %>%
 					.[[v]] %>% 
 					{if (is.na(.)) 1e20 else dplyr::filter(rMatDiag, varname == v)$variance}
 				) %>%
 				diag(.)
 			) %>%
-		c(lapply(1:length(m$nc$bigTDates), function(x) rMat0), .)
+		c(lapply(1:length(ef$nc$bigTDates), function(x) rMat0), .)
 
 	
-	m$nc$dfmGofDf <<- gofDf
-	m$nc$dfmCoefDf <<- coefDf
-	m$nc$dfmFittedPlots <<- fittedPlots
-	m$nc$rMats <<- rMats
-	m$nc$aMat <<- aMat
-	m$nc$dMat <<- dMat
+	ef$nc$dfmGofDf <<- gofDf
+	ef$nc$dfmCoefDf <<- coefDf
+	ef$nc$dfmFittedPlots <<- fittedPlots
+	ef$nc$rMats <<- rMats
+	ef$nc$aMat <<- aMat
+	ef$nc$dMat <<- dMat
 })
-```
 
-## Compute Kalman filter
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
-	bMat = m$nc$bMat
-	cMat = m$nc$cMat
-	aMat = m$nc$aMat
-	dMat = m$nc$dMat
-	rMats = m$nc$rMats
-	qMat = m$nc$qMat
+	bMat = ef$nc$bMat
+	cMat = ef$nc$cMat
+	aMat = ef$nc$aMat
+	dMat = ef$nc$dMat
+	rMats = ef$nc$rMats
+	qMat = ef$nc$qMat
 	yMats =
 		dplyr::bind_rows(
-			m$nc$pcaInputDf,
-			h$st$m %>%
-				dplyr::filter(., date %in% m$nc$bigTauDates) %>%
-				dplyr::select(., date, m$nc$pcaVarnames)
+			ef$nc$pcaInputDf,
+			ef$h$m$st %>%
+				dplyr::filter(., date %in% ef$nc$bigTauDates) %>%
+				dplyr::select(., date, ef$nc$pcaVarnames)
 			) %>%
 		dplyr::mutate(., across(-date, function(x) ifelse(is.na(x), 0, x))) %>%
 		dplyr::select(., -date) %>%
 		purrr::transpose(.) %>%
 		lapply(., function(x) matrix(unlist(x), ncol = 1))
 
-	z0Cond0 = matrix(rep(0, m$nc$bigR), ncol = 1)
-	sigmaZ0Cond0 = matrix(rep(0, m$nc$bigR^2), ncol = m$nc$bigR)
+	z0Cond0 = matrix(rep(0, ef$nc$bigR), ncol = 1)
+	sigmaZ0Cond0 = matrix(rep(0, ef$nc$bigR^2), ncol = ef$nc$bigR)
 		
 	zTCondTMinusOne = list()
 	zTCondT = list()
@@ -450,7 +726,7 @@ local({
 	
 	pT = list()
 
-	for (t in 1:length(c(m$nc$bigTDates, m$nc$bigTauDates))) {
+	for (t in 1:length(c(ef$nc$bigTDates, ef$nc$bigTauDates))) {
 		# message(t)
 		# Prediction Step
 		zTCondTMinusOne[[t]] = bMat %*% {if (t == 1) z0Cond0 else zTCondT[[t-1]]} + cMat
@@ -461,7 +737,7 @@ local({
 		# Correction Step
 		pT[[t]] = sigmaZTCondTMinusOne[[t]] %*% t(aMat) %*%
 			{
-				if (t %in% 1:length(m$nc$bigTDates)) solve(sigmaYTCondTMinusOne[[t]])
+				if (t %in% 1:length(ef$nc$bigTDates)) solve(sigmaYTCondTMinusOne[[t]])
 				else chol2inv(chol(sigmaYTCondTMinusOne[[t]]))
 				}
 		zTCondT[[t]] = zTCondTMinusOne[[t]] + pT[[t]] %*% (yMats[[t]] - yTCondTMinusOne[[t]])
@@ -474,7 +750,7 @@ local({
 		purrr::map_dfr(., function(x)
 			as.data.frame(x) %>% t(.) %>% as_tibble(.)
 			) %>%
-		dplyr::bind_cols(date = c(m$nc$bigTDates, m$nc$bigTauDates), .) 
+		dplyr::bind_cols(date = c(ef$nc$bigTDates, ef$nc$bigTauDates), .) 
 	
 	
 	## Smoothing step
@@ -498,7 +774,7 @@ local({
 		purrr::map_dfr(., function(x)
 			as.data.frame(x) %>% t(.) %>% as_tibble(.)
 			) %>%
-		dplyr::bind_cols(date = c(m$nc$bigTDates, m$nc$bigTauDates) %>% .[1:(length(.) - 1)], .) 
+		dplyr::bind_cols(date = c(ef$nc$bigTDates, ef$nc$bigTauDates) %>% .[1:(length(.) - 1)], .) 
 	
 	
 	
@@ -509,7 +785,7 @@ local({
 	yTCondBigT = list()
 	sigmaYTCondBigT = list()
 	
-	for (j in 1:length(m$nc$bigTStarDates)) {
+	for (j in 1:length(ef$nc$bigTStarDates)) {
 		zTCondBigT[[j]] = bMat %*% {if (j == 1) zTCondT[[length(zTCondT)]] else zTCondBigT[[j - 1]]} + cMat
 		sigmaZTCondBigT[[j]] = bMat %*% {if (j == 1) sigmaZTCondT[[length(sigmaZTCondT)]] else sigmaZTCondBigT[[j - 1]]} + qMat
 		yTCondBigT[[j]] = aMat %*% zTCondBigT[[j]] + dMat
@@ -521,15 +797,15 @@ local({
 		purrr::map_dfr(., function(x)
 			as.data.frame(x) %>% t(.) %>% as_tibble(.)
 			) %>%
-		dplyr::bind_cols(date = m$nc$bigTStarDates, .)
+		dplyr::bind_cols(date = ef$nc$bigTStarDates, .)
 	
 
 	
 	# Plot and Cleaning
 	kfPlots =
-		lapply(colnames(m$nc$zDf) %>% .[. != 'date'], function(.varname)
+		lapply(colnames(ef$nc$zDf) %>% .[. != 'date'], function(.varname)
 			dplyr::bind_rows(
-				dplyr::mutate(m$nc$zDf, type = 'Data'),
+				dplyr::mutate(ef$nc$zDf, type = 'Data'),
 				dplyr::mutate(kFitted, type = 'Kalman Filtered'),
 				dplyr::mutate(kForecast, type = 'Forecast'),
 				dplyr::mutate(kSmooth, type = 'Kalman Smoothed'),
@@ -548,34 +824,42 @@ local({
 		dplyr::bind_rows(
 			kSmooth,
 			tail(kFitted, 1),
-			kForecast #%>% dplyr::mutate(., f1 = mean(dplyr::filter(m$nc$zDf, date < '2020-03-01')$f1))
+			kForecast #%>% dplyr::mutate(., f1 = mean(dplyr::filter(ef$nc$zDf, date < '2020-03-01')$f1))
 			)
 	
 	yDf =
 		yTCondBigT %>%
 		purrr::map_dfr(., function(x) as_tibble(t(as.data.frame(x)))) %>%
-		dplyr::bind_cols(date = m$nc$bigTStarDates, .)
+		dplyr::bind_cols(date = ef$nc$bigTStarDates, .)
 	
 	kfDf = yDf
 		# yDf %>%
 		# dplyr::select(
 		# 	.,
 		# 	date#,
-		# 	#all_of(dplyr::filter(m$paramsDf, nowcast == 'kf')$varname)
+		# 	#all_of(dplyr::filter(ef$paramsDf, nowcast == 'kf')$varname)
 		# 	)
 	
-	m$nc$fDf <<- fDf
-	m$nc$kfPlots <<- kfPlots
-	m$nc$yDf <<- yDf
-	m$nc$kfDf <<- kfDf
+	ef$nc$fDf <<- fDf
+	ef$nc$kfPlots <<- kfPlots
+	ef$nc$yDf <<- yDf
+	ef$nc$kfDf <<- kfDf
 })
-```
 
-## Add baseline forecasts from other page
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
   
-	# d1 form MUST match stationary form for these variables
+	conn =
+		dbConnect(
+		RPostgres::Postgres(),
+		dbname = CONST$DB_DATABASE,
+		host = CONST$DB_SERVER,
+		port = 5432,
+		user = CONST$DB_USERNAME,
+		password = CONST$DB_PASSWORD
+		)
+	
 	reqs =
 		tribble(
 			~fcname, ~varname,
@@ -594,40 +878,39 @@ local({
 			)
 	
 	cmefiDf =
-		dplyr::bind_rows(m$ext$sources) %>%
-		dplyr::filter(., form == 'd1') %>%
-		dplyr::select(., -form) %>%
+		DBI::dbGetQuery(conn, 'SELECT * FROM fc_forecast') %>%
+		as_tibble(.) %>%
 		dplyr::right_join(., reqs, by = c('fcname', 'varname')) %>%
 		dplyr::group_by(., varname) %>%
-		dplyr::filter(., vdate == max(vdate)) %>%
+		dplyr::filter(., vintage_date == max(vintage_date)) %>%
 		dplyr::ungroup(.) %>%
-		dplyr::select(., -vdate, -fcname) %>%
+		dplyr::select(., -vintage_date, -fcname) %>%
+		dplyr::rename(., date = obs_date) %>%
 		dplyr::mutate(., freq = 'm') %>%
 		# Only keep rows without a match in FRED data
-		dplyr::anti_join(., h$flatDf %>% dplyr::filter(., form == 'd1'), by = c('varname', 'date', 'freq')) %>%
+		dplyr::anti_join(., ef$h$source$fred, by = c('varname', 'date', 'freq')) %>%
 		# Pivot
 		dplyr::select(., -freq) %>%
 		tidyr::pivot_wider(., names_from = varname, values_from = value) %>%
 		dplyr::arrange(., date) %>%
-		dplyr::filter(., date <= tail(m$nc$bigTStarDates, 1))
+		dplyr::filter(., date <= tail(ef$nc$bigTStarDates, 1))
 	
 	
-  m$nc$cmefiDf <<- cmefiDf
+  ef$nc$cmefiDf <<- cmefiDf
 })
-```
 
-## Forecast dfm.m monthly variables
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
-	dfmVarnames = p$variablesDf %>% dplyr::filter(., nc_method == 'dfm.m') %>% .$varname
+	dfmVarnames = ef$paramsDf %>% dplyr::filter(., nowcast == 'dfm.m') %>% .$varname
 	
 	dfmMDf = 
 		lapply(dfmVarnames, function(.varname) {
 			inputDf =
 				dplyr::inner_join(
-					m$nc$fDf,
-					dplyr::select(h$st$m, date, all_of(.varname)),
+					ef$nc$fDf,
+					dplyr::select(ef$h$m$st, date, all_of(.varname)),
 					by = 'date'
 				) %>%
 				na.omit(.)
@@ -643,11 +926,11 @@ local({
 			# Forecast dates + last historical date
 			forecastDf0 =
 				tibble(
-					date = seq(from = tail(inputDf$date, 1), to = tail(m$nc$bigTStarDates, 1), by = '1 month')
+					date = seq(from = tail(inputDf$date, 1), to = tail(ef$nc$bigTStarDates, 1), by = '1 month')
 					) %>%
 				.[2:nrow(.), ] %>%
 				dplyr::mutate(., !!.varname := 0) %>%
-				dplyr::left_join(., m$nc$fDf, by = 'date') %>%
+				dplyr::left_join(., ef$nc$fDf, by = 'date') %>%
 				dplyr::bind_cols(., constant = 1)
 
 			forecastDf =
@@ -664,8 +947,8 @@ local({
 # 
 # 			inputDf =
 # 				dplyr::inner_join(
-# 				m$nc$fDf,
-# 				dplyr::select(m$h$m$st, date, all_of(.varname)) %>%
+# 				ef$nc$fDf,
+# 				dplyr::select(ef$h$m$st, date, all_of(.varname)) %>%
 # 					econforecasting::addLags(., 1, .zero = TRUE),
 # 				by = 'date'
 # 				) %>%
@@ -682,10 +965,10 @@ local({
 # 			# Forecast dates + last historical date
 # 			forecastDf0 =
 # 				tibble(
-# 					date = seq(from = tail(inputDf$date, 1), to = tail(m$nc$bigTStarDates, 1), by = '1 month')
+# 					date = seq(from = tail(inputDf$date, 1), to = tail(ef$nc$bigTStarDates, 1), by = '1 month')
 # 					) %>%
 # 				dplyr::mutate(., !!.varname := c(inputDf[[paste0(.varname, '.l1')]][[1]], rep(NA, nrow(.) - 1))) %>%
-# 				dplyr::left_join(., m$nc$fDf, by = 'date') %>%
+# 				dplyr::left_join(., ef$nc$fDf, by = 'date') %>%
 # 				dplyr::bind_cols(., constant = 1)
 # 			
 # 			forecastDf =
@@ -707,18 +990,17 @@ local({
 			dplyr::arrange(., date)
 
 
-	m$nc$dfmMDf <<- dfmMDf	
+	ef$nc$dfmMDf <<- dfmMDf	
 })
-```
 
-## Forecast dfm.q quarterly variables w/elastic net
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
-	dfmVarnames = p$variablesDf %>% dplyr::filter(., nc_method == 'dfm.q') %>% .$varname
+	dfmVarnames = ef$paramsDf %>% dplyr::filter(., nowcast == 'dfm.q') %>% .$varname
 	
 	fDf =
-		m$nc$fDf %>%
+		ef$nc$fDf %>%
 		tidyr::pivot_longer(., -date, names_to = 'varname') %>%
 		dplyr::mutate(
 			.,
@@ -726,7 +1008,7 @@ local({
 			) %>%
 		dplyr::select(., -date) %>%
 		dplyr::group_by(., varname, q) %>%
-		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+		dplyr::summarize(., value = mean(value)) %>%
 		tidyr::pivot_wider(., names_from = varname, values_from = value) %>%
 		dplyr::rename(., date = q)
 	
@@ -737,7 +1019,7 @@ local({
 	# 		inputDf =
 	# 			dplyr::inner_join(
 	# 				fDf,
-	# 				dplyr::select(m$h$q$st, date, all_of(.varname)),
+	# 				dplyr::select(ef$h$q$st, date, all_of(.varname)),
 	# 				by = 'date'
 	# 			) %>%
 	# 			na.omit(.)
@@ -753,11 +1035,11 @@ local({
 	# 		# Forecast dates + last historical date
 	# 		forecastDf0 =
 	# 			tibble(
-	# 				date = seq(from = tail(inputDf$date, 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
+	# 				date = seq(from = tail(inputDf$date, 1), to = tail(ef$nc$bigTStarDates, 1), by = '3 months')
 	# 				) %>%
 	# 			.[2:nrow(.), ] %>%
 	# 			dplyr::mutate(., !!.varname := 0) %>%
-	# 			dplyr::left_join(., m$nc$fDf, by = 'date') %>%
+	# 			dplyr::left_join(., ef$nc$fDf, by = 'date') %>%
 	# 			dplyr::bind_cols(., constant = 1)
 	# 
 	# 		forecastDf =
@@ -775,7 +1057,7 @@ local({
 			inputDf =
 				dplyr::inner_join(
 					fDf,
-					dplyr::select(h$st$q, date, all_of(.varname)) %>%
+					dplyr::select(ef$h$q$st, date, all_of(.varname)) %>%
 						econforecasting::addLags(., 1, .zero = TRUE),
 					by = 'date'
 				) %>%
@@ -850,10 +1132,10 @@ local({
 			# Forecast dates + last historical date
 			forecastDf0 =
 				tibble(
-					date = seq(from = tail(inputDf$date, 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
+					date = seq(from = tail(inputDf$date, 1), to = tail(ef$nc$bigTStarDates, 1), by = '3 months')
 					) %>%
 				dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 1), rep(NA, nrow(.) - 1))) %>%
-				dplyr::left_join(., m$nc$fDf, by = 'date') %>%
+				dplyr::left_join(., ef$nc$fDf, by = 'date') %>%
 				dplyr::bind_cols(., constant = 1)
 
 			forecastDf =
@@ -895,50 +1177,44 @@ local({
 		dplyr::arrange(., date)
 
 
-	m$nc$glmCoefQList <<-glmCoefList 
-	m$nc$glmOptimQDf <<- glmOptimDf
-	m$nc$cvPlotsQ <<- cvPlots
-	m$nc$dfmQDf <<- dfmDf
+	ef$nc$glmCoefQList <<-glmCoefList 
+	ef$nc$glmOptimQDf <<- glmOptimDf
+	ef$nc$cvPlotsQ <<- cvPlots
+	ef$nc$dfmQDf <<- dfmDf
 })
-```
 
 
-# Finalize Nowcasts
-
-## Aggregate
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	mDf =
-		list(m$nc$dfmMDf, m$nc$cmefiDf) %>%
+		list(ef$nc$dfmMDf, ef$nc$cmefiDf) %>%
 		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 		dplyr::arrange(., date)
 	
 	qDf =
-		list(m$nc$dfmQDf) %>%
+		list(ef$nc$dfmQDf) %>%
 		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 		dplyr::arrange(., date)
 
 
-	m$ncpred0$m$st <<- mDf
-	m$ncpred0$q$st <<- qDf
+	ef$ncpred0$m$st <<- mDf
+	ef$ncpred0$q$st <<- qDf
 })
-```
 
 
-## Detransform
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	mDf =
-		m$ncpred0$m$st %>%
+		ef$ncpred0$m$st %>%
 		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
 			
-			transform = dplyr::filter(p$variablesDf, varname == .varname)$st
+			transform = dplyr::filter(ef$paramsDf, varname == .varname)$st
 			
 			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
 				
-			histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
+			histDf = tail(dplyr::filter(na.omit(ef$h$m$ut[, c('date', .varname)]), date < min(fcDf$date)), 1)
 			
 			fcDf %>%
 				dplyr::mutate(
@@ -957,14 +1233,14 @@ local({
 	
 	
 	qDf =
-		m$ncpred0$q$st %>%
+		ef$ncpred0$q$st %>%
 		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
 			
-			transform = dplyr::filter(p$variablesDf, varname == .varname)$st
+			transform = dplyr::filter(ef$paramsDf, varname == .varname)$st
 			
 			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
 				
-			histDf = tail(dplyr::filter(na.omit(h$base$q[, c('date', .varname)]), date < min(fcDf$date)), 1)
+			histDf = tail(dplyr::filter(na.omit(ef$h$q$ut[, c('date', .varname)]), date < min(fcDf$date)), 1)
 			
 			fcDf %>%
 				dplyr::mutate(
@@ -982,17 +1258,16 @@ local({
 		dplyr::arrange(., date)
 	
 
-	m$ncpred0$m$base <<- mDf
-	m$ncpred0$q$base <<- qDf
+	ef$ncpred0$m$ut <<- mDf
+	ef$ncpred0$q$ut <<- qDf
 })
-```
 
-## Calculate GDP nowcast
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	qDf =
-		m$ncpred0$q$base %>%
+		ef$ncpred0$q$ut %>%
 		dplyr::transmute(
 			.,
 			date,
@@ -1011,43 +1286,42 @@ local({
 		)
 	
 	mDf =
-		m$ncpred0$m$base %>%
+		ef$ncpred0$m$ut %>%
 		dplyr::transmute(
 			.,
 			date,
 			psr = ps/pid
 		)
 	
-	m$ncpred1$m$base <<- mDf
-	m$ncpred1$q$base <<- qDf
+	ef$ncpred1$m$ut <<- mDf
+	ef$ncpred1$q$ut <<- qDf
 })
-```
 
-## Aggregate & calculate display format
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	wide = list()
 	
-	wide$m$base =
-		list(m$ncpred0$m$base, m$ncpred1$m$base) %>%
+	wide$m$ut =
+		list(ef$ncpred0$m$ut, ef$ncpred1$m$ut) %>%
 		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 		dplyr::arrange(., date)
 
-	wide$q$base =
-		list(m$ncpred0$q$base, m$ncpred1$q$base) %>%
+	wide$q$ut =
+		list(ef$ncpred0$q$ut, ef$ncpred1$q$ut) %>%
 		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 		dplyr::arrange(., date)
 
 	
 	wide$m$d1 =
-		wide$m$base %>%
+		wide$m$ut %>%
 		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
 			
-			transform = dplyr::filter(p$variablesDf, varname == .varname)$d1
+			transform = dplyr::filter(ef$paramsDf, varname == .varname)$d1
 			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
 			
-			histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
+			histDf = tail(dplyr::filter(na.omit(ef$h$m$ut[, c('date', .varname)]), date < min(fcDf$date)), 1)
 			
 			dplyr::bind_rows(histDf, fcDf) %>%
 				dplyr::mutate(
@@ -1068,13 +1342,13 @@ local({
 
 	
 	wide$q$d1 =
-		wide$q$base %>%
+		wide$q$ut %>%
 		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
 			
-			transform = dplyr::filter(p$variablesDf, varname == .varname)$d1
+			transform = dplyr::filter(ef$paramsDf, varname == .varname)$d1
 			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
 			
-			histDf = tail(dplyr::filter(na.omit(h$base$q[, c('date', .varname)]), date < min(fcDf$date)), 1)
+			histDf = tail(dplyr::filter(na.omit(ef$h$q$ut[, c('date', .varname)]), date < min(fcDf$date)), 1)
 			
 			dplyr::bind_rows(histDf, fcDf) %>%
 				dplyr::mutate(
@@ -1093,16 +1367,15 @@ local({
 		dplyr::arrange(., date)
 
 	
-	m$ncpred <<- wide
+	ef$ncpred <<- wide
 })
-```
 
-## Flatten
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	flat =
-		m$ncpred %>%
+		ef$ncpred %>%
 		purrr::imap_dfr(function(x, .freq)
 			x %>% purrr::imap_dfr(function(df, .form)
 				df %>%
@@ -1112,16 +1385,11 @@ local({
 			) %>%
 		na.omit(.)
 						
-	m$ncpredFlat <<- flat
+	ef$ncpredFlat <<- flat
 })
-```
 
-Compare inputs
-dplyr::full_join(readxl::read_excel('model-inputs/inputs.xlsx', sheet = 1) %>% dplyr::transmute(., varname, st_1 = st, sc_1 = sckey,  dfm_input_1 = dfminput), readxl::read_excel('model-inputs/inputs.xlsx', sheet = 'all-variables') %>% dplyr::transmute(., varname, st_2 = st, sc_2 = sckey, dfm_input_2 = nc_dfm_input), by = 'varname') %>% dplyr::mutate(., (x = st_1 == st_2) & (sc_1 == sc_2)) %>% View(.)
-# Document & Store
 
-## Send to SQL
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	conn =
@@ -1145,7 +1413,7 @@ local({
 	# Send variables to SQL
 	query =
 	  econforecasting::createInsertQuery(
-	    m$h$flatDf %>% dplyr::mutate(value = round(value, 4)),
+	    ef$h$flatDf %>% dplyr::mutate(value = round(value, 4)),
 	    'nc_history',
 	    'ON CONFLICT ON CONSTRAINT nc_history_varname_date_form_freq DO UPDATE SET value = EXCLUDED.value'
 	    )
@@ -1155,7 +1423,7 @@ local({
 	# Send variables to SQL
 	query =
 	  econforecasting::createInsertQuery(
-	    m$paramsDf %>% dplyr::select(., -releaseid),
+	    ef$paramsDf %>% dplyr::select(., -releaseid),
 	    'nc_params',
 	    'ON CONFLICT ON CONSTRAINT nc_params_varname DO UPDATE SET fullname=EXCLUDED.fullname,
 	    category=EXCLUDED.category, dispgroup=EXCLUDED.dispgroup, source=EXCLUDED.source,
@@ -1169,7 +1437,7 @@ local({
 	# Insert nc_values
 	query =
 	  econforecasting::createInsertQuery(
-	    m$ncpredFlat,
+	    ef$ncpredFlat,
 	    'nc_values',
 	    'ON CONFLICT ON CONSTRAINT nc_values_varname_date_form_vdate_freq DO UPDATE SET value = EXCLUDED.value'
 	    )
@@ -1179,7 +1447,7 @@ local({
 	# Insert nc_releases
 	query =
 	  econforecasting::createInsertQuery(
-	    m$releaseDf,
+	    ef$releaseDf,
 	    'nc_releases',
 	    'ON CONFLICT ON CONSTRAINT nc_releases_id DO UPDATE SET link=EXCLUDED.link, count=EXCLUDED.count,seriesnames=EXCLUDED.seriesnames,reldates=EXCLUDED.reldates'
 	    )
@@ -1188,7 +1456,7 @@ local({
 	
 	# Insert fc_forecast_last_vintage
 	# forecastLastVintageDf =
-	# 	m$forecastDf %>%
+	# 	ef$forecastDf %>%
 	# 	dplyr::group_by(fcname) %>% 
 	# 	dplyr::filter(., vintageDate == max(vintageDate)) %>%
 	# 	dplyr::ungroup(.) %>%
@@ -1202,10 +1470,9 @@ local({
 	# res = DBI::dbGetQuery(conn, query)
 	
 })
-```
 
-## Save data to RDS and process .rnw
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 
@@ -1250,5 +1517,4 @@ local({
 
 	}
 })
-```
 
