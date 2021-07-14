@@ -13,6 +13,9 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong) - try later, for now use standard and see if tdns estimates are too off from actual construction
 - Add: DFM package for R
 
+-> OR EOM ONLY AFTER 20TH
+-> Investigate AGG METHOD
+switched 1 to2 to eom agg
 
 # CHANGELOG
 ## 2021-07-08 [v0.15]
