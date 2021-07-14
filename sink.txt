@@ -1,5 +1,5 @@
-Run :2021-07-12
-Started - model-asset-contagion: 2021-07-12 20:00:00
+Run :2021-07-13
+Started - model-asset-contagion: 2021-07-13 20:00:01
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
@@ -63,10 +63,10 @@ Writing NAMESPACE
 800
 900
 1000
-2021-07-12 20:03:30
-2021-07-12 20:03:32
+2021-07-13 20:03:14
+2021-07-13 20:03:16
 Finished - model-asset-contagion
-Started - model-baseline-forecasts: 2021-07-12 20:03:32
+Started - model-baseline-forecasts: 2021-07-13 20:03:16
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
@@ -593,9 +593,9 @@ New names:
 * `` -> ...2
 * `` -> ...3
 trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
-Content type 'application/vnd.ms-excel' length 394752 bytes (385 KB)
+Content type 'application/vnd.ms-excel' length 388096 bytes (379 KB)
 ==================================================
-downloaded 385 KB
+downloaded 379 KB
 
 Starting Quandl data scrape...
 Completed Quandl data scrape
@@ -604,7 +604,7 @@ Completed CME data scrape...
 Adding monthly interpolation ...
 SQL Code Finished
 Finished - model-baseline-forecasts
-Started - model-nowcasts: 2021-07-12 20:05:57
+Started - model-nowcasts: 2021-07-13 20:05:35
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.rmd
@@ -663,12 +663,11 @@ Getting data ... govt
 Getting data ... govtf
 Getting data ... govts
 Getting data ... mpce
+Request failed [429]. Retrying in 1.5 seconds...
+Request failed [429]. Retrying in 1.1 seconds...
+Request failed [429]. Retrying in 3.3 seconds...
+Request failed [429]. Retrying in 14.8 seconds...
 Getting data ... mpceg
-Request failed [429]. Retrying in 1.7 seconds...
-Request failed [429]. Retrying in 2.1 seconds...
-Request failed [429]. Retrying in 5.1 seconds...
-Request failed [429]. Retrying in 14.9 seconds...
-Request failed [429]. Retrying in 30.4 seconds...
 Getting data ... mpcegd
 Getting data ... mpcegn
 Getting data ... mpces
@@ -698,6 +697,11 @@ Getting data ... t20y
 Getting data ... t07y
 Getting data ... vsales
 Getting data ... ue
+Request failed [429]. Retrying in 1.4 seconds...
+Request failed [429]. Retrying in 3.4 seconds...
+Request failed [429]. Retrying in 1.4 seconds...
+Request failed [429]. Retrying in 15.1 seconds...
+Request failed [429]. Retrying in 6.8 seconds...
 Getting data ... emp
 Getting data ... jolts
 Getting data ... wei
@@ -716,22 +720,18 @@ Getting data ... pcepi
 Getting data ... delinqrer
 Getting data ... delinqcc
 Getting data ... delinqci
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 3.1 seconds...
-Request failed [429]. Retrying in 3.8 seconds...
-Request failed [429]. Retrying in 4.3 seconds...
-Request failed [429]. Retrying in 1.7 seconds...
-Request failed [429]. Retrying in 56 seconds...
 Getting data ... snyfed
 Getting data ... stxfed
 Getting data ... sphfed
 Getting data ... cfnai
-Request failed [429]. Retrying in 1.8 seconds...
-Request failed [429]. Retrying in 3.3 seconds...
-Request failed [429]. Retrying in 3.8 seconds...
-Request failed [429]. Retrying in 15.6 seconds...
 Getting data ... baa
 Getting data ... lfpr
+Request failed [429]. Retrying in 1.7 seconds...
+Request failed [429]. Retrying in 3.8 seconds...
+Request failed [429]. Retrying in 7.1 seconds...
+Request failed [429]. Retrying in 10.8 seconds...
+Request failed [429]. Retrying in 6.5 seconds...
+Request failed [429]. Retrying in 35.8 seconds...
 st
 advsales
 advsales
@@ -1330,7 +1330,7 @@ label: unnamed-chunk-24
   ordinary text without R code
 
 
-output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-07-12-nowcast.tex
+output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-07-13-nowcast.tex
 
 Finished - model-nowcasts
 [[1]]

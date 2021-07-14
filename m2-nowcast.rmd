@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-12] m1.rds'
+M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-13] m1.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -1107,7 +1107,7 @@ local({
 			x %>% purrr::imap_dfr(function(df, .form)
 				df %>%
 					tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
-					dplyr::mutate(., freq = .freq, form = .form, vdate = VINTAGE_DATE)
+					dplyr::mutate(., freq = .freq, form = .form, vdate = p$VINTAGE_DATE)
 				)
 			) %>%
 		na.omit(.)
@@ -1116,139 +1116,18 @@ local({
 })
 ```
 
-Compare inputs
-dplyr::full_join(readxl::read_excel('model-inputs/inputs.xlsx', sheet = 1) %>% dplyr::transmute(., varname, st_1 = st, sc_1 = sckey,  dfm_input_1 = dfminput), readxl::read_excel('model-inputs/inputs.xlsx', sheet = 'all-variables') %>% dplyr::transmute(., varname, st_2 = st, sc_2 = sckey, dfm_input_2 = nc_dfm_input), by = 'varname') %>% dplyr::mutate(., (x = st_1 == st_2) & (sc_1 == sc_2)) %>% View(.)
-# Document & Store
 
-## Send to SQL
+# Finalize
+
+## Export
 ```{r}
 local({
-	
-	conn =
-		dbConnect(
-		RPostgres::Postgres(),
-		dbname = CONST$DB_DATABASE,
-		host = CONST$DB_SERVER,
-		port = 5432,
-		user = CONST$DB_USERNAME,
-		password = CONST$DB_PASSWORD
-		)
-	
-	# TRUNCATE nc_releases;TRUNCATE nc_params CASCADE;TRUNCATE nc_values;TRUNCATE nc_history;
-	if (RESET_ALL == TRUE) {
-		DBI::dbGetQuery(conn, 'TRUNCATE nc_params CASCADE')
-		DBI::dbGetQuery(conn, 'TRUNCATE nc_values')
-		DBI::dbGetQuery(conn, 'TRUNCATE nc_history')
-		DBI::dbGetQuery(conn, 'TRUNCATE nc_releases')
-	}
-	
-	# Send variables to SQL
-	query =
-	  econforecasting::createInsertQuery(
-	    m$h$flatDf %>% dplyr::mutate(value = round(value, 4)),
-	    'nc_history',
-	    'ON CONFLICT ON CONSTRAINT nc_history_varname_date_form_freq DO UPDATE SET value = EXCLUDED.value'
-	    )
-	res = DBI::dbGetQuery(conn, query)
-
-	
-	# Send variables to SQL
-	query =
-	  econforecasting::createInsertQuery(
-	    m$paramsDf %>% dplyr::select(., -releaseid),
-	    'nc_params',
-	    'ON CONFLICT ON CONSTRAINT nc_params_varname DO UPDATE SET fullname=EXCLUDED.fullname,
-	    category=EXCLUDED.category, dispgroup=EXCLUDED.dispgroup, source=EXCLUDED.source,
-	    sckey=EXCLUDED.sckey, units=EXCLUDED.units, freq=EXCLUDED.freq, sa=EXCLUDED.sa,
-	    st=EXCLUDED.st, d1=EXCLUDED.d1, d2=EXCLUDED.d2, dfminput=EXCLUDED.dfminput,
-	    nowcast=EXCLUDED.nowcast'
-	    )
-	res = DBI::dbGetQuery(conn, query)
-
-	
-	# Insert nc_values
-	query =
-	  econforecasting::createInsertQuery(
-	    m$ncpredFlat,
-	    'nc_values',
-	    'ON CONFLICT ON CONSTRAINT nc_values_varname_date_form_vdate_freq DO UPDATE SET value = EXCLUDED.value'
-	    )
-	res = DBI::dbGetQuery(conn, query)
-	
-	
-	# Insert nc_releases
-	query =
-	  econforecasting::createInsertQuery(
-	    m$releaseDf,
-	    'nc_releases',
-	    'ON CONFLICT ON CONSTRAINT nc_releases_id DO UPDATE SET link=EXCLUDED.link, count=EXCLUDED.count,seriesnames=EXCLUDED.seriesnames,reldates=EXCLUDED.reldates'
-	    )
-	res = DBI::dbGetQuery(conn, query)
-
-	
-	# Insert fc_forecast_last_vintage
-	# forecastLastVintageDf =
-	# 	m$forecastDf %>%
-	# 	dplyr::group_by(fcname) %>% 
-	# 	dplyr::filter(., vintageDate == max(vintageDate)) %>%
-	# 	dplyr::ungroup(.) %>%
-	# 	dplyr::rename(., obs_date = date, vintage_date = vintageDate)
-	# query =
-	#   econforecasting::createInsertQuery(
-	#     forecastLastVintageDf,
-	#     'fc_forecast_last_vintage',
-	#     'ON CONFLICT ON CONSTRAINT fc_forecast_last_vintage_fcname_obs_date_varname DO UPDATE SET value = EXCLUDED.value, vintage_date = EXCLUDED.vintage_date'
-	#     )
-	# res = DBI::dbGetQuery(conn, query)
-	
-})
-```
-
-## Save data to RDS and process .rnw
-```{r}
-local({
-	
-
-	basename =  paste0(VINTAGE_DATE, '-nowcast')
-	saveRDS(list(CONST = CONST, ef = ef), file = file.path(OUTPUT_DIR, paste0(basename, '.rds')))
-	# setwd(str_replace(DOC_PATH, '/[^/]+$', ''))
-	
-	# Cleanup existing .pdf and .tex files
-	lapply(list.files(path = OUTPUT_DIR, pattern = '\\.tex$', full.names = TRUE), function(x) file.remove(x))
-	lapply(list.files(path = OUTPUT_DIR, pattern = '\\.pdf$', full.names = TRUE), function(x) file.remove(x))
-	unlink(file.path(OUTPUT_DIR, 'latex-figures'), recursive = TRUE)
-	
-	# Cleanup latex-figures doc
-	
-	if (!is.null(DOC_DIR)) {	
-		knitr::knit2pdf(
-			input = file.path(DOC_DIR, 'nowcast.rnw'),
-			output = file.path(OUTPUT_DIR, paste0(basename, '.tex')),
-			clean = TRUE
-			)
-		
-		file.remove(file.path(OUTPUT_DIR, paste0(basename, '.log')))
-
-		file.copy(
-			from =  file.path(OUTPUT_DIR, paste0(basename, '.pdf')),
-			to = file.path(DIR, 'nowcast-documentation.pdf'),
-			overwrite = TRUE
-			)
-
-		file.copy(
-			from =  file.path(OUTPUT_DIR, paste0(basename, '.pdf')),
-			to = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
-			overwrite = TRUE
-			)
-		
-
-		# Upload via SFTP
-		RCurl::ftpUpload(
-			what = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
-			to = paste0(CONST$SFTP_PATH_PUBLIC, 'nowcast-documentation.pdf')
-			)
-
-	}
+  
+    saveRDS(
+    	list(p = p, h = h, m = m),
+    	str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m2.rds')
+    	)
+    
 })
 ```
 
