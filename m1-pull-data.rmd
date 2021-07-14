@@ -673,7 +673,7 @@ local({
         )
     
     filePaths =
-        seq(as.Date('2021-01-01'), to = add_with_rollback(p$VINTAGE_DATE, months(-1)), by = '3 months') %>%
+        seq(as.Date('2021-01-01'), to = add_with_rollback(p$VINTAGE_DATE, months(0)), by = '3 months') %>%
         purrr::map(., function(x)
             list(
                 date = x,
@@ -770,6 +770,7 @@ local({
                 # Now split and fill in frequencies and quarterly data
                 dplyr::group_by(., fcfullname, varname) %>%
                 dplyr::group_split(.) %>%
+            	purrr::keep(., function(z) nrow(dplyr::filter(z, !is.na(value))) > 0 ) %>% # Cull completely empty data frames
                 purrr::map_dfr(., function(z)
                     tibble(
                         date = seq(from = min(na.omit(z)$date), to = max(na.omit(z)$date), by = '3 months')
