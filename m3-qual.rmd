@@ -1,0 +1,193 @@
+# Initialize
+## Set Options
+```{r purl = TRUE}
+# Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-14] m2.rds'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
+OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
+```
+
+# Initialize
+```{r}
+# General purpose
+library(tidyverse) # General
+library(data.table) # General
+library(devtools) # General
+library(lubridate) # Dates
+library(glue) # String Interpolation
+# Data parse/import
+library(jsonlite) # JSON Parser
+library(rvest) # HTML Parser
+library(httr) # CURL Interface
+# SQL/Apache Spark
+library(DBI) # SQL Interface
+# library(RPostgres) # PostgreSQL
+# library(rsparklyr) # Spark
+# My package
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
+# library(econforecasting)
+
+# Set working directory
+setwd(DIR)
+
+# Read constants
+source(file.path(INPUT_DIR, 'constants.r'))
+```
+
+## Load RDS
+```{r}
+local({
+	
+	rds = readRDS(M2_PATH)
+
+	p <<- rds$p
+	m <<- rds$m
+	h <<- rds$h
+})
+```
+
+
+
+# Generate Initial Forecasts
+
+## CMEFI Baseline Forecasts (Qual)
+Display in website those variables not taken from "external" source - e.g. unemp
+```{r}
+local({
+
+    x = list()
+    
+    x$ffr =
+        m$ext$sources$cme %>%
+        dplyr::filter(., varname == 'ffr') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$ffr$h$base$m$date)) %>%
+        dplyr::transmute(., form, date, value)
+    
+    x$sofr =
+        m$ext$sources$cme %>%
+        dplyr::filter(., varname == 'sofr') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$sofr$h$base$m$date)) %>%
+        dplyr::transmute(., form, date, value)
+    
+    x$inf =
+        m$ext$sources$cle %>%
+        dplyr::filter(., varname == 'inf') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$inf$h$base$m$date)) %>%
+        dplyr::transmute(., form, date, value)
+    
+    x$tdns1 =
+        m$ext$sources$dns %>%
+        dplyr::filter(., varname == 'tdns1') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$tdns1$h$base$m$date)) %>%
+        dplyr::transmute(., form, date, value)
+    
+    x$tdns2 =
+        m$ext$sources$dns %>%
+        dplyr::filter(., varname == 'tdns2') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$tdns2$h$base$m$date)) %>%
+        dplyr::transmute(., form, date, value)
+    
+    x$tdns3 =
+        m$ext$sources$dns %>%
+        dplyr::filter(., varname == 'tdns3') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$tdns3$h$base$m$date)) %>%
+        dplyr::transmute(., form, date, value)
+
+    
+    # Bind to nowcast
+    x$pid =
+        p$variables$pid$h$st$m %>%
+        tail(., 4) %>%
+        dplyr::transmute(., form = 'd1', date, value) %>%
+        dplyr::bind_rows(
+            .,
+            tibble(
+                form = 'd1',
+                date = seq(from = lubridate::add_with_rollback(tail(.$date, 1), months(1)), by = '1 month', length.out = 60),
+                value = 
+                    c(
+                        0/100,
+                        -5/100,
+                        -10/100,
+                        rep(NA, 7),
+                        rep(mean(ef$variables$dpi$h$st$m$value), 50)
+                        ) %>%
+                    zoo::na.spline(., method = 'natural')
+            )
+        ) %>%
+        tail(., -4)
+    
+    
+    # Display in website
+    initial$ue =
+        # Take last four quarters of historical data
+        ef$variables$ue$h$base$m %>%
+        tail(., 4) %>%
+        dplyr::transmute(., form = 'd1', date, value) %>%
+        # Bind next 24 months
+        dplyr::bind_rows(
+            .,
+            tibble(
+                form = 'd1',
+                date = seq(from = lubridate::add_with_rollback(tail(.$date, 1), months(1)), by = '1 month', length.out = 60)
+                )
+            ) %>%
+        # Now join with external forecast, but use historical data if external forecast has same dates
+        dplyr::left_join(
+            .,
+            m$ext$sources$spf %>%
+                dplyr::filter(., vdate == max(vdate) & varname == 'unemp') %>%
+                dplyr::transmute(., form, date, value2 = value),
+            by = c('form', 'date')
+        ) %>%
+        dplyr::mutate(., value = ifelse(!is.na(value), value, value2)) %>%
+        # Add in long run average
+        dplyr::mutate(., value = ifelse(date == max(date), 5.0, value)) %>%
+        # Splinal interpolate
+        dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
+        tail(., -4)
+    
+    initial$spy =
+        ef$variables$ue$h$base$m %>%
+        dplyr::filter(., )
+    
+    
+    # Calculated
+	initial$pid =
+		
+
+    
+    
+    m$qual$baseline <<- initial
+})
+```
+
+## Other Scenario Forecasts (Qual)
+```{r}
+local({
+    
+    
+})
+```
+
+## All Scenario Forecasts (Calc)
+```{r}
+local({
+	
+	
+	
+	
+	
+})
+```
+
+

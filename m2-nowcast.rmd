@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-13] m1.rds'
+M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-14] m1.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -576,43 +576,43 @@ local({
 local({
   
 	# d1 form MUST match stationary form for these variables
-	reqs =
-		tribble(
-			~fcname, ~varname,
-			'dns', 't10y',
-			'dns', 't30y',
-			'dns', 't05y',
-			'dns', 't02y',
-			'dns', 't01y',
-			'dns', 't06m',
-			'dns', 't03m',
-			'dns', 't01m',
-			'dns', 't20y',
-			'dns', 't07y',
-			'cme', 'ffr',
-			'cme', 'sofr'
-			)
-	
-	cmefiDf =
-		dplyr::bind_rows(m$ext$sources) %>%
-		dplyr::filter(., form == 'd1') %>%
-		dplyr::select(., -form) %>%
-		dplyr::right_join(., reqs, by = c('fcname', 'varname')) %>%
-		dplyr::group_by(., varname) %>%
-		dplyr::filter(., vdate == max(vdate)) %>%
-		dplyr::ungroup(.) %>%
-		dplyr::select(., -vdate, -fcname) %>%
-		dplyr::mutate(., freq = 'm') %>%
-		# Only keep rows without a match in FRED data
-		dplyr::anti_join(., h$flatDf %>% dplyr::filter(., form == 'd1'), by = c('varname', 'date', 'freq')) %>%
-		# Pivot
-		dplyr::select(., -freq) %>%
-		tidyr::pivot_wider(., names_from = varname, values_from = value) %>%
-		dplyr::arrange(., date) %>%
-		dplyr::filter(., date <= tail(m$nc$bigTStarDates, 1))
-	
-	
-  m$nc$cmefiDf <<- cmefiDf
+# 	reqs =
+# 		tribble(
+# 			~fcname, ~varname,
+# 			'dns', 't10y',
+# 			'dns', 't30y',
+# 			'dns', 't05y',
+# 			'dns', 't02y',
+# 			'dns', 't01y',
+# 			'dns', 't06m',
+# 			'dns', 't03m',
+# 			'dns', 't01m',
+# 			'dns', 't20y',
+# 			'dns', 't07y',
+# 			'cme', 'ffr',
+# 			'cme', 'sofr'
+# 			)
+# 	
+# 	cmefiDf =
+# 		dplyr::bind_rows(m$ext$sources) %>%
+# 		dplyr::filter(., form == 'd1') %>%
+# 		dplyr::select(., -form) %>%
+# 		dplyr::right_join(., reqs, by = c('fcname', 'varname')) %>%
+# 		dplyr::group_by(., varname) %>%
+# 		dplyr::filter(., vdate == max(vdate)) %>%
+# 		dplyr::ungroup(.) %>%
+# 		dplyr::select(., -vdate, -fcname) %>%
+# 		dplyr::mutate(., freq = 'm') %>%
+# 		# Only keep rows without a match in FRED data
+# 		dplyr::anti_join(., h$flatDf %>% dplyr::filter(., form == 'd1'), by = c('varname', 'date', 'freq')) %>%
+# 		# Pivot
+# 		dplyr::select(., -freq) %>%
+# 		tidyr::pivot_wider(., names_from = varname, values_from = value) %>%
+# 		dplyr::arrange(., date) %>%
+# 		dplyr::filter(., date <= tail(m$nc$bigTStarDates, 1))
+# 	
+# 	
+#   m$nc$cmefiDf <<- cmefiDf
 })
 ```
 
@@ -909,10 +909,10 @@ local({
 ```{r}
 local({
 	
-	mDf =
-		list(m$nc$dfmMDf, m$nc$cmefiDf) %>%
-		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-		dplyr::arrange(., date)
+	mDf = m$nc$dfmMDf
+		# list(m$nc$dfmMDf, m$nc$cmefiDf) %>%
+		# purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+		# dplyr::arrange(., date)
 	
 	qDf =
 		list(m$nc$dfmQDf) %>%
@@ -920,8 +920,8 @@ local({
 		dplyr::arrange(., date)
 
 
-	m$ncpred0$m$st <<- mDf
-	m$ncpred0$q$st <<- qDf
+	m$ncpred0$st$m <<- mDf
+	m$ncpred0$st$q <<- qDf
 })
 ```
 
@@ -930,8 +930,9 @@ local({
 ```{r}
 local({
 	
+		
 	mDf =
-		m$ncpred0$m$st %>%
+		m$ncpred0$st$m %>%
 		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
 			
 			transform = dplyr::filter(p$variablesDf, varname == .varname)$st
@@ -946,6 +947,7 @@ local({
 					!!.varname := 
 						{
 	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
+							else if (transform == 'apchg') unapchg(fcDf[[2]], 12, histDf[[2]])
 							else if (transform == 'base') .[[2]]
 							else stop('Err: ', .varname)
 							}
@@ -972,6 +974,7 @@ local({
 					!!.varname := 
 						{
 	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
+							else if (transform == 'apchg') unapchg(fcDf[[2]], 4, histDf[[2]])
 							else if (transform == 'base') .[[2]]
 							else stop('Err: ', .varname)
 							}
@@ -980,10 +983,10 @@ local({
 			})} %>%
 		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 		dplyr::arrange(., date)
+		
 	
-
-	m$ncpred0$m$base <<- mDf
-	m$ncpred0$q$base <<- qDf
+	m$ncpred0$base$m <<- mDf
+	m$ncpred0$base$q <<- qDf
 })
 ```
 

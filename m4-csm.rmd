@@ -1,0 +1,217 @@
+# Core Structural Model
+
+## CSM Forecasting - Quarterly (All)
+```{r}
+local({
+    
+    # First get historical data frame
+    histDf =
+        h$st$q %>%
+        na.omit(.)
+    
+    # Merge exog df
+    exogDf =
+        tibble(
+            date = seq(add_with_rollback(tail(histDf$date, 1), months(3)), by = '3 month', length.out = 60),
+            dpi = c(-.03, -.01, rep(0, 58))
+            )
+    
+    
+    # Now collapse into single data frame - 60 forecast quarters + 4 historical months,
+    # combining historical & exogenous, overwriting exogenous with historical if it exists
+    initDf =
+        tibble(
+            date = c(
+                tail(histDf$date, 4),
+                seq(add_with_rollback(tail(histDf$date, 1), months(3)), by = '3 month', length.out = 60)
+                )
+            ) %>%
+        dplyr::left_join(
+            .,
+            dplyr::full_join(
+                tidyr::pivot_longer(histDf, -date, values_to = 'hist'),
+                tidyr::pivot_longer(exogDf, -date, values_to = 'exog'), by = c('name', 'date')
+                ) %>%
+                dplyr::mutate(., value = ifelse(is.na(hist), exog, hist)) %>%
+                dplyr::select(., date, name, value) %>% tidyr::pivot_wider(.),
+            by = 'date'
+            )
+    
+    # Now create coefficient matrices
+    # Get steady-state values
+    ss =
+        h$base$q %>%
+        na.omit(.) %>%
+        dplyr::filter(., date == max(date)) %>%
+        dplyr::select(., -date) %>%
+        purrr::transpose(.) %>%
+        .[[1]]
+    
+    
+    coefMatsIdentity =
+        list(
+            gdp =
+                tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp)
+        )
+    
+    
+    # Get
+    # Get historical data
+    histDfAll =
+        histDf %>%
+        dplyr::bind_cols(
+            .,
+            constant = 1,
+            lapply(1:4, function(l)
+                dplyr::transmute_if(histDf, is.numeric, function(x) dplyr::lag(x, l)) %>%
+                    dplyr::rename_with(., function(x) paste0(x, '.l', l))
+                )
+            )
+
+    
+    # Iterate through equations
+    eqnsList =
+        list(
+            pce = 'pce = constant + _ma2.dpi + pce.l1',
+            pdi = 'pdi = constant + _lma2.pdi',
+            im = 'im = constant + _lma2.im',
+            ex = 'ex = constant + _lma2.ex',
+            govt = 'govt = constant + _lma2.govt',
+            dpi = 'dpi = constant + _lma2.dpi + pce.l1',
+            ffr = 'ffr = ffr.l1'
+        )
+    
+    # Get estimated coefficient matrices
+    coefMatsEstimated = purrr::map(eqnsList, function(eqn) {
+        message(eqn)
+        
+        yCoef = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 1] %>% str_squish(.)
+        
+        xCoefs =
+            eqn %>%
+            str_split_fixed(., '=', 2) %>%
+            .[1, 2] %>%
+            str_split(., '\\+') %>%
+            .[[1]] %>%
+            str_squish(.) %>%
+            purrr::map_dfr(., function(x)
+                if (str_detect(x, '_ma2')) tibble(coefname = paste0(str_replace(x, coll('_ma2.'), ''), c('', '.l1')), adj = .5)
+                else if (str_detect(x, '_lma2')) tibble(coefname = paste0(str_replace(x, coll('_lma2.'), ''), c('.l1', '.l2')), adj = .25)
+                else tibble(coefname = x, adj = 1)
+                )
+    
+        inputDf =
+            histDfAll %>%
+            dplyr::select(., date, all_of(c(yCoef, xCoefs$coefname))) %>%
+            na.omit(.)
+        
+        yMat = inputDf %>% dplyr::select(., all_of(yCoef)) %>% as.matrix(.)
+        xMat = inputDf %>% dplyr::select(., all_of(xCoefs$coefname)) %>% as.matrix(.)
+        
+        
+        coefRes =
+            solve(t(xMat) %*% xMat) %*% (t(xMat) %*% yMat) %>%
+            as.data.frame(.) %>%
+            rownames_to_column(.) %>%
+            setNames(., c('coefname', 'value')) %>%
+            as_tibble(.) %>%
+            dplyr::left_join(xCoefs, by = 'coefname') %>%
+            dplyr::transmute(., coefname, value = value * adj * -1) %>%
+            dplyr::bind_rows(tibble(coefname = yCoef, value = 1), .) %>%
+            tidyr::pivot_wider(., names_from = 'coefname')
+        
+        return(coefRes)
+    })
+
+        
+        
+    # Seperate endogeneous (estimated) and exogenous matrices
+    endogVars = names(c(coefMatsIdentity, coefMatsEstimated))
+    
+    coefMat =
+        purrr::imap_dfr(c(coefMatsIdentity, coefMatsEstimated), function(x, i) dplyr::bind_cols(coefname = i, x)) %>%
+        replace(., is.na(.), 0)
+    
+    
+    # Pass accumulator new exogenous variables each time
+    resDf = purrr::reduce(5:nrow(initDf), function(df, .row) {
+        
+        allCoefDf =
+            df %>%
+            dplyr::bind_cols(
+                .,
+                constant = 1,
+                lapply(1:4, function(l)
+                    dplyr::transmute_if(df, is.numeric, function(x) dplyr::lag(x, l)) %>%
+                        dplyr::rename_with(., function(x) paste0(x, '.l', l))
+                    )
+                ) %>%
+            dplyr::select(., c('date', colnames(coefMat) %>% .[. != 'coefname'])) %>%
+            .[.row, ]
+        
+        
+        bMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., is.na(value)) %>% .$name
+        dMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., !is.na(value)) %>% .$name
+        # Only keep equations where not already filled
+        cMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.)
+        aMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(bMatVars)) %>% as.matrix(.)
+        dMat = allCoefDf %>% dplyr::select(., dMatVars) %>% as.matrix(.) %>% t(.)
+        
+        bMat = solve(aMat) %*% (cMat %*% dMat)
+        bMatVec = bMat %>% as.data.frame(.) %>% rownames_to_column(.) %>% {setNames(.$V1, .$rowname)}
+        
+        for (varname in names(bMatVec)) {
+            df[[.row, varname]] = bMatVec[[varname]]
+        }
+        
+        return(df)
+    }, .init = initDf)
+
+})
+```
+
+
+
+## CSM Forecasting - Monthly De-Agg
+```{r}
+
+```
+
+
+## Get structural model exogenous shock
+```{r}
+local({
+    
+    
+    
+    
+})
+```
+
+
+```{r}
+local({
+    
+    # Can use qualitative forecasts or just use raw inputs
+    # Included: 
+    # Federal Funds Rate, 3M - FFR Spread, 10y - 3M Spread,
+    # DPI, UE
+    # SPY, Expected 1-Year Forward GDP,
+    # Inflation
+    
+    initialForecasts = list(
+        ffr = ef$e$forecasts$cme %>% dplyr::filter(., varname == 'ffr'),
+        sofr = ef$e$forecasts$cme %>% dplyr::filter(., varname == 'sofr'),
+        t03mffrspread =
+            ef$h$base$m %>%
+            dplyr::select(., date, t03mffrspread) %>%
+            na.omit(.) %>%
+            {tibble(
+                date = seq(add_with_rollback(max(.$date), months(1)), by = '1 month', length.out = 100),
+                value = as.numeric(predict(arima(x = .[[2]], order = c(12, 0, 0)), 100)$pred)
+                )},
+        t10yt03mspread = c()
+        )
+
+})
+```
