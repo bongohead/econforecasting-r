@@ -959,7 +959,7 @@ local({
 	
 	
 	qDf =
-		m$ncpred0$q$st %>%
+		m$ncpred0$st$q %>%
 		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
 			
 			transform = dplyr::filter(p$variablesDf, varname == .varname)$st
@@ -990,12 +990,81 @@ local({
 })
 ```
 
+## D1 Form
+```{r}
+local({
+	
+	res = lapply(list('d1') %>% setNames(., .), function(.form) {
+		
+		mDf =
+			m$ncpred0$base$m %>%
+			{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+				
+				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+				fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
+				histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
+				
+				dplyr::bind_rows(histDf, fcDf) %>%
+					dplyr::mutate(
+						.,
+						!!.varname := 
+							{
+		                        if (transform == 'dlog') dlog(.[[2]])
+								else if (transform == 'apchg') apchg(.[[2]], 12)
+								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'base') .[[2]]
+								else stop('Err: ', .varname)
+								}
+							) %>% .[2:nrow(.),]
+				
+				})} %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date)
+		
+		
+		qDf =
+			m$ncpred0$base$q %>%
+			{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+				
+				transform = dplyr::filter(p$variablesDf, varname == .varname)$st
+				fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
+				histDf = tail(dplyr::filter(na.omit(h$base$q[, c('date', .varname)]), date < min(fcDf$date)), 1)
+				
+				dplyr::bind_rows(histDf, fcDf) %>%
+					dplyr::mutate(
+						.,
+						!!.varname := 
+							{
+		                        if (transform == 'dlog') dlog(.[[2]])
+								else if (transform == 'apchg') apchg(.[[2]], 4)
+								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'base') .[[2]]
+								else stop('Err: ', .varname)
+								}
+							) %>% .[2:nrow(.),]
+				
+				})} %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date)
+		
+		list(m = mDf, q = qDf)
+	})
+	
+
+	
+	for (.form in names(res)) {
+		m$ncpred0[[.form]] <<- res[[.form]]
+	}
+})
+```
+
+
 ## Calculate GDP nowcast
 ```{r}
 local({
 	
 	qDf =
-		m$ncpred0$q$base %>%
+		m$ncpred0$base$q %>%
 		dplyr::transmute(
 			.,
 			date,
@@ -1014,15 +1083,15 @@ local({
 		)
 	
 	mDf =
-		m$ncpred0$m$base %>%
+		m$ncpred0$base$m %>%
 		dplyr::transmute(
 			.,
-			date#,
-			#psr = ps/pid
+			date,
+			psr = ps/pid
 		)
 	
-	m$ncpred1$m$base <<- mDf
-	m$ncpred1$q$base <<- qDf
+	m$ncpred1$base$m <<- mDf
+	m$ncpred1$base$q <<- qDf
 })
 ```
 
@@ -1030,70 +1099,81 @@ local({
 ```{r}
 local({
 	
-	wide = list()
+	wide1 = list()
 	
-	wide$m$base =
-		list(m$ncpred0$m$base, m$ncpred1$m$base) %>%
+	wide1$base$m =
+		list(m$ncpred0$base$m, m$ncpred1$base$m) %>%
 		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 		dplyr::arrange(., date)
 
-	wide$q$base =
-		list(m$ncpred0$q$base, m$ncpred1$q$base) %>%
+	wide1$base$q =
+		list(m$ncpred0$base$q, m$ncpred1$base$q) %>%
 		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 		dplyr::arrange(., date)
-
 	
-	wide$m$d1 =
-		wide$m$base %>%
-		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
-			
-			transform = dplyr::filter(p$variablesDf, varname == .varname)$d1
-			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
-			
-			histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
-			
-			dplyr::bind_rows(histDf, fcDf) %>%
-				dplyr::mutate(
-					.,
-					!!.varname := 
-						{
-	                        if (transform == 'apchg') apchg(.[[2]], 12)
-							else if (transform == 'pchg') pchg(.[[2]])
-							else if (transform == 'base') .[[2]]
-							else stop('Err: ', .varname)
-							}
-						) %>%
-				.[2:nrow(.), ]
-			
-			})} %>%
-		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-		dplyr::arrange(., date)
-
 	
-	wide$q$d1 =
-		wide$q$base %>%
-		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
-			
-			transform = dplyr::filter(p$variablesDf, varname == .varname)$d1
-			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
-			
-			histDf = tail(dplyr::filter(na.omit(h$base$q[, c('date', .varname)]), date < min(fcDf$date)), 1)
-			
-			dplyr::bind_rows(histDf, fcDf) %>%
-				dplyr::mutate(
-					.,
-					!!.varname := 
-						{
-	                        if (transform == 'apchg') apchg(.[[2]], 4)
-							else if (transform == 'base') .[[2]]
-							else stop('Err: ', .varname)
-							}
-						) %>%
-				.[2:nrow(.), ]
-			
-			})} %>%
-		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-		dplyr::arrange(., date)
+
+	wide2 = lapply(list('d1', 'd2') %>% setNames(., .), function(.form) {
+		mDf =
+			wide1$base$m %>%
+			{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+				
+				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+				fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
+				histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
+				
+				dplyr::bind_rows(histDf, fcDf) %>%
+					dplyr::mutate(
+						.,
+						!!.varname := 
+							{
+		                        if (transform == 'dlog') dlog(.[[2]])
+								else if (transform == 'apchg') apchg(.[[2]], 12)
+								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'base') .[[2]]
+								else if (transform == 'none') NA
+								else stop('Err: ', .varname)
+								}
+							) %>% .[2:nrow(.),]
+				
+				})} %>%
+			purrr::keep(., function(x) !all(is.na(x[[2]]))) %>% # Cull nones
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date)
+		
+		
+		qDf =
+			wide1$base$q %>%
+			{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+				
+				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+				fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
+				histDf = tail(dplyr::filter(na.omit(h$base$q[, c('date', .varname)]), date < min(fcDf$date)), 1)
+				
+				dplyr::bind_rows(histDf, fcDf) %>%
+					dplyr::mutate(
+						.,
+						!!.varname := 
+							{
+		                        if (transform == 'dlog') dlog(.[[2]])
+								else if (transform == 'apchg') apchg(.[[2]], 4)
+								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'base') .[[2]]
+								else if (transform == 'none') NA
+								else stop('Err: ', .varname)
+								}
+							) %>% .[2:nrow(.),]
+				
+				})} %>%
+			purrr::keep(., function(x) !all(is.na(x[[2]]))) %>% # Cull nones
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date)
+		
+		list(m = mDf, q = qDf)
+	})
+	
+	
+	wide = c(wide1, wide2)
 
 	
 	m$ncpred <<- wide
@@ -1106,8 +1186,8 @@ local({
 	
 	flat =
 		m$ncpred %>%
-		purrr::imap_dfr(function(x, .freq)
-			x %>% purrr::imap_dfr(function(df, .form)
+		purrr::imap_dfr(function(x, .form)
+			x %>% purrr::imap_dfr(function(df, .freq)
 				df %>%
 					tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
 					dplyr::mutate(., freq = .freq, form = .form, vdate = p$VINTAGE_DATE)
