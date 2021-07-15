@@ -41,7 +41,7 @@ apchg = function(x, .periods = 12) {
 }
 
 unapchg = function(x, .periods = 12, .h) {
-    purrr::accumulate((x/100 + 1)^(1/.periods), function(accum, z) accum * z, .init = .h)
+    purrr::accumulate((x/100 + 1)^(1/.periods), function(accum, z) accum * z, .init = .h) %>% .[2:length(.)]
 }
 
 
@@ -51,7 +51,7 @@ pchg = function(x) {
 
 
 unpchg = function(x, .h) {
-    purrr::accumulate((x/100 + 1), function(accum, z) accum * z, .init = .h)
+    purrr::accumulate((x/100 + 1), function(accum, z) accum * z, .init = .h) %>% .[2:length(.)]
 }
 
 
