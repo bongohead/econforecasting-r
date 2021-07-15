@@ -13,16 +13,15 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong) - try later, for now use standard and see if tdns estimates are too off from actual construction
 - Add: DFM package for R
 
--> OR EOM ONLY AFTER 20TH
--> Investigate AGG METHOD
-switched 1 to2 to eom agg
 
 # CHANGELOG
 ## 2021-07-08 [v0.15]
-- @TODO: Add correct data pull wrt VINTAGE_DATE
-- Added rewrite of model flow: (1) data -> (2) external/qual forecasts; (3) nowcasts; (4) csm
+- Added rewrite of model flow: (1) data, (2) nowcasts, (3) qual forecasts, (4) csm
 - Added table of releases to inputs
 - Added refactoring of release date pulling process
+- Added nowcast d2 transformation
+- Added date pull to reflect VINTAGE_DATE
+- Improved nowcast variables to match structure of other variable data (obj$[[form]]$[[freq]])
 - Removed some old unused files
 
 ## 2021-06-24 [v0.14]
