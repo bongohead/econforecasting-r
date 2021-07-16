@@ -784,7 +784,7 @@ local({
 			yMat = dplyr::select(inputDf, all_of(.varname)) %>% as.matrix(.)
 			xDf = dplyr::select(inputDf, -date, -all_of(.varname)) %>% dplyr::mutate(., constant = 1)
 			
-			glmResult = lapply(c(1), function(.alpha) {
+			glmResult = lapply(c(0, .5), function(.alpha) {
 				cv =
 					glmnet::cv.glmnet(
 						x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
