@@ -1,5 +1,5 @@
-Run :2021-07-14
-Started - model-asset-contagion: 2021-07-14 20:00:00
+Run :2021-07-15
+Started - model-asset-contagion: 2021-07-15 20:00:00
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
@@ -50,1297 +50,3 @@ i Updating econforecasting documentation
 i Loading econforecasting
 Writing NAMESPACE
 Writing NAMESPACE
-100
-200
-300
-100
-200
-300
-400
-500
-600
-700
-800
-900
-1000
-2021-07-14 20:03:30
-2021-07-14 20:03:31
-Finished - model-asset-contagion
-Started - model-baseline-forecasts: 2021-07-14 20:03:31
-
-
-processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
-  |                                                                              |                                                                      |   0%  |                                                                              |..                                                                    |   3%  |                                                                              |....                                                                  |   5%  |                                                                              |.....                                                                 |   8%  |                                                                              |.......                                                               |  10%  |                                                                              |.........                                                             |  13%  |                                                                              |...........                                                           |  15%  |                                                                              |.............                                                         |  18%  |                                                                              |..............                                                        |  21%  |                                                                              |................                                                      |  23%  |                                                                              |..................                                                    |  26%  |                                                                              |....................                                                  |  28%  |                                                                              |......................                                                |  31%  |                                                                              |.......................                                               |  33%  |                                                                              |.........................                                             |  36%  |                                                                              |...........................                                           |  38%  |                                                                              |.............................                                         |  41%  |                                                                              |...............................                                       |  44%  |                                                                              |................................                                      |  46%  |                                                                              |..................................                                    |  49%  |                                                                              |....................................                                  |  51%  |                                                                              |......................................                                |  54%  |                                                                              |.......................................                               |  56%  |                                                                              |.........................................                             |  59%  |                                                                              |...........................................                           |  62%  |                                                                              |.............................................                         |  64%  |                                                                              |...............................................                       |  67%  |                                                                              |................................................                      |  69%  |                                                                              |..................................................                    |  72%  |                                                                              |....................................................                  |  74%  |                                                                              |......................................................                |  77%  |                                                                              |........................................................              |  79%  |                                                                              |.........................................................             |  82%  |                                                                              |...........................................................           |  85%  |                                                                              |.............................................................         |  87%  |                                                                              |...............................................................       |  90%  |                                                                              |.................................................................     |  92%  |                                                                              |..................................................................    |  95%  |                                                                              |....................................................................  |  97%  |                                                                              |......................................................................| 100%
-output file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.r
-
-
-Attaching package: 'rvest'
-
-The following object is masked from 'package:readr':
-
-    guess_encoding
-
-i Loading econforecasting
-i Updating econforecasting documentation
-i Loading econforecasting
-Writing NAMESPACE
-Writing NAMESPACE
-Getting data ... gdp
-Getting data ... ffr
-Getting data ... sofr
-Getting data ... t10y
-Getting data ... t30y
-Getting data ... t05y
-Getting data ... t02y
-Getting data ... t01y
-Getting data ... t06m
-Getting data ... t03m
-Getting data ... t01m
-Getting data ... t20y
-Getting data ... t07y
-Getting data ... mort15y
-Getting data ... mort30y
-Getting data ... mort5yr
-Getting data ... hstarts
-Getting data ... cpi
-ffr
-sofr
-t10y
-t30y
-t05y
-t02y
-t01y
-t06m
-t03m
-t01m
-t20y
-t07y
-2021-03-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0321.xls'
-Content type 'application/octet-stream' length 112128 bytes (109 KB)
-==================================================
-downloaded 109 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2021` -> `June 2021...3`
-* `Dec 2021` -> `Dec 2021...4`
-* `June 2022` -> `June 2022...5`
-* `Dec 2022` -> `Dec 2022...6`
-* `June 2023` -> `June 2023...7`
-* ...
-2021-02-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0221.xls'
-Content type 'application/octet-stream' length 111104 bytes (108 KB)
-==================================================
-downloaded 108 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2021` -> `June 2021...3`
-* `Dec 2021` -> `Dec 2021...4`
-* `June 2022` -> `June 2022...5`
-* `Dec 2022` -> `Dec 2022...6`
-* `June 2023` -> `June 2023...7`
-* ...
-2021-01-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0121.xls'
-Content type 'application/octet-stream' length 116736 bytes (114 KB)
-==================================================
-downloaded 114 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2021` -> `June 2021...3`
-* `Dec 2021` -> `Dec 2021...4`
-* `June 2022` -> `June 2022...5`
-* `Dec 2022` -> `Dec 2022...6`
-* `June 2023` -> `June 2023...7`
-* ...
-2020-12-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon1220.xls'
-Content type 'application/octet-stream' length 115200 bytes (112 KB)
-==================================================
-downloaded 112 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-11-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon1120.xls'
-Content type 'application/octet-stream' length 114176 bytes (111 KB)
-==================================================
-downloaded 111 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-10-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon1020.xls'
-Content type 'application/octet-stream' length 113152 bytes (110 KB)
-==================================================
-downloaded 110 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-09-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0920.xls'
-Content type 'application/octet-stream' length 112640 bytes (110 KB)
-==================================================
-downloaded 110 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-08-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0820.xls'
-Content type 'application/octet-stream' length 108032 bytes (105 KB)
-==================================================
-downloaded 105 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-07-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0720.xls'
-Content type 'application/octet-stream' length 110080 bytes (107 KB)
-==================================================
-downloaded 107 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `Dec 2020` -> `Dec 2020...3`
-* `June 2021` -> `June 2021...4`
-* `Dec 2021` -> `Dec 2021...5`
-* `June 2022` -> `June 2022...6`
-* `Dec 2022` -> `Dec 2022...7`
-* ...
-2020-06-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0620.xls'
-Content type 'application/octet-stream' length 105984 bytes (103 KB)
-==================================================
-downloaded 103 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-05-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0520.xls'
-Content type 'application/octet-stream' length 72192 bytes (70 KB)
-==================================================
-downloaded 70 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-04-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0420.xls'
-Content type 'application/octet-stream' length 69632 bytes (68 KB)
-==================================================
-downloaded 68 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-03-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0320.xls'
-Content type 'application/octet-stream' length 64512 bytes (63 KB)
-==================================================
-downloaded 63 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-02-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0220.xls'
-Content type 'application/octet-stream' length 75776 bytes (74 KB)
-==================================================
-downloaded 74 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-2020-01-01
-trying URL 'https://online.wsj.com/public/resources/documents/wsjecon0120.xls'
-Content type 'application/octet-stream' length 77824 bytes (76 KB)
-==================================================
-downloaded 76 KB
-
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `` -> ...2
-* `` -> ...4
-* `` -> ...5
-* `` -> ...6
-* `` -> ...7
-* ...
-New names:
-* `June 2020` -> `June 2020...3`
-* `Dec 2020` -> `Dec 2020...4`
-* `June 2021` -> `June 2021...5`
-* `Dec 2021` -> `Dec 2021...6`
-* `June 2022` -> `June 2022...7`
-* ...
-trying URL 'https://www.cbo.gov/system/files/2021-07/51135-2021-07-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 127024 bytes (124 KB)
-==================================================
-downloaded 124 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2021-02/51135-2021-02-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 127273 bytes (124 KB)
-==================================================
-downloaded 124 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2020-07/51135-2020-07-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 121801 bytes (118 KB)
-==================================================
-downloaded 118 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2020-01/51135-2020-01-economicprojections_0.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 123810 bytes (120 KB)
-==================================================
-downloaded 120 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2019-08/51135-2019-08-economicprojections_1.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 110794 bytes (108 KB)
-==================================================
-downloaded 108 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2019-01/51135-2019-01-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 102030 bytes (99 KB)
-==================================================
-downloaded 99 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2018-08/51135-2018-08-economicprojections.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 100053 bytes (97 KB)
-==================================================
-downloaded 97 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.cbo.gov/system/files/2018-06/51135-2018-04-economicprojections_0.xlsx'
-Content type 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' length 97695 bytes (95 KB)
-==================================================
-downloaded 95 KB
-
-New names:
-* `` -> ...1
-* `` -> ...2
-* `` -> ...3
-trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
-Content type 'application/vnd.ms-excel' length 388096 bytes (379 KB)
-==================================================
-downloaded 379 KB
-
-Starting Quandl data scrape...
-Completed Quandl data scrape
-Starting CME data scrape...
-Completed CME data scrape...
-Adding monthly interpolation ...
-SQL Code Finished
-Finished - model-baseline-forecasts
-Started - model-nowcasts: 2021-07-14 20:05:56
-
-
-processing file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.rmd
-  |                                                                              |                                                                      |   0%  |                                                                              |.                                                                     |   2%  |                                                                              |...                                                                   |   4%  |                                                                              |....                                                                  |   6%  |                                                                              |......                                                                |   9%  |                                                                              |.......                                                               |  11%  |                                                                              |.........                                                             |  13%  |                                                                              |..........                                                            |  15%  |                                                                              |............                                                          |  17%  |                                                                              |.............                                                         |  19%  |                                                                              |...............                                                       |  21%  |                                                                              |................                                                      |  23%  |                                                                              |..................                                                    |  26%  |                                                                              |...................                                                   |  28%  |                                                                              |.....................                                                 |  30%  |                                                                              |......................                                                |  32%  |                                                                              |........................                                              |  34%  |                                                                              |.........................                                             |  36%  |                                                                              |...........................                                           |  38%  |                                                                              |............................                                          |  40%  |                                                                              |..............................                                        |  43%  |                                                                              |...............................                                       |  45%  |                                                                              |.................................                                     |  47%  |                                                                              |..................................                                    |  49%  |                                                                              |....................................                                  |  51%  |                                                                              |.....................................                                 |  53%  |                                                                              |.......................................                               |  55%  |                                                                              |........................................                              |  57%  |                                                                              |..........................................                            |  60%  |                                                                              |...........................................                           |  62%  |                                                                              |.............................................                         |  64%  |                                                                              |..............................................                        |  66%  |                                                                              |................................................                      |  68%  |                                                                              |.................................................                     |  70%  |                                                                              |...................................................                   |  72%  |                                                                              |....................................................                  |  74%  |                                                                              |......................................................                |  77%  |                                                                              |.......................................................               |  79%  |                                                                              |.........................................................             |  81%  |                                                                              |..........................................................            |  83%  |                                                                              |............................................................          |  85%  |                                                                              |.............................................................         |  87%  |                                                                              |...............................................................       |  89%  |                                                                              |................................................................      |  91%  |                                                                              |..................................................................    |  94%  |                                                                              |...................................................................   |  96%  |                                                                              |..................................................................... |  98%  |                                                                              |......................................................................| 100%
-output file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.r
-
-
-Attaching package: 'glue'
-
-The following object is masked from 'package:dplyr':
-
-    collapse
-
-i Loading econforecasting
-i Updating econforecasting documentation
-i Loading econforecasting
-Writing NAMESPACE
-Writing NAMESPACE
-Getting data ... gdp
-Getting data ... pce
-Getting data ... pceg
-Getting data ... pcegd
-Getting data ... pcegdmotor
-Getting data ... pcegdfurnish
-Getting data ... pcegdrec
-Getting data ... pcegdother
-Getting data ... pcegn
-Getting data ... pcegnfood
-Getting data ... pcegnclothing
-Getting data ... pcegngas
-Getting data ... pcegnother
-Getting data ... pces
-Getting data ... pceshousing
-Getting data ... pceshealth
-Getting data ... pcestransport
-Getting data ... pcesrec
-Getting data ... pcesfood
-Getting data ... pcesfinal
-Getting data ... pcesother
-Getting data ... pcesnonprofit
-Getting data ... pdi
-Getting data ... pdin
-Getting data ... pdinstruct
-Getting data ... pdinequip
-Getting data ... pdinip
-Getting data ... pdir
-Getting data ... pceschange
-Getting data ... nx
-Getting data ... ex
-Getting data ... exg
-Getting data ... exs
-Getting data ... im
-Getting data ... img
-Getting data ... ims
-Getting data ... govt
-Getting data ... govtf
-Getting data ... govts
-Getting data ... mpce
-Getting data ... mpceg
-Getting data ... mpcegd
-Getting data ... mpcegn
-Getting data ... mpces
-Getting data ... pi
-Getting data ... pid
-Request failed [429]. Retrying in 1.3 seconds...
-Request failed [429]. Retrying in 2.7 seconds...
-Request failed [429]. Retrying in 1.8 seconds...
-Request failed [429]. Retrying in 1.8 seconds...
-Request failed [429]. Retrying in 1.5 seconds...
-Request failed [429]. Retrying in 59.8 seconds...
-Getting data ... po
-Getting data ... ps
-Getting data ... psr
-Getting data ... hpi
-Getting data ... houst
-Getting data ... hsold
-Getting data ... hpermits
-Getting data ... mnodg
-Getting data ... cu
-Getting data ... cons
-Getting data ... ffr
-Getting data ... sofr
-Getting data ... t10y
-Getting data ... t30y
-Getting data ... t05y
-Getting data ... t02y
-Getting data ... t01y
-Getting data ... t06m
-Getting data ... t03m
-Getting data ... t01m
-Getting data ... t20y
-Getting data ... t07y
-Getting data ... vsales
-Getting data ... ue
-Getting data ... emp
-Getting data ... jolts
-Getting data ... wei
-Getting data ... oil
-Getting data ... loansre
-Getting data ... loanscc
-Request failed [429]. Retrying in 1.4 seconds...
-Request failed [429]. Retrying in 2.7 seconds...
-Request failed [429]. Retrying in 1.7 seconds...
-Request failed [429]. Retrying in 15.5 seconds...
-Getting data ... hpils
-Getting data ... stlfsi
-Getting data ... usd
-Getting data ... uemean
-Getting data ... advsales
-Getting data ... kclfi
-Getting data ... csent
-Getting data ... ipi
-Getting data ... pcepi
-Getting data ... delinqrer
-Getting data ... delinqcc
-Getting data ... delinqci
-Getting data ... snyfed
-Getting data ... stxfed
-Getting data ... sphfed
-Getting data ... cfnai
-Getting data ... baa
-Getting data ... lfpr
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 2.8 seconds...
-Request failed [429]. Retrying in 2.8 seconds...
-Request failed [429]. Retrying in 6.9 seconds...
-Request failed [429]. Retrying in 14 seconds...
-Request failed [429]. Retrying in 3.5 seconds...
-st
-advsales
-advsales
-baa
-baa
-cfnai
-cfnai
-cons
-cons
-csent
-csent
-cu
-cu
-delinqcc
-delinqci
-delinqrer
-emp
-emp
-ex
-exg
-exs
-ffr
-ffr
-gdp
-govt
-govtf
-govts
-houst
-houst
-hpermits
-hpermits
-hpi
-hpi
-hpils
-hpils
-hsold
-hsold
-im
-img
-ims
-ipi
-ipi
-jolts
-jolts
-kclfi
-kclfi
-lfpr
-lfpr
-loanscc
-loanscc
-loansre
-loansre
-mnodg
-mnodg
-mpce
-mpce
-mpceg
-mpceg
-mpcegd
-mpcegd
-mpcegn
-mpcegn
-mpces
-mpces
-nx
-oil
-oil
-pce
-pceg
-pcegd
-pcegdfurnish
-pcegdmotor
-pcegdother
-pcegdrec
-pcegn
-pcegnclothing
-pcegnfood
-pcegngas
-pcegnother
-pcepi
-pcepi
-pces
-pceschange
-pcesfinal
-pcesfood
-pceshealth
-pceshousing
-pcesnonprofit
-pcesother
-pcesrec
-pcestransport
-pdi
-pdin
-pdinequip
-pdinip
-pdinstruct
-pdir
-pi
-pi
-pid
-pid
-po
-po
-ps
-ps
-psr
-psr
-snyfed
-snyfed
-sofr
-sofr
-sphfed
-sphfed
-spy
-spy
-stlfsi
-stlfsi
-stxfed
-stxfed
-t01m
-t01m
-t01y
-t01y
-t02y
-t02y
-t03m
-t03m
-t05y
-t05y
-t06m
-t06m
-t07y
-t07y
-t10y
-t10y
-t20y
-t20y
-t30y
-t30y
-ue
-ue
-uemean
-uemean
-usd
-usd
-vix
-vix
-vsales
-vsales
-wei
-wei
-d1
-advsales
-advsales
-baa
-baa
-cfnai
-cfnai
-cons
-cons
-csent
-csent
-cu
-cu
-delinqcc
-delinqci
-delinqrer
-emp
-emp
-ex
-exg
-exs
-ffr
-ffr
-gdp
-govt
-govtf
-govts
-houst
-houst
-hpermits
-hpermits
-hpi
-hpi
-hpils
-hpils
-hsold
-hsold
-im
-img
-ims
-ipi
-ipi
-jolts
-jolts
-kclfi
-kclfi
-lfpr
-lfpr
-loanscc
-loanscc
-loansre
-loansre
-mnodg
-mnodg
-mpce
-mpce
-mpceg
-mpceg
-mpcegd
-mpcegd
-mpcegn
-mpcegn
-mpces
-mpces
-nx
-oil
-oil
-pce
-pceg
-pcegd
-pcegdfurnish
-pcegdmotor
-pcegdother
-pcegdrec
-pcegn
-pcegnclothing
-pcegnfood
-pcegngas
-pcegnother
-pcepi
-pcepi
-pces
-pceschange
-pcesfinal
-pcesfood
-pceshealth
-pceshousing
-pcesnonprofit
-pcesother
-pcesrec
-pcestransport
-pdi
-pdin
-pdinequip
-pdinip
-pdinstruct
-pdir
-pi
-pi
-pid
-pid
-po
-po
-ps
-ps
-psr
-psr
-snyfed
-snyfed
-sofr
-sofr
-sphfed
-sphfed
-spy
-spy
-stlfsi
-stlfsi
-stxfed
-stxfed
-t01m
-t01m
-t01y
-t01y
-t02y
-t02y
-t03m
-t03m
-t05y
-t05y
-t06m
-t06m
-t07y
-t07y
-t10y
-t10y
-t20y
-t20y
-t30y
-t30y
-ue
-ue
-uemean
-uemean
-usd
-usd
-vix
-vix
-vsales
-vsales
-wei
-wei
-d2
-advsales
-advsales
-baa
-baa
-cfnai
-cfnai
-cons
-cons
-csent
-csent
-cu
-cu
-delinqcc
-delinqci
-delinqrer
-emp
-emp
-ex
-exg
-exs
-ffr
-ffr
-gdp
-govt
-govtf
-govts
-houst
-houst
-hpermits
-hpermits
-hpi
-hpi
-hpils
-hpils
-hsold
-hsold
-im
-img
-ims
-ipi
-ipi
-jolts
-jolts
-kclfi
-kclfi
-lfpr
-lfpr
-loanscc
-loanscc
-loansre
-loansre
-mnodg
-mnodg
-mpce
-mpce
-mpceg
-mpceg
-mpcegd
-mpcegd
-mpcegn
-mpcegn
-mpces
-mpces
-nx
-oil
-oil
-pce
-pceg
-pcegd
-pcegdfurnish
-pcegdmotor
-pcegdother
-pcegdrec
-pcegn
-pcegnclothing
-pcegnfood
-pcegngas
-pcegnother
-pcepi
-pcepi
-pces
-pceschange
-pcesfinal
-pcesfood
-pceshealth
-pceshousing
-pcesnonprofit
-pcesother
-pcesrec
-pcestransport
-pdi
-pdin
-pdinequip
-pdinip
-pdinstruct
-pdir
-pi
-pi
-pid
-pid
-po
-po
-ps
-ps
-psr
-psr
-snyfed
-snyfed
-sofr
-sofr
-sphfed
-sphfed
-spy
-spy
-stlfsi
-stlfsi
-stxfed
-stxfed
-t01m
-t01m
-t01y
-t01y
-t02y
-t02y
-t03m
-t03m
-t05y
-t05y
-t06m
-t06m
-t07y
-t07y
-t10y
-t10y
-t20y
-t20y
-t30y
-t30y
-ue
-ue
-uemean
-uemean
-usd
-usd
-vix
-vix
-vsales
-vsales
-wei
-wei
-`summarise()` has grouped output by 'varname'. You can override using the `.groups` argument.
-Note: Using an external vector in selections is ambiguous.
-i Use `all_of(.varname)` instead of `.varname` to silence this message.
-i See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
-This message is displayed once per session.
-
-
-processing file: D:/Onedrive/__Projects/econforecasting/documentation-templates/nowcast.rnw
-  |                                                                              |                                                                      |   0%  |                                                                              |.                                                                     |   2%
-   inline R code fragments
-
-  |                                                                              |...                                                                   |   4%
-label: unnamed-chunk-1 (with options) 
-List of 4
- $ echo   : logi FALSE
- $ results: chr "hide"
- $ message: logi FALSE
- $ warning: logi FALSE
-
-  |                                                                              |....                                                                  |   6%
-  ordinary text without R code
-
-  |                                                                              |......                                                                |   8%
-label: unnamed-chunk-2
-
-Correlation method: 'pearson'
-Missing treated using: 'pairwise.complete.obs'
-
-  |                                                                              |.......                                                               |  10%
-   inline R code fragments
-
-  |                                                                              |.........                                                             |  12%
-label: unnamed-chunk-3
-  |                                                                              |..........                                                            |  15%
-  ordinary text without R code
-
-  |                                                                              |............                                                          |  17%
-label: unnamed-chunk-4
-  |                                                                              |.............                                                         |  19%
-  ordinary text without R code
-
-  |                                                                              |...............                                                       |  21%
-label: unnamed-chunk-5
-  |                                                                              |................                                                      |  23%
-  ordinary text without R code
-
-  |                                                                              |..................                                                    |  25%
-label: unnamed-chunk-6
-  |                                                                              |...................                                                   |  27%
-  ordinary text without R code
-
-  |                                                                              |....................                                                  |  29%
-label: unnamed-chunk-7 (with options) 
-List of 1
- $ fig.cap: chr "Factor Selection"
-
-  |                                                                              |......................                                                |  31%
-  ordinary text without R code
-
-  |                                                                              |.......................                                               |  33%
-label: unnamed-chunk-8
-  |                                                                              |.........................                                             |  35%
-   inline R code fragments
-
-  |                                                                              |..........................                                            |  38%
-label: unnamed-chunk-9
-  |                                                                              |............................                                          |  40%
-  ordinary text without R code
-
-  |                                                                              |.............................                                         |  42%
-label: unnamed-chunk-10
-  |                                                                              |...............................                                       |  44%
-  ordinary text without R code
-
-  |                                                                              |................................                                      |  46%
-label: unnamed-chunk-11
-  |                                                                              |..................................                                    |  48%
-  ordinary text without R code
-
-  |                                                                              |...................................                                   |  50%
-label: unnamed-chunk-12
-  |                                                                              |....................................                                  |  52%
-  ordinary text without R code
-
-  |                                                                              |......................................                                |  54%
-label: unnamed-chunk-13 (with options) 
-List of 1
- $ fig.cap: chr "Factor VAR Residuals"
-
-  |                                                                              |.......................................                               |  56%
-  ordinary text without R code
-
-  |                                                                              |.........................................                             |  58%
-label: unnamed-chunk-14
-  |                                                                              |..........................................                            |  60%
-  ordinary text without R code
-
-  |                                                                              |............................................                          |  62%
-label: unnamed-chunk-15
-  |                                                                              |.............................................                         |  65%
-  ordinary text without R code
-
-  |                                                                              |...............................................                       |  67%
-label: unnamed-chunk-16
-  |                                                                              |................................................                      |  69%
-  ordinary text without R code
-
-  |                                                                              |..................................................                    |  71%
-label: unnamed-chunk-17
-  |                                                                              |...................................................                   |  73%
-  ordinary text without R code
-
-  |                                                                              |....................................................                  |  75%
-label: unnamed-chunk-18
-  |                                                                              |......................................................                |  77%
-  ordinary text without R code
-
-  |                                                                              |.......................................................               |  79%
-label: unnamed-chunk-19
-  |                                                                              |.........................................................             |  81%
-  ordinary text without R code
-
-  |                                                                              |..........................................................            |  83%
-label: unnamed-chunk-20
-  |                                                                              |............................................................          |  85%
-  ordinary text without R code
-
-  |                                                                              |.............................................................         |  88%
-label: unnamed-chunk-21
-  |                                                                              |...............................................................       |  90%
-  ordinary text without R code
-
-  |                                                                              |................................................................      |  92%
-label: unnamed-chunk-22
-  |                                                                              |..................................................................    |  94%
-label: unnamed-chunk-23
-  |                                                                              |...................................................................   |  96%
-  ordinary text without R code
-
-  |                                                                              |..................................................................... |  98%
-label: unnamed-chunk-24
-  |                                                                              |......................................................................| 100%
-  ordinary text without R code
-
-
-output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-07-14-nowcast.tex
-
-Finished - model-nowcasts
-[[1]]
-NULL
-
-[[2]]
-NULL
-
-[[3]]
-NULL
-
-There were 11 warnings (use warnings() to see them)
