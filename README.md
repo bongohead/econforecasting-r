@@ -21,6 +21,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added refactoring of release date pulling process
 - Added nowcast d2 transformation
 - Added date pull to reflect VINTAGE_DATE
+- Added Empire State Mfg Index - Capital Expenditures to replace Manufacturing Conditions due to high variance of induced PCA estates
 - Improved nowcast variables to match structure of other variable data (obj$[[form]]$[[freq]])
 - Removed some old unused files
 
