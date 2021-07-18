@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-14] m2.rds'
+M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-15] m2.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -58,44 +58,45 @@ Display in website those variables not taken from "external" source - e.g. unemp
 ```{r}
 local({
 
-    x = list()
+    baseline = list()
     
-    x$ffr =
+    # ffr, sofr, inf, tdns1, tdns2, tdns3, pid, ue, hpi
+    baseline$ffr =
         m$ext$sources$cme %>%
         dplyr::filter(., varname == 'ffr') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(p$variables$ffr$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
-    x$sofr =
+    baseline$sofr =
         m$ext$sources$cme %>%
         dplyr::filter(., varname == 'sofr') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(p$variables$sofr$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
-    x$inf =
+    baseline$inf =
         m$ext$sources$cle %>%
         dplyr::filter(., varname == 'inf') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(p$variables$inf$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
-    x$tdns1 =
+    baseline$tdns1 =
         m$ext$sources$dns %>%
         dplyr::filter(., varname == 'tdns1') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(p$variables$tdns1$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
-    x$tdns2 =
+    baseline$tdns2 =
         m$ext$sources$dns %>%
         dplyr::filter(., varname == 'tdns2') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(p$variables$tdns2$h$base$m$date)) %>%
         dplyr::transmute(., form, date, value)
     
-    x$tdns3 =
+    baseline$tdns3 =
         m$ext$sources$dns %>%
         dplyr::filter(., varname == 'tdns3') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
@@ -103,32 +104,33 @@ local({
         dplyr::transmute(., form, date, value)
 
     
-    # Bind to nowcast
-    x$pid =
-        p$variables$pid$h$st$m %>%
-        tail(., 4) %>%
-        dplyr::transmute(., form = 'd1', date, value) %>%
-        dplyr::bind_rows(
-            .,
-            tibble(
-                form = 'd1',
-                date = seq(from = lubridate::add_with_rollback(tail(.$date, 1), months(1)), by = '1 month', length.out = 60),
-                value = 
-                    c(
-                        0/100,
-                        -5/100,
-                        -10/100,
-                        rep(NA, 7),
-                        rep(mean(ef$variables$dpi$h$st$m$value), 50)
-                        ) %>%
-                    zoo::na.spline(., method = 'natural')
-            )
-        ) %>%
-        tail(., -4)
+    # Use nowcast -> slice with moving average
+    baseline$dpi =
+		m$ncpred$d1$m[, c('date', 'pid')] %>%
+    	na.omit(.) %>%
+    	dplyr::rename(., value = 'pid') %>%
+    	dplyr::transmute(., form = 'd1', date, value)
+        # dplyr::bind_rows(
+        #     .,
+        #     tibble(
+        #         form = 'd1',
+        #         date = seq(from = lubridate::add_with_rollback(tail(.$date, 1), months(1)), by = '1 month', length.out = 60),
+        #         value = 
+        #             c(
+        #                 0/100,
+        #                 -5/100,
+        #                 -10/100,
+        #                 rep(NA, 7),
+        #                 rep(mean(ef$variables$dpi$h$st$m$value), 50)
+        #                 ) %>%
+        #             zoo::na.spline(., method = 'natural')
+        #     )
+        # ) %>%
+        # tail(., -4)
     
     
     # Display in website
-    initial$ue =
+    baseline$ue =
         # Take last four quarters of historical data
         ef$variables$ue$h$base$m %>%
         tail(., 4) %>%
@@ -156,18 +158,18 @@ local({
         dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
         tail(., -4)
     
-    initial$spy =
+    baseline$spy =
         ef$variables$ue$h$base$m %>%
         dplyr::filter(., )
     
     
     # Calculated
-	initial$pid =
+	baseline$pid =
 		
 
     
     
-    m$qual$baseline <<- initial
+    m$qual$baseline <<- baseline
 })
 ```
 

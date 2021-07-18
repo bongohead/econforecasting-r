@@ -1113,7 +1113,7 @@ local({
 	
 	
 
-	wide2 = lapply(list('d1', 'd2') %>% setNames(., .), function(.form) {
+	wide2 = lapply(list('st', 'd1', 'd2') %>% setNames(., .), function(.form) {
 		mDf =
 			wide1$base$m %>%
 			{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
