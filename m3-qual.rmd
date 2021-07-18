@@ -105,29 +105,28 @@ local({
 
     
     # Use nowcast -> slice with moving average
-    baseline$dpi =
+    baseline$pid =
 		m$ncpred$d1$m[, c('date', 'pid')] %>%
     	na.omit(.) %>%
     	dplyr::rename(., value = 'pid') %>%
-    	dplyr::transmute(., form = 'd1', date, value)
-        # dplyr::bind_rows(
-        #     .,
-        #     tibble(
-        #         form = 'd1',
-        #         date = seq(from = lubridate::add_with_rollback(tail(.$date, 1), months(1)), by = '1 month', length.out = 60),
-        #         value = 
-        #             c(
-        #                 0/100,
-        #                 -5/100,
-        #                 -10/100,
-        #                 rep(NA, 7),
-        #                 rep(mean(ef$variables$dpi$h$st$m$value), 50)
-        #                 ) %>%
-        #             zoo::na.spline(., method = 'natural')
-        #     )
-        # ) %>%
-        # tail(., -4)
-    
+    	dplyr::transmute(., date, value) %>%
+        dplyr::bind_rows(
+            .,
+            tribble(
+            	~ 'date', ~ 'value',
+            	as.Date('2022-04-01'), 3.50,
+            	as.Date('2022-07-01'), 3.00,
+            	as.Date('2023-10-01'), 2.50,
+            	tail(baseline$ffr$date, 1), 2.80
+            )
+        ) %>%
+    	dplyr::left_join(
+    		tibble(date = seq(from = min(.$date), to = max(.$date), by = '1 month')),
+    		.,
+    		by = 'date'
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.approx(value))
+
     
     # Display in website
     baseline$ue =
