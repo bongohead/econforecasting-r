@@ -312,8 +312,20 @@ local({
 		) 
 	
 	
+	predFlat =
+		dfs %>%
+		purrr::imap_dfr(., function(x, scenarioname)
+			purrr::imap_dfr(x, function(y, form)
+				y %>%
+					tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
+					dplyr::mutate(., form = form, scenarioname = scenarioname) %>%
+					na.omit(.)
+				)
+			)
+	
 
 	m$qual$pred <<- dfs
+	m$qual$predFlat <<- predFlat
 })
 ```
 
