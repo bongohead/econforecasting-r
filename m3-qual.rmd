@@ -125,7 +125,7 @@ local({
     		.,
     		by = 'date'
     	) %>%
-    	dplyr::mutate(., value = zoo::na.approx(value))
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1')
 
     
     # Display in website
@@ -178,7 +178,7 @@ local({
     		.,
     		by = 'date'
     	) %>%
-    	dplyr::mutate(., value = zoo::na.approx(value))
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1')
     
     
     m$qual$baseline <<- baseline
@@ -198,31 +198,36 @@ local({
 ```{r}
 local({
 	
-	mDf =
-		m$ncpred0$st$m %>%
-		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+	res =
+		purrr::imap(m$qual, function(x, .scenarioname)
 			
-			transform = dplyr::filter(p$variablesDf, varname == .varname)$st
+			x %>%
+				purrr::imap(., function(df, .varname) {
+					
+					transform = dplyr::filter(p$variablesDf, varname == .varname)[[df$form[[1]]]]
+					fcDf = dplyr::select(df, -form)
+					histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1) %>% setNames(., c('date', 'value'))
+					
+					fcDf %>%
+						dplyr::mutate(
+							.,
+							varname = .varname,
+							value := 
+								{
+			                        if (transform == 'dlog') undlog(fcDf$value, histDf$value)
+									else if (transform == 'apchg') unapchg(fcDf$value, 12, histDf$value)
+									else if (transform == 'pchg') unpchg(fcDf$value, histDf$value)
+									else if (transform == 'base') .$value
+									else stop('Err: ', .varname)
+									}
+								)
+					
+					}) %>%
+				dplyr::bind_rows(.) %>%
+				tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+				dplyr::arrange(., date)
 			
-			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
-				
-			histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
-			
-			fcDf %>%
-				dplyr::mutate(
-					.,
-					!!.varname := 
-						{
-	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
-							else if (transform == 'apchg') unapchg(fcDf[[2]], 12, histDf[[2]])
-							else if (transform == 'base') .[[2]]
-							else stop('Err: ', .varname)
-							}
-						)
-			
-			})} %>%
-		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-		dplyr::arrange(., date)
+			)
 
 })
 ```
