@@ -181,7 +181,7 @@ local({
     	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1')
     
     
-    m$qual$baseline <<- baseline
+    m$qual$predraw$baseline <<- baseline
 })
 ```
 
@@ -199,7 +199,7 @@ local({
 local({
 	
 	res =
-		purrr::imap(m$qual, function(x, .scenarioname)
+		purrr::imap(m$qual$predraw, function(x, .scenarioname)
 			
 			x %>%
 				purrr::imap(., function(df, .varname) {
@@ -228,13 +228,44 @@ local({
 				dplyr::arrange(., date)
 			
 			)
-
+	
+	
+	m$qual$predbase <<- res
 })
 ```
 
 ## Add Calculated Variables
 ```{r}
 local({
+	
+	# Calculate DNS
+	lambda = m$dnsLambda
+	
+	# Rebuild yield curves with Diebold-Li function
+	df =
+		lapply(m$qual$predbase, function(scenario)
+			lapply(purrr::transpose(m$dnsYieldCurveNamesMap), function(y)
+					scenario %>%
+						dplyr::transmute(
+							.,
+							date,
+							!!y$varname := ffr +
+								tdns1 +
+								tdns2 * (1-exp(-1 * lambda * y$ttm))/(lambda * y$ttm) +
+								tdns3 * ((1-exp(-1 * lambda * y$ttm))/(lambda * y$ttm) - exp(-1 * lambda * y$ttm))
+							)
+					) %>%
+				purrr::reduce(., function(x, y) dplyr::inner_join(x, y, by = 'date'))
+			)
+
+	
+	
+	x =
+		m$qual$predBase %>%
+		dplyr::mutate(
+			.,
+			t01m = ffr + tdns1 + tdns2 * (1-exp(-1 * lambda * t))/(lambda * t)
+		)
 	
 	
 })
