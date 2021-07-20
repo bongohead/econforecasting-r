@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-15] m2.rds'
+M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-19] m2.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -131,7 +131,7 @@ local({
     # Display in website
     baseline$ue =
         # Take last four quarters of historical data
-        ef$variables$ue$h$base$m %>%
+        p$variables$ue$h$base$m %>%
         tail(., 4) %>%
         dplyr::transmute(., form = 'd1', date, value) %>%
         # Bind next 24 months
@@ -146,7 +146,7 @@ local({
         dplyr::left_join(
             .,
             m$ext$sources$spf %>%
-                dplyr::filter(., vdate == max(vdate) & varname == 'unemp') %>%
+                dplyr::filter(., vdate == max(vdate) & varname == 'ue') %>%
                 dplyr::transmute(., form, date, value2 = value),
             by = c('form', 'date')
         ) %>%
@@ -155,17 +155,30 @@ local({
         dplyr::mutate(., value = ifelse(date == max(date), 5.0, value)) %>%
         # Splinal interpolate
         dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
-        tail(., -4)
+        tail(., -4) %>%
+    	dplyr::select(., -value2)
     
-    baseline$spy =
-        ef$variables$ue$h$base$m %>%
-        dplyr::filter(., )
-    
-    
-    # Calculated
-	baseline$pid =
-		
-
+    baseline$hpi =
+		m$ncpred$d1$m[, c('date', 'hpi')] %>%
+    	na.omit(.) %>%
+    	dplyr::rename(., value = 'hpi') %>%
+    	dplyr::transmute(., date, value) %>%
+        dplyr::bind_rows(
+            .,
+            tribble(
+            	~ 'date', ~ 'value',
+            	as.Date('2022-04-01'), 3.50,
+            	as.Date('2022-07-01'), 3.00,
+            	as.Date('2023-10-01'), 2.50,
+            	tail(baseline$ffr$date, 1), 2.80
+            )
+        ) %>%
+    	dplyr::left_join(
+    		tibble(date = seq(from = min(.$date), to = max(.$date), by = '1 month')),
+    		.,
+    		by = 'date'
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.approx(value))
     
     
     m$qual$baseline <<- baseline
@@ -185,11 +198,49 @@ local({
 ```{r}
 local({
 	
-	
-	
+	mDf =
+		m$ncpred0$st$m %>%
+		{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+			
+			transform = dplyr::filter(p$variablesDf, varname == .varname)$st
+			
+			fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
+				
+			histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
+			
+			fcDf %>%
+				dplyr::mutate(
+					.,
+					!!.varname := 
+						{
+	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
+							else if (transform == 'apchg') unapchg(fcDf[[2]], 12, histDf[[2]])
+							else if (transform == 'base') .[[2]]
+							else stop('Err: ', .varname)
+							}
+						)
+			
+			})} %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+		dplyr::arrange(., date)
+
+})
+```
+
+## Add Calculated Variables
+```{r}
+local({
 	
 	
 })
 ```
 
+## Combine With Nowcasts To Get SEM.EXOG Forecasts
+```{r}
+local({
+	
+	
+	
+})
+```
 
