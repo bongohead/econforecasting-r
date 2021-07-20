@@ -230,7 +230,7 @@ local({
 			)
 	
 	
-	m$qual$predbase <<- res
+	m$qual$predqual <<- res
 })
 ```
 
@@ -243,7 +243,7 @@ local({
 	
 	# Rebuild yield curves with Diebold-Li function
 	df =
-		lapply(m$qual$predbase, function(scenario)
+		lapply(m$qual$predqual, function(scenario)
 			lapply(purrr::transpose(m$dnsYieldCurveNamesMap), function(y)
 					scenario %>%
 						dplyr::transmute(
@@ -260,16 +260,76 @@ local({
 
 	
 	
-	x =
-		m$qual$predBase %>%
-		dplyr::mutate(
-			.,
-			t01m = ffr + tdns1 + tdns2 * (1-exp(-1 * lambda * t))/(lambda * t)
-		)
+	
+	m$qual$predcalc <<- df
+})
+```
+
+## Join & Flatten 
+```{r}
+local({
+	
+	
+	baseDfs =
+		lapply(names(m$qual$predqual) %>% setNames(., .), function(scenarioname)
+			dplyr::bind_rows(
+				tidyr::pivot_longer(m$qual$predqual[[scenarioname]], -date, names_to = 'varname'),
+				tidyr::pivot_longer(m$qual$predcalc[[scenarioname]], -date, names_to = 'varname')
+				) %>%
+				dplyr::bind_rows(.) %>%
+				tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+				dplyr::arrange(., date)
+			)
+	
+	dfs =
+		lapply(baseDfs, function(scenarioDf)
+			lapply(c('d1', 'st') %>% setNames(., .), function(.form)
+				lapply(colnames(scenarioDf) %>% .[. != 'date'], function(.varname) {
+						
+						transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+						fcDf = dplyr::select(scenarioDf, date, .varname) %>% na.omit(.)
+						histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
+						
+						dplyr::bind_rows(histDf, fcDf) %>%
+							dplyr::mutate(
+								.,
+								!!.varname := 
+									{
+				                        if (transform == 'dlog') dlog(.[[2]])
+										else if (transform == 'apchg') apchg(.[[2]], 12)
+										else if (transform == 'pchg') pchg(.[[2]])
+										else if (transform == 'base') .[[2]]
+										else if (transform == 'none') NA
+										else stop('Err: ', .varname)
+										}
+									) %>% .[2:nrow(.),]
+						
+						}) %>%
+					purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+					dplyr::arrange(., date)
+			) %>%
+			c(list(base = baseDfs[[scenarioname]]), .)
+		) 
+	
+	
+
+	m$qual$pred <<- dfs
+})
+```
+
+
+# Evaluate and Combine
+
+## Evaluate Pred Qual
+```{r}
+local({
+	
+	
 	
 	
 })
 ```
+
 
 ## Combine With Nowcasts To Get SEM.EXOG Forecasts
 ```{r}
