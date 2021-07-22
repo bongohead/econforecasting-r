@@ -282,7 +282,7 @@ local({
 			)
 	
 	dfs =
-		lapply(baseDfs, function(scenarioDf)
+		purrr::imap(baseDfs, function(scenarioDf, scenarioname)
 			lapply(c('d1', 'st') %>% setNames(., .), function(.form)
 				lapply(colnames(scenarioDf) %>% .[. != 'date'], function(.varname) {
 						
