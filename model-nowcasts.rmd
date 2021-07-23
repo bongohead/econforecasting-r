@@ -212,6 +212,8 @@ local({
 				.[, c('Date', 'Adj Close')]	%>%
 				setnames(., new = c('date', 'value')) %>%
 				as_tibble(.) %>%
+				dplyr::filter(., value != 'null') %>% # Bug with yahoo finance returning null for date 7/22/21 as of 7/23
+				dplyr::filter(., value = as.numeric(value)) %>%
 				dplyr::filter(., date <= VINTAGE_DATE)
 			
 			qDf = 
