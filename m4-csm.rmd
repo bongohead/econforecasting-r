@@ -1,4 +1,67 @@
-# Core Structural Model
+# Initialize
+## Set Options
+```{r purl = TRUE}
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-22] m3.rds'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
+OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
+```
+
+# Initialize
+```{r}
+# General purpose
+library(tidyverse) # General
+library(data.table) # General
+library(devtools) # General
+library(lubridate) # Dates
+library(glue) # String Interpolation
+# Data parse/import
+library(jsonlite) # JSON Parser
+library(rvest) # HTML Parser
+library(httr) # CURL Interface
+# SQL/Apache Spark
+library(DBI) # SQL Interface
+# library(RPostgres) # PostgreSQL
+# library(rsparklyr) # Spark
+# My package
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
+# library(econforecasting)
+
+# Set working directory
+setwd(DIR)
+
+# Read constants
+source(file.path(INPUT_DIR, 'constants.r'))
+```
+
+## Load RDS
+```{r}
+local({
+	
+	rds = readRDS(M3_PATH)
+
+	p <<- rds$p
+	m <<- rds$m
+	h <<- rds$h
+})
+```
+
+
+# Input Prep
+
+## Aggregate Inputs to Quarterly
+```{r}
+local({
+	
+	
+	
+})
+```
+
+
+# CSM
 
 ## CSM Forecasting - Quarterly (All)
 ```{r}

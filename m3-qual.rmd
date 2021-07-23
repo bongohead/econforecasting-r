@@ -287,7 +287,7 @@ local({
 				lapply(colnames(scenarioDf) %>% .[. != 'date'], function(.varname) {
 						
 						transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
-						fcDf = dplyr::select(scenarioDf, date, .varname) %>% na.omit(.)
+						fcDf = dplyr::select(scenarioDf, all_of(c('date', .varname))) %>% na.omit(.)
 						histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
 						
 						dplyr::bind_rows(histDf, fcDf) %>%
@@ -375,12 +375,16 @@ local({
 ```
 
 
-## Combine With Nowcasts To Get SEM.EXOG Forecasts
+# Finalize
+
+## Export
 ```{r}
 local({
-	
-	
-	
+  
+    saveRDS(
+    	list(p = p, h = h, m = m),
+    	str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m3.rds')
+    	)
+    
 })
 ```
-
