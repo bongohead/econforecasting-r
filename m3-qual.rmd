@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-19] m2.rds'
+M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-22] m2.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -336,9 +336,41 @@ local({
 ```{r}
 local({
 	
+	predCharts =
+		m$qual$predFlat %>%
+		dplyr::filter(., form == 'd1') %>%
+		dplyr::group_by(., varname) %>%
+		dplyr::group_split(.) %>%
+		setNames(., sapply(., function(x) x$varname[[1]])) %>%
+		lapply(., function(x) {
+			
+			param =
+				p$variablesDf %>%
+				dplyr::filter(., varname == x$varname[[1]]) %>%
+				as.list(.)
+			
+			histDf = dplyr::transmute(p$variables[[param$varname]]$h$d1$m, date, value, type = 'Historical Data')
+			
+			forecastDf =
+				dplyr::bind_rows(tail(histDf, 1), x) %>%
+				dplyr::transmute(., date, value, type = 'Forecast')
+ 
+			dplyr::bind_rows(histDf, forecastDf) %>%
+				ggplot(.) +
+				geom_line(aes(x = date, y = value, color = type, linetype = type)) +
+				scale_color_manual(
+					values = c('Historical Data' = 'black', 'Forecast' = 'Red')
+				) +
+				scale_linetype_manual(
+					values = c('Historical Data' = 'solid', 'Forecast' = 'solid')
+				) +
+				labs(title = param$fullname, x = NULL, y = param$units, color = NULL, linetype = NULL) +
+				ggthemes::theme_fivethirtyeight()
+			})
 	
+	print(predCharts)
 	
-	
+	m$qual$predCharts <<- predCharts
 })
 ```
 
