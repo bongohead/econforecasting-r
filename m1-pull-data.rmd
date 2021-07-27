@@ -146,7 +146,7 @@ local({
 			url =
 				paste0(
 					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
-					'?period1=', '946598400', # 12/30/1999
+					'?period1=', '1262304000', # 12/30/1999
 					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
 					'&interval=1d',
 					'&events=history&includeAdjustedClose=true'
