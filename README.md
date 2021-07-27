@@ -15,7 +15,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
-## 2021-07-08 [v0.15]
+## 2021-07-26 [v0.15]
 - Added rewrite of model flow: (1) data, (2) nowcasts, (3) qual forecasts, (4) csm
 - Added table of releases to inputs
 - Added refactoring of release date pulling process
@@ -25,6 +25,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added more financial indices: ag commodities ETF, metals ETF, ex-US equities ETF
 - Added qualitative forecasts
 - Added detransformation for qualitative forecasts
+- Added CSM exogenous table
 - Improved nowcast variables to match structure of other variable data (obj$[[form]]$[[freq]])
 - Removed some old unused files
 
