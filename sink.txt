@@ -1,5 +1,5 @@
-Run :2021-07-22
-Started - model-asset-contagion: 2021-07-22 20:00:00
+Run :2021-07-26
+Started - model-asset-contagion: 2021-07-26 20:00:15
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
@@ -63,10 +63,10 @@ Writing NAMESPACE
 800
 900
 1000
-2021-07-22 20:03:25
-2021-07-22 20:03:28
+2021-07-26 20:04:18
+2021-07-26 20:04:20
 Finished - model-asset-contagion
-Started - model-baseline-forecasts: 2021-07-22 20:03:28
+Started - model-baseline-forecasts: 2021-07-26 20:04:20
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
@@ -604,7 +604,7 @@ Completed CME data scrape...
 Adding monthly interpolation ...
 SQL Code Finished
 Finished - model-baseline-forecasts
-Started - model-nowcasts: 2021-07-22 20:05:51
+Started - model-nowcasts: 2021-07-26 20:07:05
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.rmd
@@ -652,6 +652,12 @@ Getting data ... pdinequip
 Getting data ... pdinip
 Getting data ... pdir
 Getting data ... pceschange
+Request failed [429]. Retrying in 1.2 seconds...
+Request failed [429]. Retrying in 2 seconds...
+Request failed [429]. Retrying in 5.1 seconds...
+Request failed [429]. Retrying in 4.6 seconds...
+Request failed [429]. Retrying in 15.9 seconds...
+Request failed [429]. Retrying in 26.5 seconds...
 Getting data ... nx
 Getting data ... ex
 Getting data ... exg
@@ -660,6 +666,12 @@ Getting data ... im
 Getting data ... img
 Getting data ... ims
 Getting data ... govt
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 4 seconds...
+Request failed [429]. Retrying in 1.8 seconds...
+Request failed [429]. Retrying in 3.6 seconds...
+Request failed [429]. Retrying in 22.1 seconds...
+Request failed [429]. Retrying in 14.6 seconds...
 Getting data ... govtf
 Getting data ... govts
 Getting data ... mpce
@@ -678,12 +690,6 @@ Getting data ... hsold
 Getting data ... hpermits
 Getting data ... mnodg
 Getting data ... cu
-Request failed [429]. Retrying in 1.7 seconds...
-Request failed [429]. Retrying in 3.5 seconds...
-Request failed [429]. Retrying in 3.1 seconds...
-Request failed [429]. Retrying in 4.5 seconds...
-Request failed [429]. Retrying in 25.3 seconds...
-Request failed [429]. Retrying in 59.8 seconds...
 Getting data ... cons
 Getting data ... ffr
 Getting data ... sofr
@@ -697,12 +703,22 @@ Getting data ... t03m
 Getting data ... t01m
 Getting data ... t20y
 Getting data ... t07y
+Request failed [429]. Retrying in 1.5 seconds...
+Request failed [429]. Retrying in 2.7 seconds...
+Request failed [429]. Retrying in 2.1 seconds...
+Request failed [429]. Retrying in 3.9 seconds...
+Request failed [429]. Retrying in 29.4 seconds...
 Getting data ... vsales
 Getting data ... ue
 Getting data ... emp
 Getting data ... jolts
 Getting data ... wei
 Getting data ... oil
+Request failed [429]. Retrying in 1.3 seconds...
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 2.8 seconds...
+Request failed [429]. Retrying in 14.1 seconds...
+Request failed [429]. Retrying in 26 seconds...
 Getting data ... loansre
 Getting data ... loanscc
 Getting data ... hpils
@@ -714,629 +730,67 @@ Getting data ... kclfi
 Getting data ... csent
 Getting data ... ipi
 Getting data ... pcepi
-Request failed [429]. Retrying in 2 seconds...
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 4.9 seconds...
-Request failed [429]. Retrying in 5 seconds...
-Request failed [429]. Retrying in 17.2 seconds...
-Request failed [429]. Retrying in 21.2 seconds...
 Getting data ... delinqrer
 Getting data ... delinqcc
 Getting data ... delinqci
 Getting data ... snyfed
 Getting data ... stxfed
+Request failed [429]. Retrying in 1.8 seconds...
+Request failed [429]. Retrying in 2.5 seconds...
+Request failed [429]. Retrying in 6.7 seconds...
+Request failed [429]. Retrying in 1.2 seconds...
+Request failed [429]. Retrying in 17.6 seconds...
+Request failed [429]. Retrying in 9.8 seconds...
 Getting data ... sphfed
 Getting data ... cfnai
 Getting data ... baa
 Getting data ... lfpr
-st
-advsales
-advsales
-baa
-baa
-cfnai
-cfnai
-cons
-cons
-csent
-csent
-cu
-cu
-delinqcc
-delinqci
-delinqrer
-emp
-emp
-ex
-exg
-exs
-ffr
-ffr
-gdp
-govt
-govtf
-govts
-houst
-houst
-hpermits
-hpermits
-hpi
-hpi
-hpils
-hpils
-hsold
-hsold
-im
-img
-ims
-ipi
-ipi
-jolts
-jolts
-kclfi
-kclfi
-lfpr
-lfpr
-loanscc
-loanscc
-loansre
-loansre
-mnodg
-mnodg
-mpce
-mpce
-mpceg
-mpceg
-mpcegd
-mpcegd
-mpcegn
-mpcegn
-mpces
-mpces
-nx
-oil
-oil
-pce
-pceg
-pcegd
-pcegdfurnish
-pcegdmotor
-pcegdother
-pcegdrec
-pcegn
-pcegnclothing
-pcegnfood
-pcegngas
-pcegnother
-pcepi
-pcepi
-pces
-pceschange
-pcesfinal
-pcesfood
-pceshealth
-pceshousing
-pcesnonprofit
-pcesother
-pcesrec
-pcestransport
-pdi
-pdin
-pdinequip
-pdinip
-pdinstruct
-pdir
-pi
-pi
-pid
-pid
-po
-po
-ps
-ps
-psr
-psr
-snyfed
-snyfed
-sofr
-sofr
-sphfed
-sphfed
-spy
-spy
-stlfsi
-stlfsi
-stxfed
-stxfed
-t01m
-t01m
-t01y
-t01y
-t02y
-t02y
-t03m
-t03m
-t05y
-t05y
-t06m
-t06m
-t07y
-t07y
-t10y
-t10y
-t20y
-t20y
-t30y
-t30y
-ue
-ue
-uemean
-uemean
-usd
-usd
-vix
-vix
-vsales
-vsales
-wei
-wei
-d1
-advsales
-advsales
-baa
-baa
-cfnai
-cfnai
-cons
-cons
-csent
-csent
-cu
-cu
-delinqcc
-delinqci
-delinqrer
-emp
-emp
-ex
-exg
-exs
-ffr
-ffr
-gdp
-govt
-govtf
-govts
-houst
-houst
-hpermits
-hpermits
-hpi
-hpi
-hpils
-hpils
-hsold
-hsold
-im
-img
-ims
-ipi
-ipi
-jolts
-jolts
-kclfi
-kclfi
-lfpr
-lfpr
-loanscc
-loanscc
-loansre
-loansre
-mnodg
-mnodg
-mpce
-mpce
-mpceg
-mpceg
-mpcegd
-mpcegd
-mpcegn
-mpcegn
-mpces
-mpces
-nx
-oil
-oil
-pce
-pceg
-pcegd
-pcegdfurnish
-pcegdmotor
-pcegdother
-pcegdrec
-pcegn
-pcegnclothing
-pcegnfood
-pcegngas
-pcegnother
-pcepi
-pcepi
-pces
-pceschange
-pcesfinal
-pcesfood
-pceshealth
-pceshousing
-pcesnonprofit
-pcesother
-pcesrec
-pcestransport
-pdi
-pdin
-pdinequip
-pdinip
-pdinstruct
-pdir
-pi
-pi
-pid
-pid
-po
-po
-ps
-ps
-psr
-psr
-snyfed
-snyfed
-sofr
-sofr
-sphfed
-sphfed
-spy
-spy
-stlfsi
-stlfsi
-stxfed
-stxfed
-t01m
-t01m
-t01y
-t01y
-t02y
-t02y
-t03m
-t03m
-t05y
-t05y
-t06m
-t06m
-t07y
-t07y
-t10y
-t10y
-t20y
-t20y
-t30y
-t30y
-ue
-ue
-uemean
-uemean
-usd
-usd
-vix
-vix
-vsales
-vsales
-wei
-wei
-d2
-advsales
-advsales
-baa
-baa
-cfnai
-cfnai
-cons
-cons
-csent
-csent
-cu
-cu
-delinqcc
-delinqci
-delinqrer
-emp
-emp
-ex
-exg
-exs
-ffr
-ffr
-gdp
-govt
-govtf
-govts
-houst
-houst
-hpermits
-hpermits
-hpi
-hpi
-hpils
-hpils
-hsold
-hsold
-im
-img
-ims
-ipi
-ipi
-jolts
-jolts
-kclfi
-kclfi
-lfpr
-lfpr
-loanscc
-loanscc
-loansre
-loansre
-mnodg
-mnodg
-mpce
-mpce
-mpceg
-mpceg
-mpcegd
-mpcegd
-mpcegn
-mpcegn
-mpces
-mpces
-nx
-oil
-oil
-pce
-pceg
-pcegd
-pcegdfurnish
-pcegdmotor
-pcegdother
-pcegdrec
-pcegn
-pcegnclothing
-pcegnfood
-pcegngas
-pcegnother
-pcepi
-pcepi
-pces
-pceschange
-pcesfinal
-pcesfood
-pceshealth
-pceshousing
-pcesnonprofit
-pcesother
-pcesrec
-pcestransport
-pdi
-pdin
-pdinequip
-pdinip
-pdinstruct
-pdir
-pi
-pi
-pid
-pid
-po
-po
-ps
-ps
-psr
-psr
-snyfed
-snyfed
-sofr
-sofr
-sphfed
-sphfed
-spy
-spy
-stlfsi
-stlfsi
-stxfed
-stxfed
-t01m
-t01m
-t01y
-t01y
-t02y
-t02y
-t03m
-t03m
-t05y
-t05y
-t06m
-t06m
-t07y
-t07y
-t10y
-t10y
-t20y
-t20y
-t30y
-t30y
-ue
-ue
-uemean
-uemean
-usd
-usd
-vix
-vix
-vsales
-vsales
-wei
-wei
-`summarise()` has grouped output by 'varname'. You can override using the `.groups` argument.
-Note: Using an external vector in selections is ambiguous.
-i Use `all_of(.varname)` instead of `.varname` to silence this message.
-i See <https://tidyselect.r-lib.org/reference/faq-external-vector.html>.
-This message is displayed once per session.
-
-
-processing file: D:/Onedrive/__Projects/econforecasting/documentation-templates/nowcast.rnw
-  |                                                                              |                                                                      |   0%  |                                                                              |.                                                                     |   2%
-   inline R code fragments
-
-  |                                                                              |...                                                                   |   4%
-label: unnamed-chunk-1 (with options) 
-List of 4
- $ echo   : logi FALSE
- $ results: chr "hide"
- $ message: logi FALSE
- $ warning: logi FALSE
-
-  |                                                                              |....                                                                  |   6%
-  ordinary text without R code
-
-  |                                                                              |......                                                                |   8%
-label: unnamed-chunk-2
-
-Correlation method: 'pearson'
-Missing treated using: 'pairwise.complete.obs'
-
-  |                                                                              |.......                                                               |  10%
-   inline R code fragments
-
-  |                                                                              |.........                                                             |  12%
-label: unnamed-chunk-3
-  |                                                                              |..........                                                            |  15%
-  ordinary text without R code
-
-  |                                                                              |............                                                          |  17%
-label: unnamed-chunk-4
-  |                                                                              |.............                                                         |  19%
-  ordinary text without R code
-
-  |                                                                              |...............                                                       |  21%
-label: unnamed-chunk-5
-  |                                                                              |................                                                      |  23%
-  ordinary text without R code
-
-  |                                                                              |..................                                                    |  25%
-label: unnamed-chunk-6
-  |                                                                              |...................                                                   |  27%
-  ordinary text without R code
-
-  |                                                                              |....................                                                  |  29%
-label: unnamed-chunk-7 (with options) 
-List of 1
- $ fig.cap: chr "Factor Selection"
-
-  |                                                                              |......................                                                |  31%
-  ordinary text without R code
-
-  |                                                                              |.......................                                               |  33%
-label: unnamed-chunk-8
-  |                                                                              |.........................                                             |  35%
-   inline R code fragments
-
-  |                                                                              |..........................                                            |  38%
-label: unnamed-chunk-9
-  |                                                                              |............................                                          |  40%
-  ordinary text without R code
-
-  |                                                                              |.............................                                         |  42%
-label: unnamed-chunk-10
-  |                                                                              |...............................                                       |  44%
-  ordinary text without R code
-
-  |                                                                              |................................                                      |  46%
-label: unnamed-chunk-11
-  |                                                                              |..................................                                    |  48%
-  ordinary text without R code
-
-  |                                                                              |...................................                                   |  50%
-label: unnamed-chunk-12
-  |                                                                              |....................................                                  |  52%
-  ordinary text without R code
-
-  |                                                                              |......................................                                |  54%
-label: unnamed-chunk-13 (with options) 
-List of 1
- $ fig.cap: chr "Factor VAR Residuals"
-
-  |                                                                              |.......................................                               |  56%
-  ordinary text without R code
-
-  |                                                                              |.........................................                             |  58%
-label: unnamed-chunk-14
-  |                                                                              |..........................................                            |  60%
-  ordinary text without R code
-
-  |                                                                              |............................................                          |  62%
-label: unnamed-chunk-15
-  |                                                                              |.............................................                         |  65%
-  ordinary text without R code
-
-  |                                                                              |...............................................                       |  67%
-label: unnamed-chunk-16
-  |                                                                              |................................................                      |  69%
-  ordinary text without R code
-
-  |                                                                              |..................................................                    |  71%
-label: unnamed-chunk-17
-  |                                                                              |...................................................                   |  73%
-  ordinary text without R code
-
-  |                                                                              |....................................................                  |  75%
-label: unnamed-chunk-18
-  |                                                                              |......................................................                |  77%
-  ordinary text without R code
-
-  |                                                                              |.......................................................               |  79%
-label: unnamed-chunk-19
-  |                                                                              |.........................................................             |  81%
-  ordinary text without R code
-
-  |                                                                              |..........................................................            |  83%
-label: unnamed-chunk-20
-  |                                                                              |............................................................          |  85%
-  ordinary text without R code
-
-  |                                                                              |.............................................................         |  88%
-label: unnamed-chunk-21
-  |                                                                              |...............................................................       |  90%
-  ordinary text without R code
-
-  |                                                                              |................................................................      |  92%
-label: unnamed-chunk-22
-  |                                                                              |..................................................................    |  94%
-label: unnamed-chunk-23
-  |                                                                              |...................................................................   |  96%
-  ordinary text without R code
-
-  |                                                                              |..................................................................... |  98%
-label: unnamed-chunk-24
-  |                                                                              |......................................................................| 100%
-  ordinary text without R code
-
-
-output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-07-22-nowcast.tex
-
-Finished - model-nowcasts
-[[1]]
-NULL
-
-[[2]]
-NULL
-
-[[3]]
-NULL
-
-There were 11 warnings (use warnings() to see them)
+Request failed [429]. Retrying in 1.6 seconds...
+Request failed [429]. Retrying in 2.8 seconds...
+Request failed [429]. Retrying in 6.7 seconds...
+Request failed [429]. Retrying in 4.6 seconds...
+Request failed [429]. Retrying in 26.3 seconds...
+Request failed [429]. Retrying in 41.8 seconds...
+Error: Problem with `filter()` input `..1`.
+x Input `..1` is named.
+i This usually means that you've used `=` instead of `==`.
+i Did you mean `value == as.numeric(value)`?
+Backtrace:
+     x
+  1. +-base::lapply(...)
+  2. | \-global::FUN(X[[i]], ...)
+  3. |   \-base::source(paste0(DIR, "/", filename, ".r"))
+  4. |     +-base::withVisible(eval(ei, envir))
+  5. |     \-base::eval(ei, envir)
+  6. |       \-base::eval(ei, envir)
+  7. +-base::local(...)
+  8. | \-base::eval.parent(substitute(eval(quote(expr), envir)))
+  9. |   \-base::eval(expr, p)
+ 10. |     \-base::eval(expr, p)
+ 11. +-base::eval(...)
+ 12. | \-base::eval(...)
+ 13. |   \-`%>%`(...)
+ 14. +-dplyr::bind_rows(.)
+ 15. | \-rlang::list2(...)
+ 16. +-base::lapply(...)
+ 17. | \-FUN(X[[i]], ...)
+ 18. |   \-`%>%`(...)
+ 19. +-dplyr::filter(., date <= VINTAGE_DATE)
+ 20. +-dplyr::filter(., value = as.numeric(value))
+ 21. \-dplyr:::filter.data.frame(., value = as.numeric(value))
+ 22.   \-dplyr:::filter_rows(.data, ...)
+ 23.     \-dplyr:::check_filter(dots)
+Warning messages:
+1: In result_fetch(res@ptr, n = n) :
+  Don't need to call dbFetch() for statements, only for queries
+2: In result_fetch(res@ptr, n = n) :
+  Don't need to call dbFetch() for statements, only for queries
+3: In result_fetch(res@ptr, n = n) :
+  Don't need to call dbFetch() for statements, only for queries
+4: In result_fetch(res@ptr, n = n) :
+  Don't need to call dbFetch() for statements, only for queries
+5: In result_fetch(res@ptr, n = n) :
+  Don't need to call dbFetch() for statements, only for queries
+6: In result_fetch(res@ptr, n = n) :
+  Don't need to call dbFetch() for statements, only for queries
+Execution halted
