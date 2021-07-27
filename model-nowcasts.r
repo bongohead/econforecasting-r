@@ -1,5 +1,4 @@
-# Set Options
-```{r purl = TRUE}
+## ----purl = TRUE--------------------------------------------------------------
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
@@ -8,11 +7,9 @@ INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to dire
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs' # Path to location to output RDS and documentation
 RESET_ALL = FALSE
 VINTAGE_DATE = as.Date('2021-07-23') #Sys.Date() # Date to pull data "as-of", for general use set this as Sys.Date(); otherwise set as an older date for backtesting
-```
 
 
-# Initialize
-```{r}
+## -----------------------------------------------------------------------------
 # General purpose
 library(tidyverse) # General
 library(data.table) # General
@@ -43,13 +40,9 @@ ef = list(
   h = list(),
   f = list()
 )
-```
 
 
-# Get Historical Data
-
-## From FRED
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	fredRes =
@@ -187,10 +180,9 @@ local({
 	ef$h$source$fred <<- dataDf
 	ef$releaseDf <<- releaseDf
 })
-```
 
-## Yahoo Finance - use last available data point as value
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	df =
@@ -213,7 +205,7 @@ local({
 				setnames(., new = c('date', 'value')) %>%
 				as_tibble(.) %>%
 				dplyr::filter(., value != 'null') %>% # Bug with yahoo finance returning null for date 7/22/21 as of 7/23
-				dplyr::mutate(., value = as.numeric(value)) %>%
+				dplyr::filter(., value = as.numeric(value)) %>%
 				dplyr::filter(., date <= VINTAGE_DATE)
 			
 			qDf = 
@@ -244,21 +236,15 @@ local({
 	
 	ef$h$source$yahoo <<- df
 })
-```
 
 
-## Aggregate raw data
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	ef$h$sourceDf <<- dplyr::bind_rows(ef$h$source)
 })
-```
 
 
-# Seasonal & Stationary Transformations
-
-## Deseasonalize
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	seasDf =
@@ -280,10 +266,9 @@ local({
 
 	ef$h$seasDf <<- df
 })
-```
 
-## Stationary transformations
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 
 	flat = list()
@@ -327,10 +312,9 @@ local({
 
 	ef$h$flatDf <<- flatDf
 })
-```
 
-## Create monthly/quarterly matrixes
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	wide =
@@ -350,13 +334,9 @@ local({
 	ef$h$m <<- wide$m
 	ef$h$q <<- wide$q
 })
-```
 
 
-# Nowcast
-
-## Get dates
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	quartersForward = 1
@@ -415,10 +395,9 @@ local({
 	ef$nc$bigTStar <<- bigTStar
 	ef$nc$timeDf <<- timeDf
 })
-```
 
-## Extract factors
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	xDf = ef$nc$pcaVariablesDf %>% dplyr::filter(., date %in% ef$nc$bigTDates)
@@ -543,10 +522,9 @@ local({
 	ef$nc$zDf <<- zDf
 	ef$nc$zPlots <<- zPlots
 })
-```
 
-## Run as VAR(1)
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	inputDf =
@@ -629,11 +607,9 @@ local({
 	ef$nc$bMat <<- bMat
 	ef$nc$cMat <<- cMat
 })
-```
 
 
-## Run DFM on monthly variables included in PCA
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	yMat = ef$nc$pcaInputDf %>% dplyr::select(., -date) %>% as.matrix(.)
@@ -715,10 +691,9 @@ local({
 	ef$nc$aMat <<- aMat
 	ef$nc$dMat <<- dMat
 })
-```
 
-## Compute Kalman filter
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	bMat = ef$nc$bMat
@@ -872,10 +847,9 @@ local({
 	ef$nc$yDf <<- yDf
 	ef$nc$kfDf <<- kfDf
 })
-```
 
-## Add baseline forecasts from other page
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
   
 	conn =
@@ -926,10 +900,9 @@ local({
 	
   ef$nc$cmefiDf <<- cmefiDf
 })
-```
 
-## Forecast dfm.m monthly variables
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	dfmVarnames = ef$paramsDf %>% dplyr::filter(., nowcast == 'dfm.m') %>% .$varname
@@ -1021,10 +994,9 @@ local({
 
 	ef$nc$dfmMDf <<- dfmMDf	
 })
-```
 
-## Forecast dfm.q quarterly variables w/elastic net
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	dfmVarnames = ef$paramsDf %>% dplyr::filter(., nowcast == 'dfm.q') %>% .$varname
@@ -1212,13 +1184,9 @@ local({
 	ef$nc$cvPlotsQ <<- cvPlots
 	ef$nc$dfmQDf <<- dfmDf
 })
-```
 
 
-# Finalize Nowcasts
-
-## Aggregate
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	mDf =
@@ -1235,11 +1203,9 @@ local({
 	ef$ncpred0$m$st <<- mDf
 	ef$ncpred0$q$st <<- qDf
 })
-```
 
 
-## Detransform
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	mDf =
@@ -1297,10 +1263,9 @@ local({
 	ef$ncpred0$m$ut <<- mDf
 	ef$ncpred0$q$ut <<- qDf
 })
-```
 
-## Calculate GDP nowcast
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	qDf =
@@ -1333,10 +1298,9 @@ local({
 	ef$ncpred1$m$ut <<- mDf
 	ef$ncpred1$q$ut <<- qDf
 })
-```
 
-## Aggregate & calculate display format
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	wide = list()
@@ -1407,10 +1371,9 @@ local({
 	
 	ef$ncpred <<- wide
 })
-```
 
-## Flatten
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 	flat =
@@ -1426,14 +1389,9 @@ local({
 						
 	ef$ncpredFlat <<- flat
 })
-```
 
 
-
-# Document & Store
-
-## Send to SQL
-```{r}
+## -----------------------------------------------------------------------------
 local({
 	
 	conn =
@@ -1514,10 +1472,9 @@ local({
 	# res = DBI::dbGetQuery(conn, query)
 	
 })
-```
 
-## Save data to RDS and process .rnw
-```{r}
+
+## -----------------------------------------------------------------------------
 local({
 	
 
@@ -1562,5 +1519,4 @@ local({
 
 	}
 })
-```
 
