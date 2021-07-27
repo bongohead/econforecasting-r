@@ -5,7 +5,7 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-07-22')
+VINTAGE_DATE = as.Date('2021-07-26')
 ```
 
 
@@ -155,6 +155,8 @@ local({
 				.[, c('Date', 'Adj Close')]	%>%
 				setnames(., new = c('date', 'value')) %>%
 				as_tibble(.) %>%
+				dplyr::filter(., value != 'null') %>% # Bug with yahoo finance returning null for date 7/22/21 as of 7/23
+				dplyr::mutate(., value = as.numeric(value)) %>% #
 				dplyr::filter(., date <= p$VINTAGE_DATE) %>%
 				return(.)
 		})
