@@ -109,15 +109,54 @@ local({
 				dplyr::mutate(., scenarioname = i) %>%
 				na.omit(.)
 		)
-	
+
 	
 	m$csm$exogDfs <<- exogDfs
-	m$csm$exogFlag <<- exogFlat
+	m$csm$exogFlat <<- exogFlat
 })
 ```
 
 
+
 # CSM
+
+## Forecast Periods
+```{r}
+local({
+	
+	# Pull start date by finding the first date where all CORE.ENDOG variables are non-empty
+	startDate =
+		m$csm$exogDfs$baseline %>%
+		dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.endog')$varname) %>%
+		dplyr::filter(., date >= as.Date('2020-01-01')) %>%
+		tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+		dplyr::mutate(., notNa = ifelse(!is.na(value), 1, 0)) %>%
+		dplyr::group_by(., date) %>%
+		dplyr::summarize(., countNotNa = sum(notNa), .groups = 'drop') %>%
+		dplyr::filter(., countNotNa == 0) %>%
+		dplyr::arrange(., date) %>%
+		head(., 1) %>%
+		.$date
+	
+	
+	# Pull end date by last date of CORE.EXOG variables
+	endDate =
+		m$csm$exogDfs$baseline %>%
+	    dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.exog')$varname) %>%
+	    dplyr::filter(., date >= as.Date('2020-01-01')) %>%
+	    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+	    dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
+	    dplyr::group_by(., date) %>%
+	    dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
+	    dplyr::filter(., countNa == 0) %>%
+	    dplyr::arrange(., date) %>%
+	    tail(., 1) %>%
+	    .$date
+
+	
+	
+})
+```
 
 ## CSM Forecasting - Quarterly (All)
 ```{r}
@@ -125,9 +164,7 @@ local({
     
     # First get historical data frame
     histDf =
-        h$st$q %>%
-        na.omit(.)
-    
+		m$csm$exogFlat    
     # Merge exog df
     exogDf =
         tibble(
@@ -308,29 +345,13 @@ local({
 ```
 
 
+
+
+# Combine with Nowcasts
+## Merge CSM - NC
 ```{r}
 local({
     
-    # Can use qualitative forecasts or just use raw inputs
-    # Included: 
-    # Federal Funds Rate, 3M - FFR Spread, 10y - 3M Spread,
-    # DPI, UE
-    # SPY, Expected 1-Year Forward GDP,
-    # Inflation
-    
-    initialForecasts = list(
-        ffr = ef$e$forecasts$cme %>% dplyr::filter(., varname == 'ffr'),
-        sofr = ef$e$forecasts$cme %>% dplyr::filter(., varname == 'sofr'),
-        t03mffrspread =
-            ef$h$base$m %>%
-            dplyr::select(., date, t03mffrspread) %>%
-            na.omit(.) %>%
-            {tibble(
-                date = seq(add_with_rollback(max(.$date), months(1)), by = '1 month', length.out = 100),
-                value = as.numeric(predict(arima(x = .[[2]], order = c(12, 0, 0)), 100)$pred)
-                )},
-        t10yt03mspread = c()
-        )
 
 })
 ```
