@@ -155,6 +155,8 @@ local({
 
 	
 	
+	m$csm$startDate <<- startDate
+	m$csm$endDate <<- endDate
 })
 ```
 
@@ -162,36 +164,35 @@ local({
 ```{r}
 local({
     
-    # First get historical data frame
-    histDf =
-		m$csm$exogFlat    
-    # Merge exog df
+	
+	histDf =
+		m$csm$exogDfs$baseline %>%
+		dplyr::filter(., date < m$csm$startDate)
+	
+    # Create exog df - start 4 quarters before forecast start date
     exogDf =
-        tibble(
-            date = seq(add_with_rollback(tail(histDf$date, 1), months(3)), by = '3 month', length.out = 60),
-            dpi = c(-.03, -.01, rep(0, 58))
-            )
-    
-    
+		m$csm$exogDfs$baseline %>%
+    	dplyr::filter(., date >= lubridate::add_with_rollback(m$csm$startDate, months(-12)) & date <= m$csm$endDate)
+    	
     # Now collapse into single data frame - 60 forecast quarters + 4 historical months,
     # combining historical & exogenous, overwriting exogenous with historical if it exists
-    initDf =
-        tibble(
-            date = c(
-                tail(histDf$date, 4),
-                seq(add_with_rollback(tail(histDf$date, 1), months(3)), by = '3 month', length.out = 60)
-                )
-            ) %>%
-        dplyr::left_join(
-            .,
-            dplyr::full_join(
-                tidyr::pivot_longer(histDf, -date, values_to = 'hist'),
-                tidyr::pivot_longer(exogDf, -date, values_to = 'exog'), by = c('name', 'date')
-                ) %>%
-                dplyr::mutate(., value = ifelse(is.na(hist), exog, hist)) %>%
-                dplyr::select(., date, name, value) %>% tidyr::pivot_wider(.),
-            by = 'date'
-            )
+    # initDf =
+    #     tibble(
+    #         date = c(
+    #             tail(histDf$date, 4),
+    #             seq(add_with_rollback(tail(histDf$date, 1), months(3)), by = '3 month', length.out = 60)
+    #             )
+    #         ) %>%
+    #     dplyr::left_join(
+    #         .,
+    #         dplyr::full_join(
+    #             tidyr::pivot_longer(histDf, -date, values_to = 'hist'),
+    #             tidyr::pivot_longer(exogDf, -date, values_to = 'exog'), by = c('name', 'date')
+    #             ) %>%
+    #             dplyr::mutate(., value = ifelse(is.na(hist), exog, hist)) %>%
+    #             dplyr::select(., date, name, value) %>% tidyr::pivot_wider(.),
+    #         by = 'date'
+    #         )
     
     # Now create coefficient matrices
     # Get steady-state values
@@ -207,11 +208,9 @@ local({
     coefMatsIdentity =
         list(
             gdp =
-                tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp)
-        )
+        		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp)
+            )
     
-    
-    # Get
     # Get historical data
     histDfAll =
         histDf %>%
@@ -228,13 +227,14 @@ local({
     # Iterate through equations
     eqnsList =
         list(
-            pce = 'pce = constant + _ma2.dpi + pce.l1',
-            pdi = 'pdi = constant + _lma2.pdi',
-            im = 'im = constant + _lma2.im',
-            ex = 'ex = constant + _lma2.ex',
+            pce = 'pce = constant + ue',
+            pdin = 'pdin = constant + ue + _lma2.pdin',
+            pdir = 'pdir = constant + ue + hpi + _lma2.pdir',
+            im = 'im = constant + ue + _lma2.im',
+            ex = 'ex = constant + ue + _lma2.ex',
             govt = 'govt = constant + _lma2.govt',
-            dpi = 'dpi = constant + _lma2.dpi + pce.l1',
-            ffr = 'ffr = ffr.l1'
+            pi = 'pi = constant + pid',
+            pdi = 'pdi = pdin + pdir'
         )
     
     # Get estimated coefficient matrices
@@ -290,7 +290,7 @@ local({
     
     
     # Pass accumulator new exogenous variables each time
-    resDf = purrr::reduce(5:nrow(initDf), function(df, .row) {
+    resDf = purrr::reduce(5:nrow(exogDf), function(df, .row) {
         
         allCoefDf =
             df %>%
@@ -309,7 +309,9 @@ local({
         bMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., is.na(value)) %>% .$name
         dMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., !is.na(value)) %>% .$name
         # Only keep equations where not already filled
-        cMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.)
+        cMat =
+        	coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>%
+        	{. * -1}
         aMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(bMatVars)) %>% as.matrix(.)
         dMat = allCoefDf %>% dplyr::select(., dMatVars) %>% as.matrix(.) %>% t(.)
         
@@ -321,7 +323,7 @@ local({
         }
         
         return(df)
-    }, .init = initDf)
+    }, .init = exogDf)
 
 })
 ```
