@@ -55,7 +55,6 @@ local({
 ```{r}
 local({
 	
-	
 	# Get historical forecasts
 	histDf =
 		h$flatDf %>%
