@@ -15,6 +15,10 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
+
+## 2021-07-28 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
+- Added CSM forecasting code
+
 ## 2021-07-26 [v0.15]
 - Added rewrite of model flow: (1) data, (2) nowcasts, (3) qual forecasts, (4) csm
 - Added table of releases to inputs
