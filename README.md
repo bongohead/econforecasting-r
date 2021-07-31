@@ -20,6 +20,9 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added CSM forecasting code
 - Added model stacking for PCA->DFM->Kalman Filter process to reduce variance due to factor selection
 - Added qualitative forecasts for mortgage rates and mortgage spreads
+- Added bank deposits, C&I, bank credit and converted bank RE to weekly index for DFM inputs
+- Added JOLTS to DFM inputs (changed stationary form to base values)
+- Removed CFNAI and WEI from DFM inputs
 
 ## 2021-07-26 [v0.15]
 - Added rewrite of model flow: (1) data, (2) nowcasts, (3) qual forecasts, (4) csm
