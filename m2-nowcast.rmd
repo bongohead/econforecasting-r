@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-30] m1.rds'
+M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-31] m1.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -114,6 +114,16 @@ local({
 })
 ```
 
+## Define stack weights
+```{r}
+local({
+	
+	bigS = 3
+	
+	m$nc$bigS <<- bigS
+})
+```
+
 ## Extract factors
 ```{r}
 local({
@@ -192,8 +202,10 @@ local({
 		# 	)/2) %>%
 		# round(., digits = 0)
 	
+	bigRs = seq(from = bigR - 1, by = 1, length.out = m$nc$bigS)
+	
 	zDfs =
-		lapply(c(bigR - 1, bigR, bigR + 1), function(thisR)
+		lapply(bigRs, function(thisR)
 			xDf[, 'date'] %>%
 			dplyr::bind_cols(
 				.,
@@ -217,8 +229,8 @@ local({
 					ggthemes::theme_fivethirtyeight() +
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 				)
-			
-		)
+
+			)
 	
 	factorWeightsDf =
 		lambdaHat %>%
@@ -235,7 +247,7 @@ local({
 		tidyr::pivot_wider(., names_from = varname, values_from = valFormat) %>%
 		dplyr::arrange(., order) %>%
 		dplyr::select(., -order) %>%
-		dplyr::select(., paste0('f', 1:(bigR + 1)))
+		dplyr::select(., paste0('f', 1:(max(bigRs))))
 	
 	
 	m$nc$factorWeightsDf <<- factorWeightsDf
@@ -244,7 +256,7 @@ local({
 	m$nc$bigR <<- bigR
 	m$nc$pcaInputDf <<- xDf
 	
-	for (i in 1:3) {
+	for (i in 1:m$nc$bigS) {
 		m$nc$stack[[i]] <<- list()
 		m$nc$stack[[i]]$zDf <<- zDfs[[i]]
 		m$nc$stack[[i]]$zPlots <<- zPlots[[i]]
@@ -256,7 +268,7 @@ local({
 ```{r}
 local({
 	
-	varRes = lapply(1:3, function(i) {
+	varRes = lapply(1:m$nc$bigS, function(i) {
 		
 		inputDf =
 			m$nc$stack[[i]]$zDf %>%
@@ -340,7 +352,7 @@ local({
 	})
 	
 	
-	for (i in 1:3) {
+	for (i in 1:m$nc$bigS) {
 		m$nc$stack[[i]]$varFittedPlots <<- varRes[[i]]$fittedPlots
 		m$nc$stack[[i]]$varResidPlot <<- varRes[[i]]$residPlot
 		m$nc$stack[[i]]$varGofDf <<- varRes[[i]]$gofDf
@@ -358,7 +370,7 @@ local({
 local({
 	
 	
-	dfmRes = lapply(1:3, function(i) {
+	dfmRes = lapply(1:m$nc$bigS, function(i) {
 	
 		yMat = m$nc$pcaInputDf %>% dplyr::select(., -date) %>% as.matrix(.)
 		xDf = m$nc$stack[[i]]$zDf %>% dplyr::select(., -date) %>% dplyr::bind_cols(constant = 1, .)
@@ -440,7 +452,7 @@ local({
 	})
 	
 	
-	for (i in 1:3) {
+	for (i in 1:m$nc$bigS) {
 		m$nc$stack[[i]]$dfmGofDf <<- dfmRes[[i]]$gofDf
 		m$nc$stack[[i]]$dfmCoefDf <<- dfmRes[[i]]$coefDf
 		m$nc$stack[[i]]$dfmFittedPlots <<- dfmRes[[i]]$fittedPlots
@@ -456,7 +468,7 @@ local({
 ```{r}
 local({
 	
-	kfRes = lapply(1:3, function(i) {
+	kfRes = lapply(1:m$nc$bigS, function(i) {
 	
 		bMat = m$nc$stack[[i]]$bMat
 		cMat = m$nc$stack[[i]]$cMat
@@ -561,7 +573,7 @@ local({
 			purrr::map_dfr(., function(x)
 				as.data.frame(x) %>% t(.) %>% as_tibble(.)
 				) %>%
-			dplyr::bind_cols(date = m$nc$bigTStarDates, .)
+			dplyr::bind_cols(date = m$nc$bigTStarDates, .) # %>% dplyr::mutate(., f1 = 0) # mean(dplyr::filter(m$nc$zDf, date < '2020-03-01')$f1))
 		
 		
 		# Plot and Cleaning
@@ -587,7 +599,7 @@ local({
 			dplyr::bind_rows(
 				kSmooth,
 				tail(kFitted, 1),
-				kForecast #%>% dplyr::mutate(., f1 = mean(dplyr::filter(m$nc$zDf, date < '2020-03-01')$f1))
+				kForecast
 				)
 		
 		yDf =
@@ -603,8 +615,20 @@ local({
 			# 	#all_of(dplyr::filter(m$paramsDf, nowcast == 'kf')$varname)
 			# 	)
 		
+		
+		fPlot =
+			fDf %>%
+			tidyr::pivot_longer(., -date) %>%
+			dplyr::filter(., date >= as.Date('2018-01-01')) %>%
+			ggplot(.) +
+			geom_line(aes(x = date, y = value, color = name)) +
+			geom_vline(aes(xintercept = m$nc$bigTDate), linetype = 'dotted') +
+			labs(title = NULL, x = NULL, y = NULL, color = NULL) + facet_wrap( ~ name) +
+			ggthemes::theme_economist()
+		
 		list(
 			fDf = fDf,
+			fPlot = fPlot,
 			kfPlots = kfPlots,
 			yDf = yDf,
 			kfDf = kfDf
@@ -614,7 +638,7 @@ local({
 	
 	
 	
-	for (i in 1:3) {
+	for (i in 1:m$nc$bigS) {
 		m$nc$stack[[i]]$fDf <<- kfRes[[i]]$fDf
 		m$nc$stack[[i]]$kfPlots <<- kfRes[[i]]$kfPlots
 		m$nc$stack[[i]]$yDf <<- kfRes[[i]]$yDf
@@ -632,7 +656,7 @@ local({
 	
 	dfmVarnames = p$variablesDf %>% dplyr::filter(., nc_method == 'dfm.m') %>% .$varname
 	
-	dfmMDfs = lapply(1:3, function(i) {
+	dfmMDfs = lapply(1:m$nc$bigS, function(i) {
 		lapply(dfmVarnames, function(.varname) {
 			inputDf =
 				dplyr::inner_join(
@@ -657,7 +681,7 @@ local({
 					) %>%
 				.[2:nrow(.), ] %>%
 				dplyr::mutate(., !!.varname := 0) %>%
-				dplyr::left_join(., m$nc$stack[[i]]$fDf,, by = 'date') %>%
+				dplyr::left_join(., m$nc$stack[[i]]$fDf, by = 'date') %>%
 				dplyr::bind_cols(., constant = 1)
 
 			forecastDf =
@@ -730,7 +754,7 @@ local({
 		dplyr::arrange(., date)
 
 
-	for (i in 1:3) {
+	for (i in 1:m$nc$bigS) {
 		m$nc$stack[[i]]$dfmMDf <<- dfmMDfs[[i]]
 	}
 	m$nc$dfmMDf <<- dfmMDf	
@@ -744,8 +768,8 @@ local({
 	dfmVarnames = p$variablesDf %>% dplyr::filter(., nc_method == 'dfm.q') %>% .$varname
 	
 	
-	res = lapply(1:3, function(i) {
-		
+	res = lapply(1:m$nc$bigS, function(i) {
+		message('Fitting elastic net ... ', i)
 		fDf =
 			m$nc$stack[[i]]$fDf %>%
 			tidyr::pivot_longer(., -date, names_to = 'varname') %>%
@@ -762,7 +786,7 @@ local({
 		
 		dfmRes =
 			lapply(dfmVarnames %>% setNames(., .), function(.varname) {
-				
+				message(.varname)
 		# 		inputDf =
 		# 			dplyr::inner_join(
 		# 				fDf,
@@ -806,6 +830,7 @@ local({
 						fDf,
 						dplyr::select(h$st$q, date, all_of(.varname)) %>%
 							econforecasting::addLags(., 1, .zero = TRUE),
+						    # dplyr::mutate(., !!paste0('lma.', .varname) := econforecasting::lma(.[[.varname]], 2)),
 						by = 'date'
 					) %>%
 					na.omit(.)
@@ -813,7 +838,7 @@ local({
 				yMat = dplyr::select(inputDf, all_of(.varname)) %>% as.matrix(.)
 				xDf = dplyr::select(inputDf, -date, -all_of(.varname)) %>% dplyr::mutate(., constant = 1)
 				
-				glmResult = lapply(c(0, .5), function(.alpha) {
+				glmResult = lapply(seq(from = 0, to = 1.0, by = 0.10), function(.alpha) {
 					cv =
 						glmnet::cv.glmnet(
 							x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
@@ -879,16 +904,20 @@ local({
 				# Forecast dates + last historical date
 				forecastDf0 =
 					tibble(
+						# date = seq(from = head(tail(inputDf$date, 2), 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
 						date = seq(from = tail(inputDf$date, 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
 						) %>%
 					dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 1), rep(NA, nrow(.) - 1))) %>%
+					# dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 2), rep(NA, nrow(.) - 2))) %>%
 					dplyr::left_join(., m$nc$stack[[i]]$fDf, by = 'date') %>%
 					dplyr::bind_cols(., constant = 1)
 	
 				forecastDf =
-					purrr::reduce(2:nrow(forecastDf0), function(accum, x) {
+					purrr::reduce((1 + 1):nrow(forecastDf0), function(accum, x) {
 						accum[x, .varname] =
-							accum %>% econforecasting::addLags(., 1, .zero = TRUE) %>%
+							accum %>%
+							#econforecasting::addLags(., 1, .zero = TRUE) %>%
+						    dplyr::mutate(., !!paste0('lma.', .varname) := econforecasting::lma(.[[.varname]], 1)) %>%
 							.[x, ] %>%
 							dplyr::select(., coefDf$coefname) %>%
 							matrix(., ncol = 1) %>%
@@ -896,7 +925,7 @@ local({
 	
 						return(accum)
 					}, .init = forecastDf0) %>%
-					.[2:nrow(.), ] %>%
+					.[(1 + 1):nrow(.), ] %>%
 					dplyr::select(., all_of(c('date', .varname)))
 				
 				list(
@@ -943,7 +972,7 @@ local({
 		dplyr::arrange(., date)
 
 	
-	for (i in 1:3) {
+	for (i in 1:m$nc$bigS) {
 		m$nc$stack[[i]]$glmCoefQList <<- res[[i]]$glmCoefList 
 		m$nc$stack[[i]]$glmOptimQDf <<- res[[i]]$glmOptimDf
 		m$nc$stack[[i]]$cvPlotsQ <<- res[[i]]$cvPlots
