@@ -241,7 +241,13 @@ local({
 ## Other Scenario Forecasts (Qual)
 ```{r}
 local({
-    
+	
+	# upside = list()
+	# 
+	# upside$ffr =
+	# 	m$qual$predraw$baseline$ffr %>%
+		
+	
 	
     
 })
