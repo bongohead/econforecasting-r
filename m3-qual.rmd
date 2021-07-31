@@ -218,7 +218,7 @@ local({
     	dplyr::mutate(., value = value * -1/4) %>%
     	# Now undifference to get forecast for mortspread
     	dplyr::filter(., date > max(p$variables$mort15yt10yspread$h$d1$m$date)) %>%
-    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort15yt10yspread$h$d1$m, 1)$value))
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort15yt10yspread$h$d1$m, 1)$value), form = 'd1')
     
     
     baseline$mort30yt30yspread =
@@ -232,7 +232,7 @@ local({
     	dplyr::mutate(., value = value * -1/4) %>%
     	# Now undifference to get forecast for mortspread
     	dplyr::filter(., date > max(p$variables$mort30yt30yspread$h$d1$m$date)) %>%
-    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort30yt30yspread$h$d1$m, 1)$value))  
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort30yt30yspread$h$d1$m, 1)$value), form = 'd1')
 
     m$qual$predraw$baseline <<- baseline
 })
@@ -312,7 +312,8 @@ local({
 				purrr::reduce(., function(x, y) dplyr::inner_join(x, y, by = 'date'))
 			
 			mortDf =
-				tDf 
+				dplyr::inner_join(scenario, tDf, by = 'date') %>%
+				dplyr::transmute(., date, mort15y = mort15yt10yspread + t10y, mort30y = mort30yt30yspread + t30y) 
 			
 			list(tDf, mortDf) %>%
 				purrr::reduce(., function(x, y) dplyr::inner_join(x, y, by = 'date')) %>%
