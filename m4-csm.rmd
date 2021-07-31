@@ -159,58 +159,16 @@ local({
 })
 ```
 
-## CSM Forecasting - Quarterly (All)
+## Estimate Coefficients
 ```{r}
 local({
-    
 	
+	# Get historical data
 	histDf =
-		m$csm$exogDfs$baseline %>%
+		h$st$q %>%
 		dplyr::filter(., date < m$csm$startDate)
 	
-    # Create exog df - start 4 quarters before forecast start date
-    exogDf =
-		m$csm$exogDfs$baseline %>%
-    	dplyr::filter(., date >= lubridate::add_with_rollback(m$csm$startDate, months(-12)) & date <= m$csm$endDate)
-    	
-    # Now collapse into single data frame - 60 forecast quarters + 4 historical months,
-    # combining historical & exogenous, overwriting exogenous with historical if it exists
-    # initDf =
-    #     tibble(
-    #         date = c(
-    #             tail(histDf$date, 4),
-    #             seq(add_with_rollback(tail(histDf$date, 1), months(3)), by = '3 month', length.out = 60)
-    #             )
-    #         ) %>%
-    #     dplyr::left_join(
-    #         .,
-    #         dplyr::full_join(
-    #             tidyr::pivot_longer(histDf, -date, values_to = 'hist'),
-    #             tidyr::pivot_longer(exogDf, -date, values_to = 'exog'), by = c('name', 'date')
-    #             ) %>%
-    #             dplyr::mutate(., value = ifelse(is.na(hist), exog, hist)) %>%
-    #             dplyr::select(., date, name, value) %>% tidyr::pivot_wider(.),
-    #         by = 'date'
-    #         )
-    
-    # Now create coefficient matrices
-    # Get steady-state values
-    ss =
-        h$base$q %>%
-        na.omit(.) %>%
-        dplyr::filter(., date == max(date)) %>%
-        dplyr::select(., -date) %>%
-        purrr::transpose(.) %>%
-        .[[1]]
-    
-    
-    coefMatsIdentity =
-        list(
-            gdp =
-        		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp)
-            )
-    
-    # Get historical data
+
     histDfAll =
         histDf %>%
         dplyr::bind_cols(
@@ -223,6 +181,25 @@ local({
             )
 
     
+    	
+    # Now create coefficient matrices
+    # Get steady-state values
+    ss =
+        h$base$q %>%
+        na.omit(.) %>%
+        dplyr::filter(., date == max(date)) %>%
+        dplyr::select(., -date) %>%
+        purrr::transpose(.) %>%
+        .[[1]]
+
+
+	coefMatsIdentity =
+        list(
+            gdp =
+        		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp)
+            )
+	
+
     # Iterate through equations
     eqnsList =
         list(
@@ -240,10 +217,9 @@ local({
             govts = 'govts = govt + _lma2.govts + _lma2.ue',
             houst = 'houst = hpi + _lma2.houst + _lma2.ue + mort30y',
             hsold = 'hsold = hpi + _lma2.hsold + _lma2.ue + mort30y',
-            vix = 'vix = vix.l1 + spy + spy.l1',
-            
+            vix = 'vix = vix.l1 + spy + spy.l1'
         )
-    
+
     # Get estimated coefficient matrices
     coefMatsEstimated = purrr::map(eqnsList, function(eqn) {
         message(eqn)
@@ -285,52 +261,77 @@ local({
         
         return(coefRes)
     })
-
-        
-        
+    
+    
+    
     # Seperate endogeneous (estimated) and exogenous matrices
     endogVars = names(c(coefMatsIdentity, coefMatsEstimated))
+    exogVars = p$variablesDf %>% dplyr::filter(., core_structural == 'core.exog') %>% .$varname
     
     coefMat =
         purrr::imap_dfr(c(coefMatsIdentity, coefMatsEstimated), function(x, i) dplyr::bind_cols(coefname = i, x)) %>%
         replace(., is.na(.), 0)
+
+
+    m$csm$endogVars <<- endogVars
+    m$csm$exogVars <<- exogVars
+    m$csm$coefMat <<- coefMat
+})
+```
+
+## CSM Forecasting - Quarterly (All)
+```{r}
+local({
     
-    
-    # Pass accumulator new exogenous variables each time
-    resDf = purrr::reduce(5:nrow(exogDf), function(df, .row) {
-        
-        allCoefDf =
-            df %>%
-            dplyr::bind_cols(
-                .,
-                constant = 1,
-                lapply(1:4, function(l)
-                    dplyr::transmute_if(df, is.numeric, function(x) dplyr::lag(x, l)) %>%
-                        dplyr::rename_with(., function(x) paste0(x, '.l', l))
-                    )
-                ) %>%
-            dplyr::select(., c('date', colnames(coefMat) %>% .[. != 'coefname'])) %>%
-            .[.row, ]
-        
-        
-        bMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., is.na(value)) %>% .$name
-        dMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., !is.na(value)) %>% .$name
-        # Only keep equations where not already filled
-        cMat =
-        	coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>%
-        	{. * -1}
-        aMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(bMatVars)) %>% as.matrix(.)
-        dMat = allCoefDf %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>% t(.)
-        
-        bMat = solve(aMat) %*% (cMat %*% dMat)
-        bMatVec = bMat %>% as.data.frame(.) %>% rownames_to_column(.) %>% {setNames(.$V1, .$rowname)}
-        
-        for (varname in names(bMatVec)) {
-            df[[.row, varname]] = bMatVec[[varname]]
-        }
-        
-        return(df)
-    }, .init = exogDf)
+	
+	forecasts = lapply(m$csm$exogDfs, function(exogDf) {
+		
+	    # Create exog df - start 4 quarters before forecast start date
+	    exogDf =
+			m$csm$exogDfs$baseline %>%
+	    	dplyr::filter(., date >= lubridate::add_with_rollback(m$csm$startDate, months(-12)) & date <= m$csm$endDate)
+	
+	
+	    # Pass accumulator new exogenous variables each time
+	    resDf = purrr::reduce(5:nrow(exogDf), function(df, .row) {
+	        
+	        allCoefDf =
+	            df %>%
+	            dplyr::bind_cols(
+	                .,
+	                constant = 1,
+	                lapply(1:4, function(l)
+	                    dplyr::transmute_if(df, is.numeric, function(x) dplyr::lag(x, l)) %>%
+	                        dplyr::rename_with(., function(x) paste0(x, '.l', l))
+	                    )
+	                ) %>%
+	            dplyr::select(., c('date', colnames(coefMat) %>% .[. != 'coefname'])) %>%
+	            .[.row, ]
+	        
+	        
+	        bMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., is.na(value)) %>% .$name
+	        dMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., !is.na(value)) %>% .$name
+	        # Only keep equations where not already filled
+	        cMat =
+	        	coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>%
+	        	{. * -1}
+	        aMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(bMatVars)) %>% as.matrix(.)
+	        dMat = allCoefDf %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>% t(.)
+	        
+	        bMat = solve(aMat) %*% (cMat %*% dMat)
+	        bMatVec = bMat %>% as.data.frame(.) %>% rownames_to_column(.) %>% {setNames(.$V1, .$rowname)}
+	        
+	        for (varname in names(bMatVec)) {
+	            df[[.row, varname]] = bMatVec[[varname]]
+	        }
+	        
+	        return(df)
+	    }, .init = exogDf)
+	    
+	    
+	    pred = resDf %>% dplyr::filter(., date >= m$csm$startDate) %>% dplyr::select(., all_of(c('date', endogVars)))
+	    
+	})
     
     m$csm$predst <<- 
 })
