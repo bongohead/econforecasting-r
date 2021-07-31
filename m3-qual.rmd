@@ -203,8 +203,37 @@ local({
     	) %>%
     	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1')
 
+    # Direction of spread is almost always exactly in the opposite direction of t10y/2
+	# dplyr::inner_join(p$variables$mort15yt10yspread$h$d1$m, p$variables$t10y$h$d1$m, by = 'date') %>%
+	# ggplot(.) + geom_line(aes(x = date, y = value.x)) + geom_line(aes(x = date, y = value.y))
+    
+    baseline$mort15yt10yspread =
+    	# Get change in tdns1
+    	dplyr::bind_rows(
+    		p$variables$tdns1$h$d1$m,
+    		baseline$tdns1 %>% dplyr::select(., -form)
+    		) %>%
+    	dplyr::mutate(., value = (value - dplyr::lag(value, 1))) %>%
+    	# Scale to appropriate change desired in mort15y10yspread
+    	dplyr::mutate(., value = value * -1/4) %>%
+    	# Now undifference to get forecast for mortspread
+    	dplyr::filter(., date > max(p$variables$mort15yt10yspread$h$d1$m$date)) %>%
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort15yt10yspread$h$d1$m, 1)$value))
     
     
+    baseline$mort30yt30yspread =
+    	# Get change in tdns1
+    	dplyr::bind_rows(
+    		p$variables$tdns1$h$d1$m,
+    		baseline$tdns1 %>% dplyr::select(., -form)
+    		) %>%
+    	dplyr::mutate(., value = (value - dplyr::lag(value, 1))) %>%
+    	# Scale to appropriate change desired in mort15y10yspread
+    	dplyr::mutate(., value = value * -1/4) %>%
+    	# Now undifference to get forecast for mortspread
+    	dplyr::filter(., date > max(p$variables$mort30yt30yspread$h$d1$m$date)) %>%
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort30yt30yspread$h$d1$m, 1)$value))  
+
     m$qual$predraw$baseline <<- baseline
 })
 ```
@@ -267,8 +296,9 @@ local({
 	
 	# Rebuild yield curves with Diebold-Li function
 	df =
-		lapply(m$qual$predqual, function(scenario)
-			lapply(purrr::transpose(m$dnsYieldCurveNamesMap), function(y)
+		lapply(m$qual$predqual, function(scenario) {
+			
+			tDf = lapply(purrr::transpose(m$dnsYieldCurveNamesMap), function(y)
 					scenario %>%
 						dplyr::transmute(
 							.,
@@ -280,10 +310,17 @@ local({
 							)
 					) %>%
 				purrr::reduce(., function(x, y) dplyr::inner_join(x, y, by = 'date'))
-			)
+			
+			mortDf =
+				tDf 
+			
+			list(tDf, mortDf) %>%
+				purrr::reduce(., function(x, y) dplyr::inner_join(x, y, by = 'date')) %>%
+				dplyr::arrange(., date)
+			})
+	
+	
 
-	
-	
 	
 	m$qual$predcalc <<- df
 })

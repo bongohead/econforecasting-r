@@ -387,7 +387,7 @@ local({
     resDfs =
         tribble(
             ~varname, ~var1, ~var2,
-            'mort30ymort15yspread', 'mort30y', 'mort15y',
+            'mort30yt30yspread', 'mort30y', 't30y',
             'mort15yt10yspread', 'mort15y', 't10y'
             ) %>%
         purrr::transpose(., .names = .$varname) %>%
