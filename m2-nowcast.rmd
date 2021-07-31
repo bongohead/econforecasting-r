@@ -786,7 +786,6 @@ local({
 		
 		dfmRes =
 			lapply(dfmVarnames %>% setNames(., .), function(.varname) {
-				message(.varname)
 		# 		inputDf =
 		# 			dplyr::inner_join(
 		# 				fDf,
@@ -904,20 +903,20 @@ local({
 				# Forecast dates + last historical date
 				forecastDf0 =
 					tibble(
-						# date = seq(from = head(tail(inputDf$date, 2), 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
-						date = seq(from = tail(inputDf$date, 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
+						date = seq(from = head(tail(inputDf$date, 2), 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
+						# date = seq(from = tail(inputDf$date, 1), to = tail(m$nc$bigTStarDates, 1), by = '3 months')
 						) %>%
-					dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 1), rep(NA, nrow(.) - 1))) %>%
-					# dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 2), rep(NA, nrow(.) - 2))) %>%
+					# dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 1), rep(NA, nrow(.) - 1))) %>%
+					dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 2), rep(NA, nrow(.) - 2))) %>%
 					dplyr::left_join(., m$nc$stack[[i]]$fDf, by = 'date') %>%
 					dplyr::bind_cols(., constant = 1)
 	
 				forecastDf =
-					purrr::reduce((1 + 1):nrow(forecastDf0), function(accum, x) {
+					purrr::reduce((2 + 1):nrow(forecastDf0), function(accum, x) {
 						accum[x, .varname] =
 							accum %>%
-							#econforecasting::addLags(., 1, .zero = TRUE) %>%
-						    dplyr::mutate(., !!paste0('lma.', .varname) := econforecasting::lma(.[[.varname]], 1)) %>%
+							econforecasting::addLags(., 2, .zero = TRUE) %>%
+						    # dplyr::mutate(., !!paste0('lma.', .varname) := econforecasting::lma(.[[.varname]], 1)) %>%
 							.[x, ] %>%
 							dplyr::select(., coefDf$coefname) %>%
 							matrix(., ncol = 1) %>%
@@ -925,7 +924,7 @@ local({
 	
 						return(accum)
 					}, .init = forecastDf0) %>%
-					.[(1 + 1):nrow(.), ] %>%
+					.[(2 + 1):nrow(.), ] %>%
 					dplyr::select(., all_of(c('date', .varname)))
 				
 				list(
