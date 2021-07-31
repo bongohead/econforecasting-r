@@ -2,7 +2,7 @@
 ## Set Options
 ```{r purl = TRUE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-26] m3.rds'
+M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-30] m3.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -233,7 +233,15 @@ local({
             ex = 'ex = constant + ue + _lma2.ex',
             govt = 'govt = constant + _lma2.govt',
             pi = 'pi = constant + pid',
-            pdi = 'pdi = pdin + pdir'
+            pdi = 'pdi = pdin + pdir',
+        	pceg = 'pceg = pce + _lma2.pceg + _lma2.ue',
+        	pces = 'pces = pce + _lma2.pces + _lma2.ue',
+            govtf = 'govtf = govt + _lma2.govtf + _lma2.ue',
+            govts = 'govts = govt + _lma2.govts + _lma2.ue',
+            houst = 'houst = hpi + _lma2.houst + _lma2.ue + t30y',
+            hsold = 'hsold = hpi + _lma2.hsold + _lma2.ue + t30y',
+            vix = 'vix = vix.l1 + spy + spy.l1',
+            
         )
     
     # Get estimated coefficient matrices
@@ -312,7 +320,7 @@ local({
         	coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>%
         	{. * -1}
         aMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(bMatVars)) %>% as.matrix(.)
-        dMat = allCoefDf %>% dplyr::select(., dMatVars) %>% as.matrix(.) %>% t(.)
+        dMat = allCoefDf %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>% t(.)
         
         bMat = solve(aMat) %*% (cMat %*% dMat)
         bMatVec = bMat %>% as.data.frame(.) %>% rownames_to_column(.) %>% {setNames(.$V1, .$rowname)}
@@ -323,33 +331,59 @@ local({
         
         return(df)
     }, .init = exogDf)
-
+    
+    m$csm$predst <<- 
 })
 ```
 
 
-
-## CSM Forecasting - Monthly De-Agg
-```{r}
-
-```
-
-
-## Get structural model exogenous shock
+## Convert to base values
 ```{r}
 local({
-    
-    
-    
-    
+	
+	
 })
 ```
+
+
+## Delete quarterly forecasts on quarters where monthly data exists -> replace with monthly forecasts and interpolate with remaining monthly forecasts
+```{r}
+
+```
+
+
+
+# Aggregate
+
+## Model stacking - quarterly
+```{r}
+local({
+	
+	# Combine with nowcasts and external forecasts
+	
+	
+})
+```
+
+
+## Model stacking - monthly
+```{r}
+local({
+	
+	# Convert all to monthly, then deaggregate
+	
+	
+})
+```
+
 
 # Combine with Nowcasts
-## Merge CSM - NC
+## Merge CSM - NC - EXTERNAL
 ```{r}
 local({
     
+	# Merge external from SPF
+	
 
 })
 ```
