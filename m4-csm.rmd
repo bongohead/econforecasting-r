@@ -123,16 +123,16 @@ local({
 ```{r}
 local({
 	
-	# Pull start date by finding the first date where all CORE.ENDOG variables are non-empty
+	# Pull start date by finding the first date where at least one CORE.ENDOG variables is non-empty
 	startDate =
 		m$csm$exogDfs$baseline %>%
 		dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.endog')$varname) %>%
 		dplyr::filter(., date >= as.Date('2020-01-01')) %>%
 		tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-		dplyr::mutate(., notNa = ifelse(!is.na(value), 1, 0)) %>%
-		dplyr::group_by(., date) %>%
-		dplyr::summarize(., countNotNa = sum(notNa), .groups = 'drop') %>%
-		dplyr::filter(., countNotNa == 0) %>%
+	    dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
+	    dplyr::group_by(., date) %>%
+	    dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
+		dplyr::filter(., countNa > 0) %>%
 		dplyr::arrange(., date) %>%
 		head(., 1) %>%
 		.$date
@@ -283,12 +283,13 @@ local({
 ```{r}
 local({
     
-	
-	forecasts = lapply(m$csm$exogDfs, function(exogDf) {
+	coefMat = m$csm$coefMat
+
+	forecasts = lapply(m$csm$exogDfs, function(exogScenarioDf) {
 		
 	    # Create exog df - start 4 quarters before forecast start date
 	    exogDf =
-			m$csm$exogDfs$baseline %>%
+			exogScenarioDf %>%
 	    	dplyr::filter(., date >= lubridate::add_with_rollback(m$csm$startDate, months(-12)) & date <= m$csm$endDate)
 	
 	
@@ -329,8 +330,8 @@ local({
 	    }, .init = exogDf)
 	    
 	    
-	    pred = resDf %>% dplyr::filter(., date >= m$csm$startDate) %>% dplyr::select(., all_of(c('date', endogVars)))
-	    
+	    pred = resDf %>% dplyr::filter(., date >= m$csm$startDate) %>% dplyr::select(., all_of(c('date', m$csm$endogVars)))
+
 	})
     
     m$csm$predst <<- 
