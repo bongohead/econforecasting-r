@@ -2,7 +2,7 @@
 ## Set Options
 ```{r purl = TRUE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-07-28] m3.rds'
+M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-02] m3.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -119,7 +119,7 @@ local({
 
 # CSM
 
-## Forecast Periods
+## Forecast periods
 ```{r}
 local({
 	
@@ -159,7 +159,7 @@ local({
 })
 ```
 
-## Estimate Coefficients
+## Estimate coefficients
 ```{r}
 local({
 	
@@ -203,7 +203,7 @@ local({
     # Iterate through equations
     eqnsList =
         list(
-            pce = 'pce = constant + ue',
+            pce = 'pce = constant + pid + pce.l1 + ue',
             pdin = 'pdin = constant + ue + _lma2.pdin',
             pdir = 'pdir = constant + ue + hpi + _lma2.pdir',
             im = 'im = constant + ue + _lma2.im',
@@ -217,7 +217,8 @@ local({
             govts = 'govts = govt + _lma2.govts + _lma2.ue',
             houst = 'houst = hpi + _lma2.houst + _lma2.ue + mort30y',
             hsold = 'hsold = hpi + _lma2.hsold + _lma2.ue + mort30y',
-            vix = 'vix = vix.l1 + spy + spy.l1'
+            vix = 'vix = vix.l1 + spy + spy.l1',
+            po = 'po = constant + pce'
         )
 
     # Get estimated coefficient matrices
@@ -279,7 +280,7 @@ local({
 })
 ```
 
-## CSM Forecasting - Quarterly (All)
+## CSM forecasting - quarterly
 ```{r}
 local({
     
@@ -330,11 +331,15 @@ local({
 	    }, .init = exogDf)
 	    
 	    
-	    pred = resDf %>% dplyr::filter(., date >= m$csm$startDate) %>% dplyr::select(., all_of(c('date', m$csm$endogVars)))
+	    pred =
+	    	resDf %>%
+	    	dplyr::filter(., date >= m$csm$startDate) %>%
+	    	dplyr::select(., all_of(c('date', m$csm$endogVars, m$csm$exogVars)))
 
 	})
-    
-    m$csm$predst <<- 
+	
+	
+    m$csm$predst <<- forecasts
 })
 ```
 
@@ -342,16 +347,120 @@ local({
 ## Convert to base values
 ```{r}
 local({
-	
-	
+
+	res =
+		m$csm$predst %>%
+		lapply(., function(df)
+			lapply(colnames(df) %>% .[. != 'date'], function(.varname) {
+			
+				transform = dplyr::filter(p$variablesDf, varname == .varname)$st
+				fcDf = dplyr::select(df, date, .varname) %>% na.omit(.)
+				histDf = tail(dplyr::filter(na.omit(h$base$q[, c('date', .varname)]), date < min(fcDf$date)), 1)
+				
+				fcDf %>%
+					dplyr::mutate(
+						.,
+						!!.varname := 
+							{
+		                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
+								else if (transform == 'apchg') unapchg(fcDf[[2]], 4, histDf[[2]])
+								else if (transform == 'pchg') unpchg(fcDf[[2]], histDf[[2]])
+								else if (transform == 'base') .[[2]]
+								else stop('Err: ', .varname)
+								}
+							)
+				
+				}) %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date)
+		)
+
+	m$csm$predbase0 <<- res
 })
 ```
 
 
-## Delete quarterly forecasts on quarters where monthly data exists -> replace with monthly forecasts and interpolate with remaining monthly forecasts
+## Forecast monthly variables
 ```{r}
+local({
 
+	# Delete quarterly forecasts on quarters where monthly data exists ->
+	# replace with monthly forecasts and interpolate with remaining monthly forecasts
+	
+
+	predbase0m = imap(m$csm$predbase0, function(df, scenarioname) {
+		
+		varnames = filter(p$variablesDf, core_structural == 'core.endog' & freq == 'm')$varname
+		
+		lapply(varnames, function(.varname)
+			
+			df %>%
+				dplyr::transmute(., date, csm = .[[.varname]]) %>% # Shift back by one quarter to middle of quarter
+				mutate(., date = add_with_rollback(date, months(1))) %>%
+				dplyr::left_join(
+					tibble(
+						date =
+							seq(
+								from = add_with_rollback(head(.$date, 1), months(-4)),
+								to = add_with_rollback(tail(.$date, 1), months(1)),
+								by = '1 month'
+								)
+						),
+					.,
+					by = 'date'
+					) %>%
+				dplyr::left_join(
+					.,
+					h$base$m %>% dplyr::transmute(., date, hist = .[[.varname]]),
+					by = 'date'
+					) %>%
+				dplyr::mutate(., value = ifelse(!is.na(hist), hist, csm)) %>%
+				dplyr::mutate(., value = zoo::na.spline(value)) %>%
+				dplyr::transmute(., date, !!.varname := value)
+				# dplyr::left_join(
+				# 	.,
+				# 	m$ncpred$base$m %>% dplyr::transmute(., date, nc = .[[.varname]]),
+				# 	by = 'date'
+				# 	)
+			
+			) %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date) %>%
+			dplyr::mutate(
+				.,
+				ps = pid - po,
+				psr = ps/pi
+			)
+		})
+	
+	
+	m$csm$predbase0m <<- predbase0m
+})
 ```
+
+## Reaggregate to quarterly, add identity
+```{r}
+local({
+	
+	# Aggregate monthly variables to quarterly and replace existing quarterly variables in m$csm$predbase0
+
+	res = imap(m$csm$predbase0, function(df, scenarioname)
+		
+		df %>%
+			dplyr::mutate(
+				.,
+				nx = ex - im
+				)
+		)
+	
+	
+	m$csm$predbaseq <<- res
+})
+```
+
+
+
+
 
 
 
