@@ -1,5 +1,5 @@
-Run :2021-07-30
-Started - model-asset-contagion: 2021-07-30 20:00:01
+Run :2021-08-02
+Started - model-asset-contagion: 2021-08-02 20:00:00
 
 
 processing file: D:/OneDrive/__Projects/econforecasting/model-asset-contagion.rmd
@@ -63,10 +63,10 @@ Writing NAMESPACE
 800
 900
 1000
-2021-07-30 20:04:15
-2021-07-30 20:04:16
+2021-08-02 20:03:20
+2021-08-02 20:03:22
 Finished - model-asset-contagion
-Started - model-baseline-forecasts: 2021-07-30 20:04:16
+Started - model-baseline-forecasts: 2021-08-02 20:03:22
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-baseline-forecasts.rmd
@@ -604,7 +604,7 @@ Completed CME data scrape...
 Adding monthly interpolation ...
 SQL Code Finished
 Finished - model-baseline-forecasts
-Started - model-nowcasts: 2021-07-30 20:06:46
+Started - model-nowcasts: 2021-08-02 20:05:44
 
 
 processing file: D:/Onedrive/__Projects/econforecasting/model-nowcasts.rmd
@@ -680,12 +680,6 @@ Getting data ... mnodg
 Getting data ... cu
 Getting data ... cons
 Getting data ... ffr
-Request failed [429]. Retrying in 1.9 seconds...
-Request failed [429]. Retrying in 3.5 seconds...
-Request failed [429]. Retrying in 1.3 seconds...
-Request failed [429]. Retrying in 7.7 seconds...
-Request failed [429]. Retrying in 7.5 seconds...
-Request failed [429]. Retrying in 20.4 seconds...
 Getting data ... sofr
 Getting data ... t10y
 Getting data ... t30y
@@ -694,6 +688,11 @@ Getting data ... t02y
 Getting data ... t01y
 Getting data ... t06m
 Getting data ... t03m
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 2.7 seconds...
+Request failed [429]. Retrying in 6.9 seconds...
+Request failed [429]. Retrying in 8.8 seconds...
+Request failed [429]. Retrying in 28.5 seconds...
 Getting data ... t01m
 Getting data ... t20y
 Getting data ... t07y
@@ -716,12 +715,6 @@ Getting data ... ipi
 Getting data ... pcepi
 Getting data ... delinqrer
 Getting data ... delinqcc
-Request failed [429]. Retrying in 1.7 seconds...
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 2.4 seconds...
-Request failed [429]. Retrying in 3.7 seconds...
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 31.3 seconds...
 Getting data ... delinqci
 Getting data ... snyfed
 Getting data ... stxfed
@@ -729,6 +722,11 @@ Getting data ... sphfed
 Getting data ... cfnai
 Getting data ... baa
 Getting data ... lfpr
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 1.8 seconds...
+Request failed [429]. Retrying in 7.2 seconds...
+Request failed [429]. Retrying in 13.6 seconds...
+Request failed [429]. Retrying in 28.6 seconds...
 st
 advsales
 advsales
@@ -1327,7 +1325,7 @@ label: unnamed-chunk-24
   ordinary text without R code
 
 
-output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-07-30-nowcast.tex
+output file: D:/Onedrive/__Projects/econforecasting/model-outputs/2021-08-02-nowcast.tex
 
 Finished - model-nowcasts
 [[1]]
