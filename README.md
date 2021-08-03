@@ -12,6 +12,12 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Add: Survey of Consumer Expectations (Has expected inflation at well updated intervals, plus home price change expectations @ one year, 3 year ahead point predictions)
 - Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong) - try later, for now use standard and see if tdns estimates are too off from actual construction
 - Add: DFM package for R
+- Idea: Horserace between different model types (esp. quantative and qualitative) - model stack qualitative/qunaitative forecasts based off relative weightings chosen by a local linear RF. LLRF is a natural choice as the time series should be linear in t(forecast periods ahead of forecast). E.g. 
+t-ahed   lagged spy    nowcast mae     qual mae
+----------------------------------------------1
+1           ..              ..           ..
+2           ..              ..           ..
+3           ..              ..           ..
 
 
 # CHANGELOG
