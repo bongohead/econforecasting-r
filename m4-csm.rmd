@@ -391,6 +391,7 @@ local({
 	predbase0m = imap(m$csm$predbase0, function(df, scenarioname) {
 		
 		varnames = filter(p$variablesDf, core_structural == 'core.endog' & freq == 'm')$varname
+		exogVarnames  = filter(p$variablesDf, core_structural == 'core.exog' & freq == 'm')$varname
 		
 		lapply(varnames, function(.varname)
 			
@@ -425,12 +426,21 @@ local({
 			
 			) %>%
 			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			# Bind qualitative variables for calculations
+			dplyr::left_join(., m$qual$pred[[scenarioname]]$base, by = 'date') %>%
 			dplyr::arrange(., date) %>%
+			# Calculations
 			dplyr::mutate(
 				.,
 				ps = pid - po,
 				psr = ps/pi
-			)
+			) %>%
+			# Now get columns to show only if after historical data
+			{lapply(colnames(.) %>% .[. != 'date'], function(varname)
+				dplyr::select(., all_of(c('date', varname))) %>%
+					dplyr::filter(., date > max(na.omit(h$base$m[, c('date', varname)])$date))
+			)} %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date'))
 		})
 	
 	
@@ -438,13 +448,64 @@ local({
 })
 ```
 
+
+	
+	# Get historical forecasts
+	histDf =
+		h$flatDf %>%
+		split(., .$varname)  %>%
+		purrr::map_dfr(., function(x)
+			# Get monthly data if it exists, quarterly otherwise
+			x %>%
+				{
+					if ('m' %in% unique(x$freq)) dplyr::filter(., form == 'st' & freq == 'm')
+					else dplyr::filter(., form == 'st' & freq == 'q')
+				} %>%
+				dplyr::transmute(., varname, freq, date, value)
+			)
+
+	
+	# Get exogenous qualitative forecasts
+	qualDf =
+		m$qual$predFlat %>%
+		dplyr::filter(., form == 'st') %>%
+		dplyr::transmute(., scenarioname, varname, freq = 'm', date, value)
+	
+
+	# Iterate through scenarios, combine and aggregate to quarterly
+	exogDfs =
+		qualDf %>%
+    	split(., .$scenarioname) %>%
+		lapply(., function(x)
+			dplyr::bind_rows(histDf, x) %>%
+				dplyr::arrange(., varname, date) %>%
+				dplyr::mutate(., strdate = paste0(year(date), 'Q', quarter(date))) %>%
+				dplyr::group_by(., varname, strdate) %>%
+				dplyr::group_split(.) %>%
+				lapply(., function(y) {
+					if (y$freq[[1]] == 'm' && nrow(y) == 3) tibble(varname = y$varname[[1]], value = mean(y$value), strdate = y$strdate[[1]])		else if (y$freq[[1]] == 'm' && nrow(y) < 3) NA
+					else if (y$freq[[1]] == 'q') dplyr::select(y, varname, value, strdate)
+					}) %>%
+				purrr::keep(., function(x) is_tibble(x)) %>%
+				dplyr::bind_rows(.) %>%
+				dplyr::mutate(., date = econforecasting::strdateToDate(strdate)) %>%
+				dplyr::select(., -strdate) %>%
+				tidyr::pivot_wider(., names_from  = 'varname', values_from = 'value') %>%
+				dplyr::arrange(., date) %>%
+				dplyr::filter(., date >= as.Date('2010-01-01'))
+			)
+
+
 ## Reaggregate to quarterly, add identity
 ```{r}
 local({
 	
 	# Aggregate monthly variables to quarterly and replace existing quarterly variables in m$csm$predbase0
-
-	res = imap(m$csm$predbase0, function(df, scenarioname)
+	res = imap(m$csm$predbase0m, function(df, scenarioname)
+		
+		df %>%
+			dplyr::transmu
+		
 		
 		df %>%
 			dplyr::mutate(
