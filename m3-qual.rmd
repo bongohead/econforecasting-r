@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-02] m2.rds'
+M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-04] m2.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -319,14 +319,28 @@ local({
 			
 			mortDf =
 				dplyr::inner_join(scenario, tDf, by = 'date') %>%
-				dplyr::transmute(., date, mort15y = mort15yt10yspread + t10y, mort30y = mort30yt30yspread + t30y) 
-			
+				{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+					dplyr::select(., all_of(c('date', .varname))) %>%
+						na.omit(.) %>%
+						dplyr::bind_rows(
+							filter(na.omit(h$base$m[, c('date', .varname)]), date <= tail(.$date[[1]])),
+							.
+						)
+				})} %>%
+				purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+				dplyr::arrange(., date) %>%
+				dplyr::transmute(., date, mort15y = mort15yt10yspread + t10y, mort30y = mort30yt30yspread + t30y) %>%
+				{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+					dplyr::select(., all_of(c('date', .varname))) %>%
+						dplyr::filter(., date >= tail(na.omit(h$base$m[, c('date', .varname)])$date, 1))
+				})} %>%
+				purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+				dplyr::arrange(., date)
+
 			list(tDf, mortDf) %>%
-				purrr::reduce(., function(x, y) dplyr::inner_join(x, y, by = 'date')) %>%
+				purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 				dplyr::arrange(., date)
 			})
-	
-	
 
 	
 	m$qual$predcalc <<- df
