@@ -2,7 +2,7 @@
 ## Set Options
 ```{r purl = TRUE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-02] m3.rds'
+M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-04] m3.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -503,9 +503,10 @@ local({
 	# Aggregate monthly variables to quarterly and replace existing quarterly variables in m$csm$predbase0
 	res = imap(m$csm$predbase0m, function(df, scenarioname)
 		
+		# First need to bind to historical variables in case needed for quartlery aggregation
 		df %>%
-			dplyr::transmu
-		
+			
+
 		
 		df %>%
 			dplyr::mutate(
