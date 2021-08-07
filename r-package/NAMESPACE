@@ -3,4 +3,5 @@
 export(createInsertQuery)
 export(diff)
 export(getDataFred)
+export(namedSplit)
 export(strdateToDate)

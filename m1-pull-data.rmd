@@ -5,7 +5,7 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-08-04')
+VINTAGE_DATE = as.Date('2021-08-06')
 ```
 
 
@@ -479,6 +479,18 @@ local({
 })
 ```
 
+# Checks
+
+## Add histEnd to each variable
+```{r}
+local({
+	
+	for (varname in names(p$variables)) {
+		p[[varname]]$histEnd <<- max(p$variables[[varname]]$h$base$date)
+	}
+	
+})
+```
 
 
 # Aggregate
@@ -487,7 +499,7 @@ local({
 ```{r}
 local({
 	
-	flatDf =
+	flat =
 		purrr::imap_dfr(p$variables, function(x, varname)
 			purrr::imap_dfr(x$h, function(y, form)
 				purrr::imap_dfr(y, function(z, freq)
@@ -497,17 +509,16 @@ local({
 			) %>%
 		dplyr::filter(., freq %in% c('m', 'q'))
 
-	h$flatDf <<- flatDf
+	h$flat <<- flat
 })
 ```
-
 
 ## Create monthly/quarterly matrixes
 ```{r}
 local({
 	
 	wide =
-		h$flatDf %>%
+		h$flat %>%
 		as.data.table(.) %>%
 		split(., by = 'form') %>%
 		lapply(., function(x)
