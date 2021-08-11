@@ -1,6 +1,6 @@
 #' Equivalent to dplyr::group_split(.) with names
 #'
-#' @param df
+#' @param df: A data frame or object coercible to a data frame.
 #' @export
 
 
