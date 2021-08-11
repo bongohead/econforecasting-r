@@ -57,7 +57,7 @@ local({
 	
 	# Get historical forecasts
 	histDf =
-		h$flatDf %>%
+		h$flat %>%
 		split(., .$varname)  %>%
 		purrr::map_dfr(., function(x)
 			# Get monthly data if it exists, quarterly otherwise
@@ -457,52 +457,65 @@ local({
 		
 		# First need to bind to historical variables in case needed for quarterly aggregation
 		df %>%
-			tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
+			tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE) %>%
 			dplyr::group_by(., varname) %>%
 			namedSplit(.) %>%
 		    imap(., function(x, .varname)
-		        x %>%
-		            dplyr::bind_rows(
-		                dplyr::filter(h$flatDf, date < x$date[[1]] & varname == .varname & freq == 'm' & form == 'base')[, c('date', 'varname', 'value')],
+		    	x %>%
+		    		dplyr::bind_rows(
+		    			dplyr::filter(h$flat, date < x$date[[1]] & varname == .varname & freq == 'm' & form == 'base')[, c('date', 'varname', 'value')],
 		                .
 		                ) %>%
 		    	 	na.omit(.) %>%
 		    	 	econforecasting::monthlyDfToQuarterlyDf(.) %>%
-		    	 	dplyr::filter(., date > tail(na.omit(h$base$q[, c('date', .varname)]), 1)$date)
+		    	 	dplyr::filter(., date > tail(na.omit(h$base$q[, c('date', .varname)]), 1)$date) %>%
+		    		set_names(., c('date', .varname))
 		    	) %>%
 			purrr::reduce(., function(x, y) full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date) %>%
+			# Now replace existing quarterly variables in m$csm$predbase0
+			tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE) %>%
+			dplyr::full_join(
+				.,
+				tidyr::pivot_longer(m$csm$predbase0[[scenarioname]], -date, names_to = 'varname', values_to = 'value_prev', values_drop_na = TRUE),
+				by = c('date', 'varname')
+				) %>%
+			dplyr::transmute(
+				.,
+				date,
+				varname,
+				value = ifelse(!is.na(value), value, value_prev)
+			) %>%
+			tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+			dplyr::arrange(., date) %>%
+			# Finally add calculated variables
 			dplyr::mutate(
 				.,
 				nx = ex - im
 			)
-		) %>%
-		# Now replace existing quarterly variables in m$csm$predbase0
-		
+		) 
+
 	
 	m$csm$predbaseq <<- res
 })
 ```
 
 
+# Model Stacking
 
-
-
-
-
-# Aggregate
-
-## Model stacking - quarterly
+## Monthly (convert to stationary form then aggregate) 
 ```{r}
 local({
 	
 	# Combine with nowcasts and external forecasts
+	# Merge external from SPF
 	
 	
 })
 ```
 
 
-## Model stacking - monthly
+## Quarterly
 ```{r}
 local({
 	
@@ -513,18 +526,7 @@ local({
 ```
 
 
-# Combine with Nowcasts
-## Merge CSM - NC - EXTERNAL
-```{r}
-local({
-    
-	# Merge external from SPF
-	
-
-})
-```
-
-## Re-Aggregate
+# 
 ```{r}
 
 ```
