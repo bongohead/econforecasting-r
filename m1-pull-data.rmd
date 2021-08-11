@@ -5,7 +5,7 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-08-06')
+VINTAGE_DATE = as.Date('2021-08-10')
 ```
 
 
@@ -486,7 +486,10 @@ local({
 local({
 	
 	for (varname in names(p$variables)) {
-		p[[varname]]$histEnd <<- max(p$variables[[varname]]$h$base$date)
+		p[[varname]]$qEnd <<- max(p$variables[[varname]]$h$base$q$date)
+		p[[varname]]$mEnd <<- {
+			if(p$variables[['gdp']]$freq %in% c('d', 'w', 'm')) max(p$variables[[varname]]$h$base$m$date) else NA
+			}
 	}
 	
 })
