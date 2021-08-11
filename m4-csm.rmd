@@ -526,8 +526,46 @@ local({
 ```
 
 
-# 
-```{r}
+# Finalize 
 
+## Create 
+```{r}
+local({
+	
+	
+	flat0 =
+		dplyr::bind_rows(
+			purrr::imap_dfr(m$csm$predbaseq, function(x, i)
+				tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+					dplyr::mutate(., freq = 'q', scenarioname = i, form = 'base')
+				),
+			purrr::imap_dfr(m$csm$predbase0m, function(x, i)
+				tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+					dplyr::mutate(., freq = 'm', scenarioname = i, form = 'base')
+				)
+			) %>%
+		dplyr::group_by(., freq, scenarioname, form) %>%
+		dplyr::group_split(.)
+
+	base = list(q = m$csm$predbaseq, m = m$csm$predbase0m)
+	forms = c('st', 'd1', 'd2')
+	
+	
+	# lapply(names(m$csm$predbaseq) %>% setNames(., .), function(scenarioname) {
+	# 	base = list(q = m$csm$predbaseq[[scenarioname]], m = m$csm$predbase0m[[scenarioname]])
+	# 	
+	# 	otherForms = lapply(c('st', 'd1', 'd2') %>% setNames(., .), function(form) {
+	# 		
+	# 
+	# 	
+	# 	})
+	# 
+	# res = purrr::imap_dfr(base, function(df) {
+	# 		
+	# 		
+	# 		
+	# 	})
+
+})
 ```
 
