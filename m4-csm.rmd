@@ -196,30 +196,32 @@ local({
 	coefMatsIdentity =
         list(
             gdp =
-        		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp)
+        		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp),
+            pce =
+            	tibble(pce = 1, pceg = -1 * ss$pceg/ss$pce, pces = -1 * ss$pces/ss$pce),
+            govt =
+            	tibble(govt = 1, govtf = -1 * ss$govtf/ss$govt, govts = -1 * ss$govts/ss$govt)
             )
 	
 
     # Iterate through equations
     eqnsList =
         list(
-            pce = 'pce = constant + pid + pce.l1 + ue',
+        	pceg = 'pceg = constant + pid + _lma2.pceg + _lma2.ue',
+        	pces = 'pces = constant + pid + _lma2.pces + _lma2.ue',
             pdin = 'pdin = constant + ue + _lma2.pdin',
             pdir = 'pdir = constant + ue + hpi + _lma2.pdir',
             im = 'im = constant + ue + _lma2.im',
             ex = 'ex = constant + ue + _lma2.ex',
-            govt = 'govt = constant + _lma2.govt',
-            pi = 'pi = constant + pid',
-            pdi = 'pdi = pdin + pdir',
-        	pceg = 'pceg = pce + _lma2.pceg + _lma2.ue',
-        	pces = 'pces = pce + _lma2.pces + _lma2.ue',
-            govtf = 'govtf = govt + _lma2.govtf + _lma2.ue',
-            govts = 'govts = govt + _lma2.govts + _lma2.ue',
-            houst = 'houst = hpi + _lma2.houst + _lma2.ue + mort30y',
-            hsold = 'hsold = hpi + _lma2.hsold + _lma2.ue + mort30y',
-            vix = 'vix = vix.l1 + spy + spy.l1',
-            po = 'po = constant + pce'
-        )
+            pdi = 'pdi = constant + pdin + pdir',
+            govtf = 'govtf = constant + govt + _lma2.govtf + _lma2.ue',
+            govts = 'govts = constant + govt + _lma2.govts + _lma2.ue',
+            houst = 'houst = constant + hpi + _lma2.houst + _lma2.ue + mort30y',
+            hsold = 'hsold = constant + hpi + _lma2.hsold + _lma2.ue + mort30y',
+            vix = 'vix = constant + vix.l1 + spy + spy.l1',
+            moo = 'moo = constant + moo.l1 + spy + gdp',
+            metals = 'metals = constant + metals.l1 + spy + gdp'
+        	)
 
     # Get estimated coefficient matrices
     coefMatsEstimated = purrr::map(eqnsList, function(eqn) {
@@ -430,11 +432,11 @@ local({
 			dplyr::left_join(., m$qual$pred[[scenarioname]]$base, by = 'date') %>%
 			dplyr::arrange(., date) %>%
 			# Calculations
-			dplyr::mutate(
-				.,
-				ps = pid - po,
-				psr = ps/pi
-			) %>%
+			# dplyr::mutate(
+			# 	.,
+			# 	ps = pid - po,
+			# 	psr = ps/pi
+			# ) %>%
 			# Now get columns to show only if after historical data
 			{lapply(colnames(.) %>% .[. != 'date'], function(varname)
 				dplyr::select(., all_of(c('date', varname))) %>%
@@ -579,8 +581,7 @@ local({
 ```{r}
 local({
 	
-	
-	flat0 =
+	flatBase =
 		dplyr::bind_rows(
 			purrr::imap_dfr(m$csm$predbaseq, function(x, i)
 				tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
@@ -590,11 +591,14 @@ local({
 				tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
 					dplyr::mutate(., freq = 'm', scenarioname = i, form = 'base')
 				)
-			) %>%
+			)
+
+	flat =
+		flatBase %>%
 		dplyr::group_by(., freq, scenarioname, form, varname) %>%
 		dplyr::group_split(.) %>%
-		purrr::imap(., function(x, i) {
-			message(i)
+		purrr::imap_dfr(., function(x, i) {
+			# message(i)
 			.varname = x$varname[[1]]
 			.freq = x$freq[[1]]
 			.scenarioname = x$scenarioname[[1]]
@@ -605,7 +609,7 @@ local({
 				tail(., 1) %>%
 				dplyr::select(., date, value)
 			
-			purrr::map_dfr(c('st', 'd1', 'd2'), function(.form) {
+			purrr::map_dfr(c('d1', 'd2'), function(.form) {
 				
 				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
 
@@ -631,57 +635,30 @@ local({
 						form = .form
 					)
 			}) %>% na.omit(.)
-		})
-			
-	# lapply(list('st', 'd1', 'd2') %>% setNames(., .), function(.form) {
-	# 		mDf =
-	# 			wide1$base$m %>%
-	# 			{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
-	# 				
-	# 				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
-	# 				fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
-	# 				histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
-	# 				
-	# 				dplyr::bind_rows(histDf, fcDf) %>%
-	# 					dplyr::mutate(
-	# 						.,
-	# 						!!.varname := 
-	# 							{
-	# 		                        if (transform == 'dlog') dlog(.[[2]])
-	# 								else if (transform == 'apchg') apchg(.[[2]], 12)
-	# 								else if (transform == 'pchg') pchg(.[[2]])
-	# 								else if (transform == 'base') .[[2]]
-	# 								else if (transform == 'none') NA
-	# 								else stop('Err: ', .varname)
-	# 								}
-	# 							) %>% .[2:nrow(.),]
-	# 				
-	# 				})} %>%
-	# 			purrr::keep(., function(x) !all(is.na(x[[2]]))) %>% # Cull nones
-	# 			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-	# 			dplyr::arrange(., date)
-	# 		
-	# 	})
-
-	base = list(q = m$csm$predbaseq, m = m$csm$predbase0m)
-	forms = c('st', 'd1', 'd2')
+		}) %>%
+		dplyr::bind_rows(flatBase, .)
 	
 	
-	# lapply(names(m$csm$predbaseq) %>% setNames(., .), function(scenarioname) {
-	# 	base = list(q = m$csm$predbaseq[[scenarioname]], m = m$csm$predbase0m[[scenarioname]])
-	# 	
-	# 	otherForms = lapply(c('st', 'd1', 'd2') %>% setNames(., .), function(form) {
-	# 		
-	# 
-	# 	
-	# 	})
-	# 
-	# res = purrr::imap_dfr(base, function(df) {
-	# 		
-	# 		
-	# 		
-	# 	})
-
+	
+	res =
+		flat %>%
+		as.data.table(.) %>% 
+		split(., by = c('scenarioname', 'freq', 'form'), flatten = FALSE, keep.by = FALSE) %>%
+		lapply(., function(x)
+			lapply(x, function(y)
+				lapply(y, function(z)
+					as_tibble(z) %>%
+						tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+						dplyr::arrange(., date)
+					)
+				)
+			)
+	
+	
+	for (scenarioname in names(res)) {
+		m$csm$pred[[scenarioname]] <<- res[[scenarioname]]
+	}
+	m$csm$pred$flat <<- flat
 })
 ```
 
