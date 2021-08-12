@@ -237,6 +237,11 @@ local({
     	dplyr::filter(., date > max(p$variables$mort30yt30yspread$h$d1$m$date)) %>%
     	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort30yt30yspread$h$d1$m, 1)$value), form = 'd1')
 
+    
+    # Have first four quarters of PCE, gross_pdi, etc. be exogenous in data
+    
+    
+    
     m$qual$predraw$baseline <<- baseline
 })
 ```
