@@ -521,14 +521,61 @@ local({
 	
 	# Convert all to monthly, then deaggregate
 	
-	
+	# flat0 =
+	# 	dplyr::bind_rows(
+	# 		purrr::imap_dfr(m$csm$predbaseq, function(x, i)
+	# 			tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+	# 				dplyr::mutate(., freq = 'q', scenarioname = i, form = 'base')
+	# 			),
+	# 		purrr::imap_dfr(m$csm$predbase0m, function(x, i)
+	# 			tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+	# 				dplyr::mutate(., freq = 'm', scenarioname = i, form = 'base')
+	# 			)
+	# 		) %>%
+	# 	dplyr::group_by(., freq, scenarioname, form, varname) %>%
+	# 	dplyr::group_split(.) %>%
+	# 	lapply(., function(x) {
+	# 		
+	# 		.varname = x$varname[[1]]
+	# 		.freq = x$freq[[1]]
+	# 		.scenarioname = x$scenarioname[[1]]
+	# 		
+	# 		transform = dplyr::filter(p$variablesDf, varname == .varname)[['st']]
+	# 		fcDf = dplyr::select(x, date, value) %>% na.omit(.)
+	# 		histDf =
+	# 			dplyr::filter(na.omit(p$variables[[.varname]]$h[['st']][[.freq]]), date < min(fcDf$date)) %>%
+	# 			tail(., 1) %>%
+	# 			dplyr::select(., date, value)
+	# 			
+	# 		dplyr::bind_rows(histDf, fcDf) %>%
+	# 			dplyr::mutate(
+	# 				.,
+	# 				value = 
+	# 					{
+	#                         if (transform == 'dlog') dlog(.[[2]])
+	# 						else if (transform == 'apchg') apchg(.[[2]], 12)
+	# 						else if (transform == 'pchg') pchg(.[[2]])
+	# 						else if (transform == 'base') .[[2]]
+	# 						else if (transform == 'none') NA
+	# 						else stop('Err: ', .varname)
+	# 						}
+	# 					) %>%
+	# 			.[2:nrow(.),] %>%
+	# 			dplyr::mutate(
+	# 				.,
+	# 				scenarioname = .scenarioname,
+	# 				varname = .varname,
+	# 				freq = .freq
+	# 			)
+	# 	})
+
 })
 ```
 
 
 # Finalize 
 
-## Create 
+## Transform 
 ```{r}
 local({
 	
@@ -544,8 +591,77 @@ local({
 					dplyr::mutate(., freq = 'm', scenarioname = i, form = 'base')
 				)
 			) %>%
-		dplyr::group_by(., freq, scenarioname, form) %>%
-		dplyr::group_split(.)
+		dplyr::group_by(., freq, scenarioname, form, varname) %>%
+		dplyr::group_split(.) %>%
+		purrr::imap(., function(x, i) {
+			message(i)
+			.varname = x$varname[[1]]
+			.freq = x$freq[[1]]
+			.scenarioname = x$scenarioname[[1]]
+
+			fcDf = dplyr::select(x, date, value) %>% na.omit(.)
+			histDf =
+				dplyr::filter(na.omit(p$variables[[.varname]]$h[['base']][[.freq]]), date < min(fcDf$date)) %>%
+				tail(., 1) %>%
+				dplyr::select(., date, value)
+			
+			purrr::map_dfr(c('st', 'd1', 'd2'), function(.form) {
+				
+				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+
+				dplyr::bind_rows(histDf, fcDf) %>%
+					dplyr::mutate(
+						.,
+						value = 
+							{
+		                        if (transform == 'dlog') dlog(.[[2]])
+								else if (transform == 'apchg') apchg(.[[2]], 12)
+								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'base') .[[2]]
+								else if (transform == 'none') NA
+								else stop('Err: ', .varname)
+								}
+							) %>%
+					.[2:nrow(.),] %>%
+					dplyr::mutate(
+						.,
+						scenarioname = .scenarioname,
+						varname = .varname,
+						freq = .freq,
+						form = .form
+					)
+			}) %>% na.omit(.)
+		})
+			
+	# lapply(list('st', 'd1', 'd2') %>% setNames(., .), function(.form) {
+	# 		mDf =
+	# 			wide1$base$m %>%
+	# 			{lapply(colnames(.) %>% .[. != 'date'], function(.varname) {
+	# 				
+	# 				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+	# 				fcDf = dplyr::select(., date, .varname) %>% na.omit(.)
+	# 				histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
+	# 				
+	# 				dplyr::bind_rows(histDf, fcDf) %>%
+	# 					dplyr::mutate(
+	# 						.,
+	# 						!!.varname := 
+	# 							{
+	# 		                        if (transform == 'dlog') dlog(.[[2]])
+	# 								else if (transform == 'apchg') apchg(.[[2]], 12)
+	# 								else if (transform == 'pchg') pchg(.[[2]])
+	# 								else if (transform == 'base') .[[2]]
+	# 								else if (transform == 'none') NA
+	# 								else stop('Err: ', .varname)
+	# 								}
+	# 							) %>% .[2:nrow(.),]
+	# 				
+	# 				})} %>%
+	# 			purrr::keep(., function(x) !all(is.na(x[[2]]))) %>% # Cull nones
+	# 			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+	# 			dplyr::arrange(., date)
+	# 		
+	# 	})
 
 	base = list(q = m$csm$predbaseq, m = m$csm$predbase0m)
 	forms = c('st', 'd1', 'd2')
