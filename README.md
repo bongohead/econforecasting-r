@@ -21,6 +21,7 @@ t-ahed   lagged spy    nowcast mae     qual mae
 
 
 # CHANGELOG
+@Todo: make first several nowcast periods an exogenous model input for GDP subforecasts
 
 ## 2021-07-28 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
 - Added CSM forecasting code

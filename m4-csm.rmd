@@ -395,8 +395,8 @@ local({
 		varnames = filter(p$variablesDf, core_structural == 'core.endog' & freq == 'm')$varname
 		exogVarnames  = filter(p$variablesDf, core_structural == 'core.exog' & freq == 'm')$varname
 		
-		lapply(varnames, function(.varname)
-			
+		lapply(varnames, function(.varname) {
+			# message(.varname)
 			df %>%
 				dplyr::transmute(., date, csm = .[[.varname]]) %>% # Shift back by one quarter to middle of quarter
 				mutate(., date = add_with_rollback(date, months(1))) %>%
@@ -426,7 +426,7 @@ local({
 				# 	by = 'date'
 				# 	)
 			
-			) %>%
+			}) %>%
 			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 			# Bind qualitative variables for calculations
 			dplyr::left_join(., m$qual$pred[[scenarioname]]$base, by = 'date') %>%
