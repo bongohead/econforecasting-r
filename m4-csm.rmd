@@ -110,8 +110,8 @@ local({
 		)
 
 	
-	m$csm$exogDfs <<- exogDfs
-	m$csm$exogFlat <<- exogFlat
+	m$csm$exogDfs0 <<- exogDfs
+	m$csm$exogFlat0 <<- exogFlat
 })
 ```
 
