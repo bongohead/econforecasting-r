@@ -53,7 +53,7 @@ local({
 
 # Generate Initial Forecasts
 
-## CMEFI Baseline Forecasts (Qual)
+## CMEFI baseline forecasts (qual)
 Display in website those variables not taken from "external" source - e.g. unemp
 ```{r}
 local({
@@ -94,14 +94,14 @@ local({
         dplyr::filter(., varname == 'tdns2') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(p$variables$tdns2$h$base$m$date)) %>%
-        dplyr::transmute(., form, date, value)
+        dplyr::transmute(., freq, form, date, value)
     
     baseline$tdns3 =
         m$ext$sources$dns %>%
         dplyr::filter(., varname == 'tdns3') %>%
         dplyr::filter(., vdate == max(vdate)) %>%
         dplyr::filter(., date > max(p$variables$tdns3$h$base$m$date)) %>%
-        dplyr::transmute(., form, date, value)
+        dplyr::transmute(., freq, form, date, value)
 
     
     # Use nowcast -> slice with moving average
@@ -128,7 +128,7 @@ local({
     		.,
     		by = 'date'
     	) %>%
-    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1')
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1', freq = 'm')
 
     
     # Display in website
@@ -159,7 +159,8 @@ local({
         # Splinal interpolate
         dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
         tail(., -4) %>%
-    	dplyr::select(., -value2)
+    	dplyr::select(., -value2) %>%
+    	dplyr::mutate(., freq = 'm')
     
     baseline$hpi =
 		m$ncpred$d1$m[, c('date', 'hpi')] %>%
@@ -181,7 +182,8 @@ local({
     		.,
     		by = 'date'
     	) %>%
-    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1')
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
     
     
     baseline$spy =
@@ -204,7 +206,8 @@ local({
     		.,
     		by = 'date'
     	) %>%
-    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1')
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
 
     # Direction of spread is almost always exactly in the opposite direction of t10y/2
 	# dplyr::inner_join(p$variables$mort15yt10yspread$h$d1$m, p$variables$t10y$h$d1$m, by = 'date') %>%
@@ -221,7 +224,8 @@ local({
     	dplyr::mutate(., value = value * -1/4) %>%
     	# Now undifference to get forecast for mortspread
     	dplyr::filter(., date > max(p$variables$mort15yt10yspread$h$d1$m$date)) %>%
-    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort15yt10yspread$h$d1$m, 1)$value), form = 'd1')
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort15yt10yspread$h$d1$m, 1)$value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
     
     
     baseline$mort30yt30yspread =
@@ -235,7 +239,8 @@ local({
     	dplyr::mutate(., value = value * -1/4) %>%
     	# Now undifference to get forecast for mortspread
     	dplyr::filter(., date > max(p$variables$mort30yt30yspread$h$d1$m$date)) %>%
-    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort30yt30yspread$h$d1$m, 1)$value), form = 'd1')
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort30yt30yspread$h$d1$m, 1)$value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
 
     
     # Have first four quarters of PCE, gross_pdi, etc. be exogenous in data
@@ -245,29 +250,29 @@ local({
     	'pceshousing', 'pceshealth', 'pcestransport', 'pcesrec', 'pcesfood', 'pcesfinal',
     	'pcesother', 'pcesnonprofit', 'pdinstruct', 'pdinequip', 'pdinip',
     	'exg', 'exs', 'img', 'ims', 'govt', 'govts'
-    )
+    	)
     
-    # ncForecasts =
-    # 	m$ncpredFlat %>%
-    # 	dplyr::filter(., freq == 'q' & varname %in% ncList & form == 'd1' & vdate == max(vdate)) %>%
-    # 	dplyr::group_by(., varname) %>%
-    # 	econforecasting::namedSplit(.) %>%
-    # 	lapply(., function(df)
-    # 		df %>%
-    # 			dplyr::select(., form, date, value)
-    # 		)
-    # 
-    # if (all(sort(names(ncForecasts)) != sort(ncList))) stop('Error: missing nowcasted variable')
-    # baseline = c(
-    # 	baseline,
-    # 	ncForecasts
-    # )
+    ncForecasts =
+    	m$ncpredFlat %>%
+    	dplyr::filter(., freq == 'q' & varname %in% ncList & form == 'd1' & vdate == max(vdate)) %>%
+    	dplyr::group_by(., varname) %>%
+    	econforecasting::namedSplit(.) %>%
+    	lapply(., function(df)
+    		df %>%
+    			dplyr::select(., freq, form, date, value)
+    		)
+
+    if (all(sort(names(ncForecasts)) != sort(ncList))) stop('Error: missing nowcasted variable')
+    baseline = c(
+    	baseline,
+    	ncForecasts
+    )
 
     m$qual$predraw$baseline <<- baseline
 })
 ```
 
-## Other Scenario Forecasts (Qual)
+## Other scenario forecasts (qual)
 ```{r}
 local({
 	
@@ -282,48 +287,47 @@ local({
 })
 ```
 
-# Monthly
+# Transforms
 
-## Transform to Base Form
+## Detransform to Base Form
 ```{r}
 local({
 	
-	res =
-		purrr::imap(m$qual$predraw, function(x, .scenarioname)
+	res = purrr::imap(m$qual$predraw, function(x, .scenarioname) {
 			
-			x %>%
-				purrr::imap(., function(df, .varname) {
-					
-					transform = dplyr::filter(p$variablesDf, varname == .varname)[[df$form[[1]]]]
-					fcDf = dplyr::select(df, -form)
-					histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1) %>% setNames(., c('date', 'value'))
-					
-					fcDf %>%
-						dplyr::mutate(
-							.,
-							varname = .varname,
-							value := 
-								{
-			                        if (transform == 'dlog') undlog(fcDf$value, histDf$value)
-									else if (transform == 'apchg') unapchg(fcDf$value, 12, histDf$value)
-									else if (transform == 'pchg') unpchg(fcDf$value, histDf$value)
-									else if (transform == 'base') .$value
-									else stop('Err: ', .varname)
-									}
-								)
-					
-					}) %>%
-				dplyr::bind_rows(.) %>%
-				tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
-				dplyr::arrange(., date)
-			)
+		purrr::imap(x, function(df, .varname) {
+			
+			.freq = df$freq[[1]]
+			transform = dplyr::filter(p$variablesDf, varname == .varname)[[df$form[[1]]]]
+			fcDf = dplyr::select(df, -form)
+			histDf =
+				h$flat %>%
+				dplyr::filter(., varname == .varname, date < min(fcDf$date), freq == .freq) %>%
+				tail(., 1) %>%
+				dplyr::select(., freq, date, value)
+				
+			fcDf %>%
+				dplyr::mutate(
+					.,
+					varname = .varname,
+					value := {
+                        if (transform == 'dlog') undlog(fcDf$value, histDf$value)
+						else if (transform == 'apchg') unapchg(fcDf$value, {if (.freq == 'm') 12 else 4}, histDf$value)
+						else if (transform == 'pchg') unpchg(fcDf$value, histDf$value)
+						else if (transform == 'base') .$value
+						else stop('Err: ', .varname)
+						}
+					)
+				}) %>%
+			dplyr::bind_rows(.)
+		})
 	
 	
 	m$qual$predqual <<- res
 })
 ```
 
-## Add Calculated Variables
+## Add calculated variables
 ```{r}
 local({
 	
@@ -332,7 +336,13 @@ local({
 	
 	# Rebuild yield curves with Diebold-Li function
 	df =
-		lapply(m$qual$predqual, function(scenario) {
+		lapply(m$qual$predqual, function(df) {
+			
+			scenario =
+				m$qual$predqual[[1]] %>% dplyr::filter(., freq == 'm') %>%
+				dplyr::select(., -freq) %>%
+				tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+				dplyr::arrange(., date)
 			
 			tDf = lapply(purrr::transpose(m$dnsYieldCurveNamesMap), function(y)
 					scenario %>%
@@ -373,9 +383,176 @@ local({
 			})
 
 	
-	m$qual$predcalc <<- df
+	m$qual$predcalcM <<- df
 })
 ```
+
+
+## Add quarterly calculated
+```{r}
+local({
+	
+	# Rebuild yield curves with Diebold-Li function
+	df =
+		lapply(m$qual$predqual, function(df) {
+			
+			scenario =
+				m$qual$predqual[[1]] %>% dplyr::filter(., freq == 'q') %>%
+				dplyr::select(., -freq) %>%
+				tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+				dplyr::arrange(., date)
+			
+			scenario %>%
+				dplyr::transmute(
+					.,
+					date
+				)
+			})
+
+	
+	m$qual$predcalcQ <<- df
+})
+```
+
+
+# Calculate monthly forecasts
+
+## Get final monthly
+```{r}
+local({
+	
+	res = lapply(names(m$qual$predqual) %>% setNames(., .), function(.scenarioname) {
+		
+		dplyr::bind_rows(
+			m$qual$predqual[[.scenarioname]] %>%
+				dplyr::filter(., freq == 'm') %>%
+				dplyr::select(., -freq),
+			m$qual$predcalcM[[.scenarioname]] %>%
+				tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE)
+			)
+	})
+	
+
+	m$qual$predFinalM <<- res
+})
+```
+
+## Transform monthly
+```{r}
+local({
+	
+	
+	
+	
+})
+```
+
+
+
+# Calculate quarterly forecasts
+
+
+## Get initial quarterly
+```{r}
+local({
+	
+	res = lapply(names(m$qual$predqual) %>% setNames(., .), function(.scenarioname) {
+		
+		dplyr::bind_rows(
+			m$qual$predqual[[.scenarioname]] %>%
+				dplyr::filter(., freq == 'q') %>%
+				dplyr::select(., -freq)#,
+			# m$qual$predcalcQ[[.scenarioname]] %>%
+			# 	tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE)
+			)
+	})
+	
+	m$qual$predInitialQ <<- res
+})
+```
+
+## Aggregate monthly to quarterly
+```{r}
+local({
+	
+	# Get exogenous qualitative forecasts
+	qualDfs = m$qual$predFinalM
+	
+
+	# Iterate through scenarios, combine and aggregate to quarterly
+	aggDfs = lapply(qualDfs, function(qualDf) {
+		
+		# Get historical Df
+		histDf =
+			h$flat %>%
+			dplyr::filter(., freq == 'm' & varname %in% unique(qualDf$varname) & form == 'base') %>%
+			dplyr::select(., date, value, varname)
+		
+		res = lapply(unique(qualDf$varname), function(.varname) {
+
+			hDf = histDf %>% dplyr::filter(., varname == .varname)
+			qDf = qualDf %>% dplyr::filter(., varname == .varname)
+			
+			dplyr::bind_rows(hDf, qDf) %>%
+				dplyr::arrange(., date) %>%
+				dplyr::mutate(., strdate = paste0(year(date), 'Q', quarter(date))) %>%
+				dplyr::group_by(., strdate) %>%
+				dplyr::group_split(.) %>%
+			    lapply(., function(y) {
+			        if (nrow(y) >= 3) tibble(varname = y$varname[[1]], value = mean(y$value), strdate = y$strdate[[1]])
+			        else if (nrow(y) < 3) NA
+			        else stop('Error: qDf has same varname/date combination as hDf')
+			    }) %>%
+				purrr::keep(., function(x) is_tibble(x)) %>%
+				dplyr::bind_rows(.) %>%
+				dplyr::mutate(., date = econforecasting::strdateToDate(strdate)) %>%
+				dplyr::select(., -strdate) %>%
+				dplyr::arrange(., date) %>%
+				dplyr::filter(., date >= lubridate::floor_date(qDf$date[[1]], unit = 'quarters'))
+			}) %>%
+			dplyr::bind_rows(.)
+		
+		return(res)
+		})
+	
+	## Bind to existing quarterly forecasts
+	qDfs = lapply(names(qualDfs) %>% setNames(., .), function(.scenarioname) {
+		
+		dplyr::bind_rows(
+			aggDfs[[.scenarioname]],
+			m$qual$predInitialQ[[.scenarioname]]
+			) %>%
+			tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+			dplyr::arrange(., date) %>%
+			tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE)
+	})
+
+
+	m$qual$predFinalQ <<- qDfs
+})
+```
+
+
+# Join
+
+## Create flattened
+```{r}
+
+```
+
+## Create wide forecasts
+```{r}
+
+```
+
+## Evaluation
+```{r}
+
+```
+
+
+
+
 
 ## Join & Flatten 
 ```{r}
@@ -446,9 +623,12 @@ local({
 
 # Transform to Baseline
 ```{r}
-
+local({
+	
+	
+	
+})
 ```
-
 
 ## Aggregate Inputs to Quarterly
 ```{r}
@@ -487,7 +667,8 @@ local({
 				dplyr::group_by(., varname, strdate) %>%
 				dplyr::group_split(.) %>%
 				lapply(., function(y) {
-					if (y$freq[[1]] == 'm' && nrow(y) >= 3) tibble(varname = y$varname[[1]], value = mean(y$value), strdate = y$strdate[[1]])		else if (y$freq[[1]] == 'm' && nrow(y) < 3) NA
+					if (y$freq[[1]] == 'm' && nrow(y) >= 3) tibble(varname = y$varname[[1]], value = mean(y$value), strdate = y$strdate[[1]])
+					else if (y$freq[[1]] == 'm' && nrow(y) < 3) NA
 					else if (y$freq[[1]] == 'q') dplyr::select(y, varname, value, strdate)
 					}) %>%
 				purrr::keep(., function(x) is_tibble(x)) %>%
