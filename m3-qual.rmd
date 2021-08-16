@@ -302,7 +302,7 @@ local({
 			fcDf = dplyr::select(df, -form)
 			histDf =
 				h$flat %>%
-				dplyr::filter(., varname == .varname, date < min(fcDf$date), freq == .freq) %>%
+				dplyr::filter(., varname == .varname, date < min(fcDf$date), freq == .freq, form == 'base') %>%
 				tail(., 1) %>%
 				dplyr::select(., freq, date, value)
 				
@@ -415,7 +415,7 @@ local({
 ```
 
 
-# Calculate monthly forecasts
+# Calculate base forecasts
 
 ## Get final monthly
 ```{r}
@@ -436,20 +436,6 @@ local({
 	m$qual$predFinalM <<- res
 })
 ```
-
-## Transform monthly
-```{r}
-local({
-	
-	
-	
-	
-})
-```
-
-
-
-# Calculate quarterly forecasts
 
 
 ## Get initial quarterly
@@ -533,11 +519,113 @@ local({
 ```
 
 
-# Join
+# Transform and Join
+
+## Transformations
+```{r}
+local({
+
+	# Transform base forms to alt forms
+	mDf = purrr::imap(m$qual$predFinalM, function(scenarioDf, scenarioname)
+		lapply(c('st', 'd1', 'd2') %>% setNames(., .), function(.form)
+			lapply(unique(scenarioDf$varname) %>% setNames(., .), function(.varname) {
+				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+				fcDf = dplyr::filter(scenarioDf, varname == .varname)
+				histDf = 
+					h$flat %>%
+					dplyr::filter(., freq == 'm' & varname == .varname & form == 'base' & date < max(fcDf$date)) %>%
+					dplyr::select(., date, value, varname) %>%
+					dplyr::filter(., date == max(date))
+
+				dplyr::bind_rows(histDf, fcDf) %>%
+					{tibble(
+						date = .$date,
+						varname = .$varname,
+						form = .form,
+						value := {
+	                        if (transform == 'dlog') dlog(.$value)
+							else if (transform == 'apchg') apchg(.$value, 12)
+							else if (transform == 'pchg') pchg(.$value)
+							else if (transform == 'base') .$value
+							else if (transform == 'none') NA
+							else stop('Err: ', .varname)
+						}
+					)} %>%
+					.[2:nrow(.),]
+				}) %>%
+				dplyr::bind_rows(.)
+			) %>%
+			c(list(base = dplyr::mutate(m$qual$predFinalM[[scenarioname]], form = 'base')), .)
+		) %>%
+		purrr::imap_dfr(., function(dfs, .scenarioname)
+			dfs %>%
+				dplyr::bind_rows(.) %>%
+				dplyr::transmute(., scenarioname = .scenarioname, freq = 'm', form, date, varname, value)
+			)
+	
+	
+	qDf = purrr::imap(m$qual$predFinalQ, function(scenarioDf, scenarioname)
+		lapply(c('st', 'd1', 'd2') %>% setNames(., .), function(.form)
+			lapply(unique(scenarioDf$varname) %>% setNames(., .), function(.varname) {
+				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+				fcDf = dplyr::filter(scenarioDf, varname == .varname)
+				histDf = 
+					h$flat %>%
+					dplyr::filter(., freq == 'q' & varname == .varname & form == 'base' & date < max(fcDf$date)) %>%
+					dplyr::select(., date, value, varname) %>%
+					dplyr::filter(., date == max(date))
+
+				dplyr::bind_rows(histDf, fcDf) %>%
+					{tibble(
+						date = .$date,
+						varname = .$varname,
+						form = .form,
+						value := {
+	                        if (transform == 'dlog') dlog(.$value)
+							else if (transform == 'apchg') apchg(.$value, 4)
+							else if (transform == 'pchg') pchg(.$value)
+							else if (transform == 'base') .$value
+							else if (transform == 'none') NA
+							else stop('Err: ', .varname)
+						}
+					)} %>%
+					.[2:nrow(.),]
+				}) %>%
+				dplyr::bind_rows(.)
+			) %>%
+			c(list(base = dplyr::mutate(m$qual$predFinalQ[[scenarioname]], form = 'base')), .)
+		) %>%
+		purrr::imap_dfr(., function(dfs, .scenarioname)
+			dfs %>%
+				dplyr::bind_rows(.) %>%
+				dplyr::transmute(., scenarioname = .scenarioname, freq = 'q', form, date, varname, value)
+			)
+	
+	
+	
+	
+
+	
+})
+```
+
+
+
+
 
 ## Create flattened
 ```{r}
+local({
+	
+	res = lapply(names(m$qual$predFinalM) %>% setNames(., .), function(.scenarioname) {
+		
+		list(m = m$qual$predFinalM[[.scenarioname]], q = m$qual$predFinalQ[[.scenarioname]]) %>%
+			lapply(., 'form')
 
+	})
+	
+	
+})
 ```
 
 ## Create wide forecasts
