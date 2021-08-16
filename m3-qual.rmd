@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-15] m2.rds'
+M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-16] m2.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -601,36 +601,37 @@ local({
 				dplyr::transmute(., scenarioname = .scenarioname, freq = 'q', form, date, varname, value)
 			)
 	
-	
-	
-	
+
+	res =
+		dplyr::bind_rows(mDf, qDf) %>%
+		na.omit(.)
 
 	
-})
-```
-
-
-
-
-
-## Create flattened
-```{r}
-local({
-	
-	res = lapply(names(m$qual$predFinalM) %>% setNames(., .), function(.scenarioname) {
-		
-		list(m = m$qual$predFinalM[[.scenarioname]], q = m$qual$predFinalQ[[.scenarioname]]) %>%
-			lapply(., 'form')
-
-	})
-	
-	
+	m$qual$predFlat <<- res
 })
 ```
 
 ## Create wide forecasts
 ```{r}
+local({
+	
+	dfs =
+		m$qual$predFlat %>%
+		as.data.table(.) %>%
+		split(., by = c('scenarioname', 'freq', 'form'), keep.by = FALSE, flatten = FALSE) %>%
+		lapply(., function(x)
+			lapply(x, function(y)
+				lapply(y, function(z)
+					as_tibble(z) %>%
+						tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+						dplyr::arrange(., date)
+					)
+				)
+			)
+	
 
+	m$qual$pred <<- dfs
+})
 ```
 
 ## Evaluation
@@ -638,73 +639,6 @@ local({
 
 ```
 
-
-
-
-
-## Join & Flatten 
-```{r}
-local({
-	
-	
-	baseDfs =
-		lapply(names(m$qual$predqual) %>% setNames(., .), function(scenarioname)
-			dplyr::bind_rows(
-				tidyr::pivot_longer(m$qual$predqual[[scenarioname]], -date, names_to = 'varname'),
-				tidyr::pivot_longer(m$qual$predcalc[[scenarioname]], -date, names_to = 'varname')
-				) %>%
-				dplyr::bind_rows(.) %>%
-				tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
-				dplyr::arrange(., date)
-			)
-	
-	dfs =
-		purrr::imap(baseDfs, function(scenarioDf, scenarioname)
-			lapply(c('d1', 'st') %>% setNames(., .), function(.form)
-				lapply(colnames(scenarioDf) %>% .[. != 'date'], function(.varname) {
-						
-						transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
-						fcDf = dplyr::select(scenarioDf, all_of(c('date', .varname))) %>% na.omit(.)
-						histDf = tail(dplyr::filter(na.omit(h$base$m[, c('date', .varname)]), date < min(fcDf$date)), 1)
-						
-						dplyr::bind_rows(histDf, fcDf) %>%
-							dplyr::mutate(
-								.,
-								!!.varname := 
-									{
-				                        if (transform == 'dlog') dlog(.[[2]])
-										else if (transform == 'apchg') apchg(.[[2]], 12)
-										else if (transform == 'pchg') pchg(.[[2]])
-										else if (transform == 'base') .[[2]]
-										else if (transform == 'none') NA
-										else stop('Err: ', .varname)
-										}
-									) %>% .[2:nrow(.),]
-						
-						}) %>%
-					purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-					dplyr::arrange(., date)
-			) %>%
-			c(list(base = baseDfs[[scenarioname]]), .)
-		) 
-	
-	
-	predFlat =
-		dfs %>%
-		purrr::imap_dfr(., function(x, scenarioname)
-			purrr::imap_dfr(x, function(y, form)
-				y %>%
-					tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
-					dplyr::mutate(., form = form, scenarioname = scenarioname) %>%
-					na.omit(.)
-				)
-			)
-	
-
-	m$qual$pred <<- dfs
-	m$qual$predFlat <<- predFlat
-})
-```
 
 
 # Quarterly
