@@ -623,6 +623,40 @@ local({
 	message('Completed Quandl data scrape')
 	
 	message('Starting CME data scrape...')
+	cookieVal =
+	    httr::GET(
+            'https://www.cmegroup.com/',
+            add_headers(c(
+                'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+                'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Encoding' = 'gzip, deflate, br',
+                'Accept-Language' ='en-US,en;q=0.5',
+                'Cache-Control'='no-cache',
+                'Connection'='keep-alive',
+                'DNT' = '1'
+                ))
+            ) %>%
+	    httr::cookies(.) %>% as_tibble(.) %>% dplyr::filter(., name == 'ak_bmsc') %>% .$value
+	
+	
+	# Get CME Vintage Date
+	lastTradeDate =
+		httr::GET(
+			paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/305/G?quoteCodes=null&_='),
+			add_headers(c(
+				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+				'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+				'Accept-Encoding' = 'gzip, deflate, br',
+				'Accept-Language' ='en-US,en;q=0.5',
+				'Cache-Control'='no-cache',
+				'Connection'='keep-alive',
+				'Cookie'=cookieVal,
+				'DNT' = '1',
+				'Host' = 'www.cmegroup.com'
+			))
+		) %>% content(., 'parsed') %>% .$tradeDate %>% lubridate::parse_date_time(., 'd-b-Y') %>% as_date(.)
+		
+	
 	df2 =
 		tribble(
 			~ varname, ~ cmeId,
@@ -633,21 +667,25 @@ local({
 		purrr::transpose(.) %>%
 		purrr::map_dfr(., function(var) {
 			# message(var)
-			httr::GET(
-				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
-				# 3/30/21 - CME website now requires user-agent header
-				add_headers(c(
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0',
-					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-					'Accept-Encoding' = 'gzip, deflate, br',
-					'Accept-Language' ='en-US,en;q=0.5',
-					'Cache-Control'='no-cache',
-					'Connection'='keep-alive',
-					'DNT' = '1',
-					'Host' = 'www.cmegroup.com'
-					))
-				) %>%
-				httr::content(., as = 'parsed') %>%
+			content =
+				httr::GET(
+					paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cmeId, '/G?quoteCodes=null&_='),
+					# 3/30/21 - CME website now requires user-agent header
+					add_headers(c(
+						'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+						'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+						'Accept-Encoding' = 'gzip, deflate, br',
+						'Accept-Language' ='en-US,en;q=0.5',
+						'Cache-Control'='no-cache',
+						'Connection'='keep-alive',
+						'Cookie'=cookieVal,
+						'DNT' = '1',
+						'Host' = 'www.cmegroup.com'
+						))
+					) %>%
+					httr::content(., as = 'parsed')
+			
+			content %>%
 				.$quotes %>%
 				purrr::map_dfr(., function(x) {
 					if (x$priorSettle %in% c('0.00', '-')) return() # Whack bug in CME website
@@ -656,7 +694,8 @@ local({
 						value = 100 - as.numeric(x$priorSettle),
 						varname = var$varname
 						)
-					})
+					}) %>%
+				return(.)
 			}) %>% 
 		# Now average out so that there's only one value for each (varname, obsDate) combo
 		dplyr::group_by(varname, obsDate) %>%
@@ -665,9 +704,8 @@ local({
 		# Get rid of forecasts for old observations
 		dplyr::filter(., obsDate >= lubridate::floor_date(Sys.Date(), 'month')) %>%
 		# Assume vintagedate is the same date as the last Quandl obs
-		dplyr::mutate(., vintageDate = max(df$vintageDate), fcname = 'cme') %>%
-		dplyr::filter(., value != 100) 
-	message('Completed CME data scrape...')
+		dplyr::mutate(., vintageDate = lastTradeDate, fcname = 'cme') %>%
+		dplyr::filter(., value != 100)
 
 	# Now combine, replacing df2 with df1 if necessary
 	combinedDf =
