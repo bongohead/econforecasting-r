@@ -674,23 +674,23 @@ local({
 						h$flat %>%
 						dplyr::filter(., freq == y$freq, form == y$form, varname == param$varname) %>%
 						dplyr::arrange(., date) %>%
-						dplyr::transmute(., date, value, type = 'Historical')
+						dplyr::transmute(., date, value, type = 'historical')
 
 					forecastDf =
 						x %>%
 						dplyr::filter(., freq == y$freq & form == y$form) %>%
 						dplyr::bind_rows(tail(histDf, 1), .) %>%
-						dplyr::transmute(., date, value, type = 'Forecast')
+						dplyr::transmute(., date, value, type = scenarioname)
 					
 					dplyr::bind_rows(histDf, forecastDf) %>%
 						ggplot(.) +
-						geom_line(aes(x = date, y = value, color = type, linetype = type)) +
+						geom_line(aes(x = date, y = value, color = type)) +
 						geom_point(aes(x = date, y = value, color = type)) +
 						scale_color_manual(
-							values = c('Historical' = 'black', 'Forecast' = 'Red')
+							values = c('historical' = 'black', 'baseline' = 'red')
 						) +
 						scale_linetype_manual(
-							values = c('Historical' = 'solid', 'Forecast' = 'solid')
+							values = c('historical' = 'solid', 'baseline' = 'solid')
 						) +
 						labs(
 							subtitle = paste0({if (y$freq == 'q') 'Quarterly' else 'Monthly'}, ' Forecast'),
