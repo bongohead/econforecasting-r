@@ -679,7 +679,7 @@ local({
 					forecastDf =
 						x %>%
 						dplyr::filter(., freq == y$freq & form == y$form) %>%
-						dplyr::bind_rows(tail(histDf, 1), .) %>%
+						dplyr::bind_rows(mutate(tail(histDf, 1), scenarioname = unique(.$scenarioname)), .) %>%
 						dplyr::transmute(., date, value, type = scenarioname)
 					
 					dplyr::bind_rows(histDf, forecastDf) %>%
