@@ -23,7 +23,7 @@ t-ahed   lagged spy    nowcast mae     qual mae
 # CHANGELOG
 @Todo: make first several nowcast periods an exogenous model input for GDP subforecasts
 
-## 2021-08-16 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
+## 2021-08-18 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
 - Added CSM forecasting code
 - Added model stacking for PCA->DFM->Kalman Filter process to reduce variance due to factor selection
 - Added qualitative forecasts for mortgage rates and mortgage spreads
@@ -31,6 +31,7 @@ t-ahed   lagged spy    nowcast mae     qual mae
 - Added JOLTS to DFM inputs (changed stationary form to base values)
 - Added better qualitative forecasting output checks & graphs
 - Added automatic export of qualitative forecasting graphs for model checking
+- Added rewrite of CSM exogenous df to reflect refactoring in qualitative forecasts
 - Removed CFNAI and WEI from DFM inputs
 
 ## 2021-07-26 [v0.15]

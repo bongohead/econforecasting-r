@@ -100,6 +100,7 @@ local({
 })
 ```
 
+
 ## Forecast periods
 ```{r}
 local({
@@ -154,13 +155,18 @@ local({
         dplyr::bind_cols(
             .,
             constant = 1,
+            
+            dplyr::transmute_if(histDf, is.numeric, function(x) ma2(x)) %>%
+                dplyr::rename_with(., function(x) paste0('ma2.', x)),
+
+            dplyr::transmute_if(histDf, is.numeric, function(x) lma2(x)) %>%
+                dplyr::rename_with(., function(x) paste0('lma2.', x)),
+            
             lapply(1:4, function(l)
                 dplyr::transmute_if(histDf, is.numeric, function(x) dplyr::lag(x, l)) %>%
                     dplyr::rename_with(., function(x) paste0(x, '.l', l))
                 )
             )
-
-    
     	
     # Now create coefficient matrices
     # Get steady-state values
@@ -187,24 +193,24 @@ local({
     # Iterate through equations
     eqnsList =
         list(
-        	pceg = 'pceg = constant + pid + _lma2.pceg + _lma2.ue',
-        	pces = 'pces = constant + pid + _lma2.pces + _lma2.ue',
-            pdin = 'pdin = constant + ue + _lma2.pdin',
-            pdir = 'pdir = constant + ue + hpi + _lma2.pdir',
-            im = 'im = constant + ue + _lma2.im',
-            ex = 'ex = constant + ue + _lma2.ex',
+        	pceg = 'pceg = constant + pid + lma2.pceg + lma2.ue',
+        	pces = 'pces = constant + pid + lma2.pces + lma2.ue',
+            pdin = 'pdin = constant + ue + lma2.pdin',
+            pdir = 'pdir = constant + ue + hpi + lma2.pdir',
+            im = 'im = constant + ue + lma2.im',
+            ex = 'ex = constant + ue + lma2.ex',
             pdi = 'pdi = constant + pdin + pdir',
-            govtf = 'govtf = constant + govt + _lma2.govtf + _lma2.ue',
-            govts = 'govts = constant + govt + _lma2.govts + _lma2.ue',
-            houst = 'houst = constant + hpi + _lma2.houst + _lma2.ue + mort30y',
-            hsold = 'hsold = constant + hpi + _lma2.hsold + _lma2.ue + mort30y',
+            govtf = 'govtf = constant + govt + lma2.govtf + lma2.ue',
+            govts = 'govts = constant + govt + lma2.govts + lma2.ue',
+            houst = 'houst = constant + hpi + lma2.houst + lma2.ue + mort30y',
+            hsold = 'hsold = constant + hpi + lma2.hsold + lma2.ue + mort30y',
             vix = 'vix = constant + vix.l1 + spy + spy.l1',
             moo = 'moo = constant + moo.l1 + spy + gdp',
             metals = 'metals = constant + metals.l1 + spy + gdp'
         	)
 
     # Get estimated coefficient matrices
-    coefMatsEstimated = purrr::map(eqnsList, function(eqn) {
+    estimRes = purrr::map(eqnsList, function(eqn) {
         message(eqn)
         
         yCoef = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 1] %>% str_squish(.)
@@ -215,21 +221,26 @@ local({
             .[1, 2] %>%
             str_split(., '\\+') %>%
             .[[1]] %>%
-            str_squish(.) %>%
-            purrr::map_dfr(., function(x)
-                if (str_detect(x, '_ma2')) tibble(coefname = paste0(str_replace(x, coll('_ma2.'), ''), c('', '.l1')), adj = .5)
-                else if (str_detect(x, '_lma2')) tibble(coefname = paste0(str_replace(x, coll('_lma2.'), ''), c('.l1', '.l2')), adj = .25)
-                else tibble(coefname = x, adj = 1)
-                )
+            str_squish(.)
+        	
+            # purrr::map_dfr(., function(x)
+            #     if (str_detect(x, '_ma2')) tibble(coefname = paste0(str_replace(x, coll('_ma2.'), ''), c('', '.l1')), adj = .5)
+            #     else if (str_detect(x, '_lma2')) tibble(coefname = paste0(str_replace(x, coll('_lma2.'), ''), c('.l1', '.l2')), adj = .25)
+            #     else tibble(coefname = x, adj = 1)
+            #     )
     
         inputDf =
             histDfAll %>%
-            dplyr::select(., date, all_of(c(yCoef, xCoefs$coefname))) %>%
+            dplyr::select(., date, all_of(c(yCoef, xCoefs))) %>%
             na.omit(.)
         
         yMat = inputDf %>% dplyr::select(., all_of(yCoef)) %>% as.matrix(.)
-        xMat = inputDf %>% dplyr::select(., all_of(xCoefs$coefname)) %>% as.matrix(.)
+        xMat = inputDf %>% dplyr::select(., all_of(xCoefs)) %>% as.matrix(.)
         
+        lmObj = lm(yMat ~ . - 1, data = as_tibble(xMat))
+        
+        ##### Replace lma2.pceg coefficients with pceg.l1, pceg.l2 etc
+        stop()
         
         coefRes =
             solve(t(xMat) %*% xMat) %*% (t(xMat) %*% yMat) %>%
@@ -242,9 +253,15 @@ local({
             dplyr::bind_rows(tibble(coefname = yCoef, value = 1), .) %>%
             tidyr::pivot_wider(., names_from = 'coefname')
         
-        return(coefRes)
+        return(list(
+        	lmObj = lmObj,
+        	coefRes = coefRes
+        ))
     })
     
+    
+    estimRegs = map(estimRes, .$estimRegs)
+    coefMatsEstimated = map(estimRes,  ~.$coefRes)
     
     
     # Seperate endogeneous (estimated) and exogenous matrices
@@ -258,6 +275,7 @@ local({
 
     m$csm$endogVars <<- endogVars
     m$csm$exogVars <<- exogVars
+    m$csm$estimRegs <<- estimRegs
     m$csm$coefMat <<- coefMat
 })
 ```
@@ -272,7 +290,7 @@ local({
 		
 	    # Create exog df - start 4 quarters before forecast start date
 	    exogDf =
-			exogScenarioDf %>%
+			exogScenarioDf$st$q %>%
 	    	dplyr::filter(., date >= lubridate::add_with_rollback(m$csm$startDate, months(-12)) & date <= m$csm$endDate)
 	
 	
