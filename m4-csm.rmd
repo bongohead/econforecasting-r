@@ -49,81 +49,56 @@ local({
 ```
 
 
-# Input Prep
-
-## Aggregate Inputs to Quarterly
-```{r}
-local({
-	
-	# Get historical forecasts
-	histDf =
-		h$flat %>%
-		split(., .$varname)  %>%
-		purrr::map_dfr(., function(x)
-			# Get monthly data if it exists, quarterly otherwise
-			x %>%
-				{
-					if ('m' %in% unique(x$freq)) dplyr::filter(., form == 'st' & freq == 'm')
-					else dplyr::filter(., form == 'st' & freq == 'q')
-				} %>%
-				dplyr::transmute(., varname, freq, date, value)
-			)
-
-	
-	# Get exogenous qualitative forecasts
-	qualDf =
-		m$qual$predFlat %>%
-		dplyr::filter(., form == 'st') %>%
-		dplyr::transmute(., scenarioname, varname, freq = 'm', date, value)
-	
-
-	# Iterate through scenarios, combine and aggregate to quarterly
-	exogDfs =
-		qualDf %>%
-    	split(., .$scenarioname) %>%
-		lapply(., function(x)
-			dplyr::bind_rows(histDf, x) %>%
-				dplyr::arrange(., varname, date) %>%
-				dplyr::mutate(., strdate = paste0(year(date), 'Q', quarter(date))) %>%
-				dplyr::group_by(., varname, strdate) %>%
-				dplyr::group_split(.) %>%
-				lapply(., function(y) {
-					if (y$freq[[1]] == 'm' && nrow(y) >= 3) tibble(varname = y$varname[[1]], value = mean(y$value), strdate = y$strdate[[1]])		else if (y$freq[[1]] == 'm' && nrow(y) < 3) NA
-					else if (y$freq[[1]] == 'q') dplyr::select(y, varname, value, strdate)
-					}) %>%
-				purrr::keep(., function(x) is_tibble(x)) %>%
-				dplyr::bind_rows(.) %>%
-				dplyr::mutate(., date = econforecasting::strdateToDate(strdate)) %>%
-				dplyr::select(., -strdate) %>%
-				tidyr::pivot_wider(., names_from  = 'varname', values_from = 'value') %>%
-				dplyr::arrange(., date) %>%
-				dplyr::filter(., date >= as.Date('2010-01-01'))
-			)
-
-	
-	exogFlat =
-		exogDfs %>%
-		purrr::imap_dfr(., function(x, i)
-			tidyr::pivot_longer(x, -date, names_to = 'varname', values_to = 'value') %>%
-				dplyr::mutate(., scenarioname = i) %>%
-				na.omit(.)
-		)
-
-	
-	m$csm$exogDfs0 <<- exogDfs
-	m$csm$exogFlat0 <<- exogFlat
-})
-```
-
-## Replace with Quarterly Nowcasts
-```{r}
-local({
-	
-})
-```
-
-
 # CSM
+
+## Get exogenous df
+```{r}
+local({
+	
+	# Get exogenous df - combine historical for all variables with forecasts from qual
+	# There should be no overlap but if so, overwrites historical from qual
+	exogDfs =
+		m$qual$predFlat %>%
+		as.data.table(.) %>%
+		split(., by = 'scenarioname', keep.by = FALSE) %>%
+		lapply(., function(forecastDf)
+			dplyr::full_join(
+				forecastDf %>% as_tibble(.) %>% dplyr::rename(., qual = value),
+				h$flat %>% dplyr::transmute(., form, freq, varname, date, hist = value),
+				by = c('form', 'freq', 'varname', 'date')
+				) %>%
+				dplyr::transmute(., form, freq, varname, date, value = ifelse(!is.na(hist), hist, qual)) %>%
+				as.data.table(.) %>%
+				split(., by = c('form', 'freq'), keep.by = FALSE, flatten = FALSE) %>%
+				lapply(., function(y)
+					lapply(y, function(z)
+						z %>%
+							tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+							dplyr::arrange(., date)
+						)
+					)
+			)
+	
+	
+	exogFlat = 
+		exogDfs %>% 
+		purrr::imap_dfr(., function(x, .scenarioname)
+			purrr::imap_dfr(x, function(y, .form)
+				purrr::imap_dfr(y, function(z, .freq)
+					z %>%
+						tidyr::pivot_longer(-date, values_to = 'value', names_to = 'varname') %>%
+						dplyr::mutate(., freq = .freq)
+					) %>%
+					dplyr::mutate(., form = .form)
+				) %>%
+				dplyr::mutate(., scenarioname = .scenarioname)
+			)
+	
+	
+	m$csm$exogDfs <<- exogDfs
+	m$csm$exogFlat <<- exogFlat
+})
+```
 
 ## Forecast periods
 ```{r}
@@ -131,7 +106,7 @@ local({
 	
 	# Pull start date by finding the first date where at least one CORE.ENDOG variables is non-empty
 	startDate =
-		m$csm$exogDfs$baseline %>%
+		m$csm$exogDfs$baseline$st$q %>%
 		dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.endog')$varname) %>%
 		dplyr::filter(., date >= as.Date('2020-01-01')) %>%
 		tidyr::pivot_longer(., -date, names_to = 'varname') %>%
@@ -146,7 +121,7 @@ local({
 	
 	# Pull end date by last date of CORE.EXOG variables
 	endDate =
-		m$csm$exogDfs$baseline %>%
+		m$csm$exogDfs$baseline$st$q %>%
 	    dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.exog')$varname) %>%
 	    dplyr::filter(., date >= as.Date('2020-01-01')) %>%
 	    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
@@ -157,7 +132,6 @@ local({
 	    dplyr::arrange(., date) %>%
 	    tail(., 1) %>%
 	    .$date
-
 	
 	
 	m$csm$startDate <<- startDate
