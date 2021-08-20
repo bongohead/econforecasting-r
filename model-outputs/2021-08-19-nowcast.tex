@@ -94,7 +94,7 @@
 {\Huge \textsf{A Nowcasting Model for Time Series with Ragged-Edge Data}}
 \vskip\baselineskip
 \noindent
-\textsf{Model Run Date: August 18, 2021}\\
+\textsf{Model Run Date: August 19, 2021}\\
 \textsf{charles@cmefi.com}
 \restoregeometry % restores the geometry
 \nopagecolor% Use this to restore the color pages to white
@@ -157,13 +157,13 @@ The next section will go over the data and estimation procedure in detail. While
 
 \newpage
 \section{Estimation Process}
-The model is run every weekday; this documentation will use actual data and estimates from the most recent model run (2021-08-18) to illustrate the procedure. The final nowcasted output is located in the results section.
+The model is run every weekday; this documentation will use actual data and estimates from the most recent model run (2021-08-19) to illustrate the procedure. The final nowcasted output is located in the results section.
 
 \subsection{Data}
 We begin by importing monthly data of various leading indicators from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference, whereas \textit{base} means that no transformation was necessary for the variable to be stationary.
 
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:31 2021
+% Thu Aug 19 19:31:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -214,7 +214,7 @@ PCE & dlog \\
 
 We additionally import quarterly data for our variables of interest. While this model can be used for nowcasting other data, here we will use import GDP, its components, as well as several other major macroeconomic variables of interest.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:31 2021
+% Thu Aug 19 19:31:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -273,7 +273,7 @@ GDP & dlog \\
 
 Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:31 2021
+% Thu Aug 19 19:31:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -302,7 +302,7 @@ In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \
 \end{figure}
 For our data, we set the dates as follows.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:31 2021
+% Thu Aug 19 19:31:32 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -359,7 +359,7 @@ Once factors are derived, we select the optimal number of factors to use in pred
 
 
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:31 2021
+% Thu Aug 19 19:31:32 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -368,7 +368,7 @@ Once factors are derived, we select the optimal number of factors to use in pred
 Factors (R) & Variance Explained & Pct of Total Var Explained & Cumulative Pct & MSE & IC1 & IC2 & IC3 \\ 
   \hline
   1 & 7.48 & 0.22 & 0.22 & 0.77 & 0.90 & 0.90 & 0.88 \\ 
-    2 & 7.43 & 0.22 & 0.44 & 0.56 & 0.80 & 0.82 & 0.76 \\ 
+    2 & 7.44 & 0.22 & 0.44 & 0.56 & 0.80 & 0.82 & 0.76 \\ 
     3 & 4.01 & 0.12 & 0.56 & 0.44 & 0.80 & 0.83 & 0.75 \\ 
     4 & 2.27 & 0.07 & 0.62 & 0.37 & 0.86 & 0.89 & 0.79 \\ 
     5 & 1.73 & 0.05 & 0.67 & 0.32 & 0.93 & 0.97 & 0.84 \\ 
@@ -524,7 +524,7 @@ It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which
 
 The estimated coefficients in $\widehat{B}$ and $\widehat{C}$ are shown below.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:31 2021
+% Thu Aug 19 19:31:33 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -589,7 +589,7 @@ Finally, we perform a qualitative check of the fitted values and residuals. It i
 
 Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are shown below.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:32 2021
+% Thu Aug 19 19:31:33 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -597,10 +597,10 @@ Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are
   \hline
 varname & MAE & MSE \\ 
   \hline
-f1 & 1.14507441 & 5.66582310 \\ 
-  f2 & 0.31714486 & 0.28408287 \\ 
-  f3 & 0.54837649 & 0.61145162 \\ 
-  f4 & 0.69868525 & 1.26755928 \\ 
+f1 & 1.14544663 & 5.67083309 \\ 
+  f2 & 0.31531357 & 0.27989596 \\ 
+  f3 & 0.54840963 & 0.61150382 \\ 
+  f4 & 0.69863285 & 1.26697575 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -685,7 +685,7 @@ However, estimation of $A$ and $D$ with the standard OLS estimator is likely to 
 
 Estimated coefficients for $\widehat{A}$ and $\widehat{D}$ are below.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:32 2021
+% Thu Aug 19 19:31:33 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -709,21 +709,21 @@ mpce & 0.00 & 0.01 & -0.00 & -0.00 & -0.00 \\
   ue & -0.00 & -0.04 & 0.00 & 0.01 & 0.01 \\ 
   wei & 1.70 & 0.33 & 0.19 & 0.91 & 0.22 \\ 
   spy & 0.01 & 0.00 & -0.00 & -0.00 & 0.01 \\ 
-  vix & 18.08 & -1.14 & 0.76 & -1.51 & -2.05 \\ 
-  oil & 68.99 & 3.02 & 5.87 & 2.92 & 4.52 \\ 
+  vix & 18.08 & -1.14 & 0.75 & -1.51 & -2.05 \\ 
+  oil & 68.99 & 3.01 & 5.87 & 2.92 & 4.52 \\ 
   loansre & 0.00 & -0.00 & -0.00 & 0.00 & 0.00 \\ 
   loanscc & 0.01 & 0.00 & 0.00 & 0.00 & -0.00 \\ 
   stlfsi & -0.26 & -0.13 & 0.05 & -0.08 & -0.19 \\ 
-  usd & 104.18 & -1.07 & -3.57 & -0.69 & -1.60 \\ 
-  uemean & 29.62 & 0.85 & 2.12 & 0.36 & 1.33 \\ 
+  usd & 104.18 & -1.06 & -3.57 & -0.69 & -1.60 \\ 
+  uemean & 29.62 & 0.84 & 2.12 & 0.36 & 1.33 \\ 
   advsales & 0.00 & 0.01 & -0.00 & -0.00 & -0.00 \\ 
   kclfi & -0.45 & -0.00 & -0.36 & 0.13 & -0.08 \\ 
   csent & 99.78 & -0.04 & -0.45 & 0.27 & -0.05 \\ 
   ipi & 0.00 & 0.01 & -0.00 & -0.00 & -0.00 \\ 
   pcepi & 0.00 & 0.00 & -0.00 & -0.00 & 0.00 \\ 
   snyfed & 19.00 & 0.90 & 0.17 & 2.61 & -0.57 \\ 
-  stxfed & 3.21 & 3.68 & -1.59 & 4.12 & 3.43 \\ 
-  sphfed & 21.60 & 0.72 & -2.23 & 1.36 & 0.34 \\ 
+  stxfed & 3.21 & 3.69 & -1.58 & 4.12 & 3.43 \\ 
+  sphfed & 21.60 & 0.73 & -2.22 & 1.36 & 0.34 \\ 
   cfnai & -0.06 & 0.58 & -0.08 & -0.19 & -0.26 \\ 
   baa & 4.81 & 0.02 & 0.19 & 0.15 & -0.13 \\ 
   lfpr & 63.08 & 0.08 & 0.22 & 0.19 & -0.16 \\ 
@@ -736,7 +736,7 @@ mpce & 0.00 & 0.01 & -0.00 & -0.00 & -0.00 \\
 
 We perform a qualitative check of the in-sample fit, as well as a quantitative review of the goodness-of-fit. The graphs of the fitted plots are located in the appendix.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:32 2021
+% Thu Aug 19 19:31:33 2021
 \begin{table}[H]
 \centering
 \begingroup\footnotesize
@@ -744,40 +744,40 @@ We perform a qualitative check of the in-sample fit, as well as a quantitative r
   \hline
 varname & MAE & MSE \\ 
   \hline
-advsales & 0.00744485 & 0.00016002 \\ 
-  baa & 0.23305422 & 0.09925629 \\ 
-  cfnai & 0.30604634 & 0.17713563 \\ 
-  cons & 0.00837954 & 0.00011233 \\ 
-  csent & 0.41674146 & 0.27953763 \\ 
-  cu & 0.00383659 & 0.00002768 \\ 
-  ffr & 0.26388405 & 0.10685534 \\ 
-  houst & 0.06465287 & 0.00626285 \\ 
-  hpermits & 0.03678216 & 0.00216216 \\ 
-  hpi & 0.00214652 & 0.00000796 \\ 
-  hsold & 0.05713049 & 0.00587643 \\ 
-  ipi & 0.00383960 & 0.00002667 \\ 
-  kclfi & 0.17969652 & 0.05553608 \\ 
-  lfpr & 0.27177980 & 0.11118483 \\ 
-  loanscc & 0.01553686 & 0.00214843 \\ 
+advsales & 0.00744484 & 0.00016001 \\ 
+  baa & 0.23305666 & 0.09925466 \\ 
+  cfnai & 0.30605979 & 0.17716145 \\ 
+  cons & 0.00837954 & 0.00011232 \\ 
+  csent & 0.41673155 & 0.27952855 \\ 
+  cu & 0.00383676 & 0.00002768 \\ 
+  ffr & 0.26386894 & 0.10684152 \\ 
+  houst & 0.06465367 & 0.00626277 \\ 
+  hpermits & 0.03678195 & 0.00216215 \\ 
+  hpi & 0.00214633 & 0.00000795 \\ 
+  hsold & 0.05712904 & 0.00587626 \\ 
+  ipi & 0.00383978 & 0.00002667 \\ 
+  kclfi & 0.17969651 & 0.05553801 \\ 
+  lfpr & 0.27177012 & 0.11118021 \\ 
+  loanscc & 0.01553675 & 0.00214843 \\ 
   loansre & 0.00215890 & 0.00000807 \\ 
-  mnodg & 0.03327999 & 0.00229495 \\ 
-  mpce & 0.00359437 & 0.00003002 \\ 
-  oil & 9.73190415 & 119.21610759 \\ 
-  pcepi & 0.00104424 & 0.00000176 \\ 
-  pid & 0.01053655 & 0.00084284 \\ 
-  snyfed & 5.28286932 & 43.22236920 \\ 
-  sphfed & 5.84435522 & 50.13370800 \\ 
-  spy & 0.02042022 & 0.00074662 \\ 
-  stlfsi & 0.16882724 & 0.05382679 \\ 
-  stxfed & 8.39187613 & 105.04705478 \\ 
-  t01y & 0.24360762 & 0.08807121 \\ 
-  t10y & 0.22614877 & 0.07717373 \\ 
-  ue & 0.03521503 & 0.00263226 \\ 
-  uemean & 2.13483297 & 8.24122805 \\ 
-  usd & 2.29883250 & 8.93064968 \\ 
-  vix & 2.72823075 & 13.92671138 \\ 
-  vsales & 0.82665336 & 1.11833499 \\ 
-  wei & 1.06462072 & 2.39249836 \\ 
+  mnodg & 0.03327913 & 0.00229495 \\ 
+  mpce & 0.00359444 & 0.00003002 \\ 
+  oil & 9.73228950 & 119.21645233 \\ 
+  pcepi & 0.00104419 & 0.00000176 \\ 
+  pid & 0.01053708 & 0.00084283 \\ 
+  snyfed & 5.28295156 & 43.22294263 \\ 
+  sphfed & 5.84433600 & 50.13272320 \\ 
+  spy & 0.02042082 & 0.00074677 \\ 
+  stlfsi & 0.16872936 & 0.05374621 \\ 
+  stxfed & 8.39122958 & 105.03529331 \\ 
+  t01y & 0.24359237 & 0.08805593 \\ 
+  t10y & 0.22614150 & 0.07716934 \\ 
+  ue & 0.03521542 & 0.00263215 \\ 
+  uemean & 2.13476398 & 8.24068771 \\ 
+  usd & 2.29890273 & 8.93095971 \\ 
+  vix & 2.72859863 & 13.93042304 \\ 
+  vsales & 0.82662207 & 1.11826854 \\ 
+  wei & 1.06463611 & 2.39240717 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -917,7 +917,7 @@ We begin by aggregating these monthly factors into quarterly data by taking a si
 
 In this section, we will use these now-quarterly factors to forecast our quarterly subcomponents of GDP. As discussed in the data import section, these have been transformed for stationarity, typically by taking a log-difference.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:32 2021
+% Thu Aug 19 19:31:34 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -982,7 +982,7 @@ The $\beta$ coefficients can be estimated with a typical OLS process, where the 
 After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
 The forecasted results are as follows.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:32 2021
+% Thu Aug 19 19:31:34 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -993,9 +993,9 @@ Variable & 2021Q2 & 2021Q3 & 2021Q4 \\
 Consumption: Goods: Durable: Motor Vehicles \& Parts &  & 0.06 & 0.02 \\ 
   Consumption: Goods: Durable: Furnishings \& Durable Household Equipment &  & 0.07 & 0.00 \\ 
   Consumption: Goods: Durable: Recreational Goods \& Services &  & 0.03 & 0.03 \\ 
-  Consumption: Goods: Durable: Other Durable Goods &  & 0.09 & 0.02 \\ 
+  Consumption: Goods: Durable: Other Durable Goods &  & 0.02 & 0.02 \\ 
   Consumption: Goods: Nondurable Goods: Food \& Beverages for Off-Premises Use &  & 0.01 & 0.01 \\ 
-  Consumption: Goods: Nondurable Goods: Clothing &  & 0.06 & 0.02 \\ 
+  Consumption: Goods: Nondurable Goods: Clothing &  & 0.06 & 0.01 \\ 
   Consumption: Goods: Nondurable Goods: Gasoline \& Energy Goods &  & 0.01 & 0.00 \\ 
   Consumption: Goods: Nondurable Goods: Other Nondurable Goods &  & 0.01 & 0.01 \\ 
   Consumption: Services: Housing \& Utilities &  & 0.00 & 0.00 \\ 
@@ -1006,15 +1006,15 @@ Consumption: Goods: Durable: Motor Vehicles \& Parts &  & 0.06 & 0.02 \\
   Consumption: Services: Financial Services &  & 0.01 & 0.00 \\ 
   Consumption: Services: Other Services &  & 0.01 & 0.00 \\ 
   Consumption: Services: Nonprofit Services &  & -0.05 & -0.00 \\ 
-  Gross Private Domestic Investment: Nonresidential Investment: Structures &  & 0.01 & 0.00 \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Structures &  & 0.00 & 0.00 \\ 
   Gross Private Domestic Investment: Nonresidential Investment: Equipment &  & 0.04 & 0.01 \\ 
-  Gross Private Domestic Investment: Nonresidential Investment: Intellectual Property &  & 0.02 & 0.02 \\ 
+  Gross Private Domestic Investment: Nonresidential Investment: Intellectual Property &  & 0.01 & 0.01 \\ 
   Gross Private Domestic Investment: Residential Investment &  & 0.01 & 0.01 \\ 
-  Gross Private Domestic Investment: Change in Private Inventories &  & 39.41 & 53.72 \\ 
+  Gross Private Domestic Investment: Change in Private Inventories &  & 54.52 & 54.52 \\ 
   Exports: Exported Goods &  & 0.01 & 0.01 \\ 
   Exports: Exported Services &  & 0.03 & 0.00 \\ 
-  Imports: Imported Goods &  & 0.01 & 0.01 \\ 
-  Imports: Imported Services &  & -0.00 & -0.00 \\ 
+  Imports: Imported Goods &  & 0.02 & 0.01 \\ 
+  Imports: Imported Services &  & 0.01 & 0.00 \\ 
   Government Spending: Federal &  & -0.00 & 0.00 \\ 
   Government Spending: State \& Local &  & 0.00 & 0.00 \\ 
    \hline
@@ -1026,7 +1026,7 @@ Consumption: Goods: Durable: Motor Vehicles \& Parts &  & 0.06 & 0.02 \\
 
 We can then backtransform the data so that the units are in base values. After backtransformation, we are ready to aggregate these up to higher-level GDP components. In particular, we calculate the variables below.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:32 2021
+% Thu Aug 19 19:31:34 2021
 \begin{table}[H]
 \centering
 \begingroup\scriptsize
@@ -1061,7 +1061,7 @@ We also use a similar DFM-AR(1) specification to forecast out other economic var
 \section{Results}
 Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:33 2021
+% Thu Aug 19 19:31:34 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{10pt}{12pt}\selectfont
@@ -1069,45 +1069,45 @@ Our final nowcasts of GDP and its subcomponents are below. All units are reporte
   \hline
 Variable & 2021Q2 & 2021Q3 & 2021Q4 \\ 
   \hline
-\hspace{0mm} \textbf{GDP} &  & 13.47 & 3.24 \\ 
-  \hspace{0mm} \textbf{Consumption} &  & 14.80 & 2.95 \\ 
-  \hspace{8mm}  Goods &  & 16.94 & 4.94 \\ 
-  \hspace{16mm}  Durable &  & 31.58 & 7.14 \\ 
-  \hspace{24mm}  Motor Vehicles \& Parts &  & 26.78 & 7.21 \\ 
-  \hspace{24mm}  Furnishings \& Durable Household Equipment &  & 30.58 & 1.40 \\ 
-  \hspace{24mm}  Recreational Goods \& Services &  & 11.96 & 10.96 \\ 
-  \hspace{24mm}  Other Durable Goods &  & 40.70 & 7.21 \\ 
-  \hspace{16mm}  Nondurable Goods &  & 1.71 & 3.35 \\ 
+\hspace{0mm} \textbf{GDP} &  & 13.01 & 2.74 \\ 
+  \hspace{0mm} \textbf{Consumption} &  & 14.32 & 2.87 \\ 
+  \hspace{8mm}  Goods &  & 15.17 & 4.66 \\ 
+  \hspace{16mm}  Durable &  & 26.86 & 6.64 \\ 
+  \hspace{24mm}  Motor Vehicles \& Parts &  & 27.23 & 6.25 \\ 
+  \hspace{24mm}  Furnishings \& Durable Household Equipment &  & 30.61 & 1.02 \\ 
+  \hspace{24mm}  Recreational Goods \& Services &  & 11.94 & 10.81 \\ 
+  \hspace{24mm}  Other Durable Goods &  & 8.09 & 6.71 \\ 
+  \hspace{16mm}  Nondurable Goods &  & 1.73 & 3.24 \\ 
   \hspace{24mm}  Food \& Beverages for Off-Premises Use &  & 2.63 & 2.63 \\ 
-  \hspace{24mm}  Clothing &  & 27.94 & 6.34 \\ 
-  \hspace{24mm}  Gasoline \& Energy Goods &  & 2.75 & 0.07 \\ 
+  \hspace{24mm}  Clothing &  & 28.03 & 5.63 \\ 
+  \hspace{24mm}  Gasoline \& Energy Goods &  & 2.78 & 0.07 \\ 
   \hspace{24mm}  Other Nondurable Goods &  & 3.85 & 3.85 \\ 
-  \hspace{8mm}  Services &  & 3.10 & 1.56 \\ 
+  \hspace{8mm}  Services &  & 3.47 & 1.63 \\ 
   \hspace{16mm}  Housing \& Utilities &  & 0.62 & 0.62 \\ 
-  \hspace{16mm}  Health Care &  & 4.87 & 2.31 \\ 
-  \hspace{16mm}  Transportation &  & 7.68 & 1.89 \\ 
-  \hspace{16mm}  Recreation &  & 8.09 & 0.68 \\ 
-  \hspace{16mm}  Food Services \& Accomodations &  & 12.35 & 3.19 \\ 
-  \hspace{16mm}  Financial Services &  & 3.67 & 1.83 \\ 
-  \hspace{16mm}  Other Services &  & 3.03 & 1.43 \\ 
-  \hspace{16mm}  Nonprofit Services &  & -18.45 & -0.85 \\ 
-  \hspace{0mm} \textbf{Gross Private Domestic Investment} &  & 27.57 & 7.23 \\ 
-  \hspace{8mm}  Nonresidential Investment &  & 15.45 & 5.78 \\ 
-  \hspace{16mm}  Structures &  & 3.13 & 1.07 \\ 
-  \hspace{16mm}  Equipment &  & 16.18 & 6.13 \\ 
-  \hspace{16mm}  Intellectual Property &  & 8.89 & 7.28 \\ 
+  \hspace{16mm}  Health Care &  & 5.73 & 2.41 \\ 
+  \hspace{16mm}  Transportation &  & 7.75 & 1.89 \\ 
+  \hspace{16mm}  Recreation &  & 8.17 & 0.68 \\ 
+  \hspace{16mm}  Food Services \& Accomodations &  & 12.46 & 3.19 \\ 
+  \hspace{16mm}  Financial Services &  & 3.93 & 1.94 \\ 
+  \hspace{16mm}  Other Services &  & 3.86 & 1.53 \\ 
+  \hspace{16mm}  Nonprofit Services &  & -18.49 & -0.38 \\ 
+  \hspace{0mm} \textbf{Gross Private Domestic Investment} &  & 28.44 & 5.11 \\ 
+  \hspace{8mm}  Nonresidential Investment &  & 14.09 & 5.16 \\ 
+  \hspace{16mm}  Structures &  & 1.64 & 0.89 \\ 
+  \hspace{16mm}  Equipment &  & 16.20 & 5.76 \\ 
+  \hspace{16mm}  Intellectual Property &  & 6.18 & 6.18 \\ 
   \hspace{8mm}  Residential Investment &  & 5.28 & 5.28 \\ 
-  \hspace{8mm}  Change in Private Inventories &  & 39.41 & 53.72 \\ 
-  \hspace{0mm} \textbf{Net Exports} &  & -1272.30 & -1289.64 \\ 
-  \hspace{0mm} \textbf{Exports} &  & 11.76 & 2.31 \\ 
-  \hspace{8mm}  Exported Goods &  & 4.83 & 2.54 \\ 
-  \hspace{8mm}  Exported Services &  & 10.62 & 1.65 \\ 
-  \hspace{0mm} \textbf{Imports} &  & 9.07 & 3.44 \\ 
-  \hspace{8mm}  Imported Goods &  & 5.64 & 3.95 \\ 
-  \hspace{8mm}  Imported Services &  & -0.09 & -0.09 \\ 
-  \hspace{0mm} \textbf{Government Spending} &  & 0.48 & 1.03 \\ 
-  \hspace{8mm}  Federal &  & -0.34 & 1.35 \\ 
-  \hspace{8mm}  State \& Local &  & 0.88 & 0.81 \\ 
+  \hspace{8mm}  Change in Private Inventories &  & 54.52 & 54.52 \\ 
+  \hspace{0mm} \textbf{Net Exports} &  & -1282.01 & -1300.57 \\ 
+  \hspace{0mm} \textbf{Exports} &  & 11.80 & 2.32 \\ 
+  \hspace{8mm}  Exported Goods &  & 4.86 & 2.54 \\ 
+  \hspace{8mm}  Exported Services &  & 10.67 & 1.70 \\ 
+  \hspace{0mm} \textbf{Imports} &  & 10.26 & 3.57 \\ 
+  \hspace{8mm}  Imported Goods &  & 6.52 & 4.05 \\ 
+  \hspace{8mm}  Imported Services &  & 2.84 & 0.27 \\ 
+  \hspace{0mm} \textbf{Government Spending} &  & 0.29 & 0.79 \\ 
+  \hspace{8mm}  Federal &  & -0.83 & 0.73 \\ 
+  \hspace{8mm}  State \& Local &  & 0.89 & 0.83 \\ 
    \hline 
  \textit{apchg} = annualized \% change 
 \end{tabular}
@@ -1118,7 +1118,7 @@ Variable & 2021Q2 & 2021Q3 & 2021Q4 \\
 
 We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:33 2021
+% Thu Aug 19 19:31:34 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{11pt}{13pt}\selectfont
@@ -1126,9 +1126,9 @@ We also report nowcasts of other variables of interest, including other quarterl
   \hline
 Variable & 2021Q2 & 2021Q3 & 2021Q4 \\ 
   \hline
-Delinquency Rate on Residential Mortgages & 2.76 & 2.76 & 2.77 \\ 
-  Delinquency Rate on Credit Cards & 1.94 & 1.98 & 2.05 \\ 
-  Delinquency Rate on Commercial $\backslash$\& Industrial Loans & 1.02 & 0.95 & 0.96 \\ 
+Delinquency Rate on Residential Mortgages & 2.78 & 2.79 & 2.80 \\ 
+  Delinquency Rate on Credit Cards & 1.92 & 1.93 & 1.99 \\ 
+  Delinquency Rate on Commercial $\backslash$\& Industrial Loans & 1.02 & 0.96 & 0.97 \\ 
    \hline
 \end{tabular}
 \endgroup
@@ -1136,7 +1136,7 @@ Delinquency Rate on Residential Mortgages & 2.76 & 2.76 & 2.77 \\
 \end{table}
 
 % latex table generated in R 4.1.0 by xtable 1.8-4 package
-% Wed Aug 18 22:46:33 2021
+% Thu Aug 19 19:31:34 2021
 \begin{table}[H]
 \centering
 \begingroup\fontsize{10pt}{12pt}\selectfont
@@ -1144,23 +1144,23 @@ Delinquency Rate on Residential Mortgages & 2.76 & 2.76 & 2.77 \\
   \hline
 Variable & 2021M6 & 2021M7 & 2021M8 & 2021M9 & 2021M10 & 2021M11 & 2021M12 \\ 
   \hline
-PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 10.95 & 9.06 & 4.71 & 4.55 & 4.52 & 4.56 \\ 
-  PCE: Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 8.49 & 10.30 & 5.94 & 5.87 & 5.96 & 6.17 \\ 
-  PCE: Goods: Durable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 18.11 & 17.73 & 10.69 & 9.99 & 9.66 & 9.60 \\ 
-  PCE: Goods: Nondurable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 4.08 & 6.75 & 3.63 & 3.85 & 4.14 & 4.47 \\ 
-  PCE: Services \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 12.12 & 8.43 & 4.11 & 3.93 & 3.83 & 3.80 \\ 
-  Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -2.04 & -0.09 & 1.44 & 1.44 & 1.44 & 1.44 \\ 
-  Disposable Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -3.41 & -0.89 & 1.04 & 1.06 & 1.07 & 1.08 \\ 
-  Personal Outlays \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 14.18 & 11.42 & 6.80 & 6.60 & 6.52 & 6.52 \\ 
-  Personal Savings \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -56.94 & -35.33 & -16.45 & -14.33 & -12.60 & -11.26 \\ 
+PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 10.97 & 10.43 & 4.40 & 4.31 & 4.34 & 4.45 \\ 
+  PCE: Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 8.48 & 11.69 & 5.46 & 5.50 & 5.72 & 6.02 \\ 
+  PCE: Goods: Durable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 18.05 & 19.49 & 9.73 & 9.19 & 9.05 & 9.16 \\ 
+  PCE: Goods: Nondurable Goods \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 4.08 & 7.96 & 3.39 & 3.68 & 4.06 & 4.46 \\ 
+  PCE: Services \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 12.14 & 9.78 & 3.90 & 3.75 & 3.69 & 3.71 \\ 
+  Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -2.07 & -0.63 & 1.42 & 1.42 & 1.42 & 1.43 \\ 
+  Disposable Personal Income \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -3.44 & -1.55 & 1.03 & 1.05 & 1.07 & 1.08 \\ 
+  Personal Outlays \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 14.20 & 12.85 & 6.50 & 6.35 & 6.33 & 6.40 \\ 
+  Personal Savings \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & -57.06 & -39.74 & -15.79 & -13.62 & -11.90 & -10.61 \\ 
   Personal Savings Rate &  & 0.10 & 0.10 & 0.10 & 0.10 & 0.09 & 0.09 \\ 
-  Case-Shiller Housing Price Index & 256.66 & 259.57 & 261.65 & 263.58 & 265.40 & 267.11 & 268.74 \\ 
-  Housing Starts &  &  & 1566.93 & 1584.76 & 1601.72 & 1618.30 & 1634.86 \\ 
-  Houses Sold &  & 682.56 & 690.49 & 694.97 & 699.12 & 703.15 & 707.22 \\ 
-  New Private Housing Permits &  &  & 1660.91 & 1676.62 & 1691.34 & 1705.54 & 1719.57 \\ 
-  Manufacturers New Orders: Durable Goods &  & 262061.43 & 264943.06 & 266316.45 & 267517.93 & 268607.79 & 269633.56 \\ 
-  Capacity Utilization: Total Index &  &  & 76.43 & 76.50 & 76.57 & 76.66 & 76.76 \\ 
-  Total Construction Spending &  & 1567680.63 & 1579513.47 & 1590019.20 & 1600224.60 & 1610180.12 & 1619938.08 \\ 
+  Case-Shiller Housing Price Index & 256.66 & 259.58 & 261.64 & 263.55 & 265.33 & 267.02 & 268.62 \\ 
+  Housing Starts &  &  & 1571.16 & 1587.69 & 1603.52 & 1619.19 & 1635.06 \\ 
+  Houses Sold &  & 682.52 & 691.25 & 695.14 & 698.78 & 702.43 & 706.23 \\ 
+  New Private Housing Permits &  &  & 1663.38 & 1677.86 & 1691.51 & 1704.83 & 1718.16 \\ 
+  Manufacturers New Orders: Durable Goods &  & 262055.84 & 265286.12 & 266499.47 & 267556.70 & 268525.00 & 269451.67 \\ 
+  Capacity Utilization: Total Index &  &  & 76.51 & 76.57 & 76.63 & 76.72 & 76.81 \\ 
+  Total Construction Spending &  & 1567708.01 & 1579821.66 & 1590289.33 & 1600436.53 & 1610322.39 & 1620007.73 \\ 
   Effective Federal Funds Rate &  &  & 0.10 & 0.10 & 0.10 & 0.09 & 0.09 \\ 
   Secured Overnight Financing Rate &  &  & 0.05 & 0.05 & 0.05 & 0.05 & 0.06 \\ 
   Treasury Yield 10Y &  &  & 1.39 & 1.41 & 1.42 & 1.44 & 1.46 \\ 
@@ -1173,28 +1173,28 @@ PCE \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 10.95 & 9.06 & 4.71 & 4
   Treasury Yield 1M &  &  & 0.05 & 0.04 & 0.04 & 0.05 & 0.06 \\ 
   Treasury Yield 20Y &  &  & 1.81 & 1.82 & 1.83 & 1.83 & 1.84 \\ 
   Treasury Yield 7Y &  &  & 1.09 & 1.11 & 1.14 & 1.16 & 1.18 \\ 
-  Vehicle Sales &  &  & 17.79 & 17.64 & 17.58 & 17.53 & 17.48 \\ 
-  Unemployment Rate &  &  & 5.20 & 5.12 & 5.04 & 4.96 & 4.88 \\ 
-  All Employees (Nonfarm) &  &  & 147455.68 & 147718.43 & 148002.16 & 148308.71 & 148638.01 \\ 
-  Job Openings: Total Nonfarm &  & 10431.71 & 10679.15 & 10847.92 & 11006.07 & 11156.43 & 11301.48 \\ 
-  S\&P 500 \textit{\footnotesize\textcolor{gray}{(pchg)}} &  &  &  & 1.86 & 1.67 & 1.52 & 1.39 \\ 
-  VIX &  &  &  & 15.33 & 15.42 & 15.55 & 15.69 \\ 
-  Crude Oil Price (West Texas Intermediate) &  &  & 60.28 & 59.05 & 59.12 & 59.07 & 58.95 \\ 
-  Outstanding Real Estate Loans \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 3.65 & 3.80 & 3.75 & 3.70 & 3.66 \\ 
-  Outstanding Credit Card Balances \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & -0.63 & -0.33 & 1.14 & 2.31 & 3.19 \\ 
-  Housing Prices: New Listed Prices \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 10.38 & 9.73 & 9.89 & 10.05 & 10.20 \\ 
-  St. Louis Fed Financial Stress Index &  &  & -0.60 & -0.50 & -0.48 & -0.46 & -0.44 \\ 
-  U.S. Dollar Index &  &  & 110.74 & 111.14 & 111.09 & 111.08 & 111.09 \\ 
-  Average Weeks Unemployed &  &  & 26.45 & 25.97 & 25.91 & 25.84 & 25.76 \\ 
-  Retail \& Food Sales \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 11.12 & 5.15 & 4.85 & 4.77 & 4.86 \\ 
-  KC Fed Labor Market Index &  &  & 0.29 & 0.31 & 0.32 & 0.33 & 0.34 \\ 
-  Consumer Confidence (OECD) &  &  & 100.61 & 100.67 & 100.71 & 100.73 & 100.74 \\ 
-  PCE Price Index \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 2.97 & 2.33 & 2.05 & 2.00 & 1.95 & 1.92 \\ 
-  New York Fed: Business Conditions Manufacturing Survey &  &  &  & 18.19 & 18.69 & 19.07 & 19.33 \\ 
-  Dallas Fed: Current General Business Activity &  &  & 11.01 & 9.15 & 9.13 & 8.99 & 8.79 \\ 
-  Philadelphia Fed: Future Capital Expenditures Survey &  &  & 27.29 & 26.95 & 26.94 & 26.90 & 26.84 \\ 
-  Baa Corporate Bond Yield &  &  & 4.17 & 4.24 & 4.30 & 4.36 & 4.40 \\ 
-  Labor Force Participation Rate &  &  & 62.38 & 62.43 & 62.51 & 62.58 & 62.63 \\ 
+  Vehicle Sales &  &  & 17.87 & 17.69 & 17.63 & 17.56 & 17.51 \\ 
+  Unemployment Rate &  &  & 5.16 & 5.09 & 5.01 & 4.93 & 4.85 \\ 
+  All Employees (Nonfarm) &  &  & 147595.33 & 147849.69 & 148129.07 & 148435.48 & 148767.79 \\ 
+  Job Openings: Total Nonfarm &  & 10431.90 & 10697.15 & 10859.11 & 11010.53 & 11154.66 & 11294.18 \\ 
+  S\&P 500 \textit{\footnotesize\textcolor{gray}{(pchg)}} &  &  &  & 1.82 & 1.63 & 1.47 & 1.34 \\ 
+  VIX &  &  &  & 15.14 & 15.27 & 15.45 & 15.63 \\ 
+  Crude Oil Price (West Texas Intermediate) &  &  & 60.22 & 58.98 & 59.01 & 58.88 & 58.70 \\ 
+  Outstanding Real Estate Loans \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 3.66 & 3.86 & 3.80 & 3.75 & 3.70 \\ 
+  Outstanding Credit Card Balances \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 0.15 & 0.17 & 1.65 & 2.78 & 3.60 \\ 
+  Housing Prices: New Listed Prices \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 10.28 & 9.39 & 9.59 & 9.79 & 9.97 \\ 
+  St. Louis Fed Financial Stress Index &  &  & -0.62 & -0.51 & -0.49 & -0.46 & -0.44 \\ 
+  U.S. Dollar Index &  &  & 110.93 & 111.31 & 111.26 & 111.25 & 111.28 \\ 
+  Average Weeks Unemployed &  &  & 26.36 & 25.86 & 25.79 & 25.71 & 25.63 \\ 
+  Retail \& Food Sales \textit{\footnotesize\textcolor{gray}{(apchg)}} &  &  & 12.85 & 4.52 & 4.33 & 4.39 & 4.59 \\ 
+  KC Fed Labor Market Index &  &  & 0.34 & 0.35 & 0.36 & 0.37 & 0.37 \\ 
+  Consumer Confidence (OECD) &  &  & 100.66 & 100.74 & 100.77 & 100.79 & 100.79 \\ 
+  PCE Price Index \textit{\footnotesize\textcolor{gray}{(apchg)}} &  & 2.97 & 2.39 & 2.04 & 1.98 & 1.94 & 1.91 \\ 
+  New York Fed: Business Conditions Manufacturing Survey &  &  &  & 18.47 & 18.96 & 19.30 & 19.53 \\ 
+  Dallas Fed: Current General Business Activity &  &  & 11.86 & 9.61 & 9.49 & 9.26 & 8.99 \\ 
+  Philadelphia Fed: Future Capital Expenditures Survey &  &  &  & 27.30 & 27.25 & 27.17 & 27.09 \\ 
+  Baa Corporate Bond Yield &  &  & 4.18 & 4.25 & 4.32 & 4.37 & 4.41 \\ 
+  Labor Force Participation Rate &  &  & 62.39 & 62.45 & 62.53 & 62.59 & 62.64 \\ 
    \hline 
  \textit{apchg} = annualized \% change 
 \end{tabular}
