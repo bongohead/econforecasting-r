@@ -223,12 +223,6 @@ local({
             .[[1]] %>%
             str_squish(.)
         	
-            # purrr::map_dfr(., function(x)
-            #     if (str_detect(x, '_ma2')) tibble(coefname = paste0(str_replace(x, coll('_ma2.'), ''), c('', '.l1')), adj = .5)
-            #     else if (str_detect(x, '_lma2')) tibble(coefname = paste0(str_replace(x, coll('_lma2.'), ''), c('.l1', '.l2')), adj = .25)
-            #     else tibble(coefname = x, adj = 1)
-            #     )
-    
         inputDf =
             histDfAll %>%
             dplyr::select(., date, all_of(c(yCoef, xCoefs))) %>%
@@ -240,7 +234,7 @@ local({
         lmObj = lm(yMat ~ . - 1, data = as_tibble(xMat))
         
         ##### Replace lma2.pceg coefficients with pceg.l1, pceg.l2 etc
-        stop()
+        # stop()
         
         coefRes =
             solve(t(xMat) %*% xMat) %*% (t(xMat) %*% yMat) %>%
@@ -248,8 +242,23 @@ local({
             rownames_to_column(.) %>%
             setNames(., c('coefname', 'value')) %>%
             as_tibble(.) %>%
-            dplyr::left_join(xCoefs, by = 'coefname') %>%
-            dplyr::transmute(., coefname, value = value * adj * -1) %>%
+        	purrr::transpose(.) %>%
+        	purrr::map_dfr(., function(x) {
+        		
+        		if (str_sub(x$coefname, 1, 5) == 'lma2.') {
+        			coefname = paste0(str_sub(x$coefname, 6), c('.l1', '.l2'))
+        			value = x$value * .5
+        		} else if (str_sub(x$coefname, 1, 4) == 'ma2.') {
+        			coefname = paste0(str_sub(x$coefname, 5), c('', '.l1'))
+        			value = x$value * .5
+        		} else {
+        			coefname = x$coefname
+        			value = x$value
+        		}
+        		
+        		tibble(coefname = coefname, value = value)
+        	}) %>%
+            dplyr::transmute(., coefname, value = value * -1) %>%
             dplyr::bind_rows(tibble(coefname = yCoef, value = 1), .) %>%
             tidyr::pivot_wider(., names_from = 'coefname')
         
@@ -260,8 +269,8 @@ local({
     })
     
     
-    estimRegs = map(estimRes, .$estimRegs)
-    coefMatsEstimated = map(estimRes,  ~.$coefRes)
+    estimRegs = map(estimRes, ~ .$lmObj)
+    coefMatsEstimated = map(estimRes,  ~ .$coefRes)
     
     
     # Seperate endogeneous (estimated) and exogenous matrices
