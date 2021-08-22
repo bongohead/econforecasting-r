@@ -2,7 +2,7 @@
 ## Set Options
 ```{r purl = TRUE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-18] m3.rds'
+M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-21] m3.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -140,6 +140,47 @@ local({
 })
 ```
 
+## Get coefficients of identity equations
+```{r}
+local({
+	
+    # Get steady-state values
+    ss =
+        h$base$q %>%
+        na.omit(.) %>%
+        dplyr::filter(., date == max(date)) %>%
+        dplyr::select(., -date) %>%
+        purrr::transpose(.) %>%
+        .[[1]]
+    
+    coefMatsIdentity = c(
+    	'gdp = pce + pdi + ex - im + govt',
+    	'pce = pceg + pces',
+		'pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother',
+		'pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother',
+		'pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit',
+		'pdin = pdinstruct + pdinequip + pdinip',
+		
+    )
+
+
+	coefMatsIdentity = list(
+        gdp =
+    		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp),
+        pce =
+        	tibble(pce = 1, pceg = -1 * ss$pceg/ss$pce, pces = -1 * ss$pces/ss$pce),
+        pceg = 
+        	tibble()
+        govt =
+        	tibble(govt = 1, govtf = -1 * ss$govtf/ss$govt, govts = -1 * ss$govts/ss$govt)
+        )
+
+	
+	
+	m$csm$coefMatsIdentity <<- coefMatsIdentity
+})
+```
+
 ## Estimate coefficients
 ```{r}
 local({
@@ -155,7 +196,6 @@ local({
         dplyr::bind_cols(
             .,
             constant = 1,
-            
             dplyr::transmute_if(histDf, is.numeric, function(x) ma2(x)) %>%
                 dplyr::rename_with(., function(x) paste0('ma2.', x)),
 
@@ -169,26 +209,7 @@ local({
             )
     	
     # Now create coefficient matrices
-    # Get steady-state values
-    ss =
-        h$base$q %>%
-        na.omit(.) %>%
-        dplyr::filter(., date == max(date)) %>%
-        dplyr::select(., -date) %>%
-        purrr::transpose(.) %>%
-        .[[1]]
 
-
-	coefMatsIdentity =
-        list(
-            gdp =
-        		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp),
-            pce =
-            	tibble(pce = 1, pceg = -1 * ss$pceg/ss$pce, pces = -1 * ss$pces/ss$pce),
-            govt =
-            	tibble(govt = 1, govtf = -1 * ss$govtf/ss$govt, govts = -1 * ss$govts/ss$govt)
-            )
-	
 
     # Iterate through equations
     eqnsList =
