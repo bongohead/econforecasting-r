@@ -3,7 +3,7 @@
 ```{r purl = TRUE}
 # Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-18] m2.rds'
+M2_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-21] m2.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -184,7 +184,7 @@ local({
     	) %>%
     	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1') %>%
     	dplyr::mutate(., freq = 'm')
-    
+
     
     baseline$spy =
 		m$ncpred$d1$m[, c('date', 'spy')] %>%
@@ -243,12 +243,15 @@ local({
     	dplyr::mutate(., freq = 'm')
 
     
+	# PARTIAL LENGTH FORECASTS
+    
     # Have first four quarters of PCE, gross_pdi, etc. be exogenous in data
     ncList = c(
     	'pcegdmotor', 'pcegdfurnish', 'pcegdrec', 'pcegdother',
     	'pcegnfood', 'pcegnclothing', 'pcegngas', 'pcegnother',
     	'pceshousing', 'pceshealth', 'pcestransport', 'pcesrec', 'pcesfood', 'pcesfinal',
-    	'pcesother', 'pcesnonprofit', 'pdinstruct', 'pdinequip', 'pdinip',
+    	'pcesother', 'pcesnonprofit',
+    	'pdinstruct', 'pdinequip', 'pdinip', 'pdir',
     	'exg', 'exs', 'img', 'ims', 'govt', 'govts'
     	)
     
