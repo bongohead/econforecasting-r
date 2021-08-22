@@ -32,6 +32,7 @@ t-ahed   lagged spy    nowcast mae     qual mae
 - Added better qualitative forecasting output checks & graphs
 - Added automatic export of qualitative forecasting graphs for model checking
 - Added rewrite of CSM exogenous df to reflect refactoring in qualitative forecasts
+- Added split of mandatory exogenous variables (used in calc of forecast dates) from variables which can be exog for some dates, endog for others
 - Removed CFNAI and WEI from DFM inputs
 
 ## 2021-07-26 [v0.15]

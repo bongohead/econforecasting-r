@@ -120,27 +120,29 @@ local({
 		.$date
 	
 	
-	# Pull end date by last date of CORE.EXOG variables
-	endDate =
-		m$csm$exogDfs$baseline$st$q %>%
-	    dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.exog')$varname) %>%
-	    dplyr::filter(., date >= as.Date('2020-01-01')) %>%
-	    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-	    dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
-	    dplyr::group_by(., date) %>%
-	    dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
-	    dplyr::filter(., countNa == 0) %>%
-	    dplyr::arrange(., date) %>%
-	    tail(., 1) %>%
-	    .$date
+	# # Pull end date by last date of CORE.EXOG variables
+	# endDate =
+	# 	m$csm$exogDfs$baseline$st$q %>%
+	#     dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.exog')$varname) %>%
+	#     dplyr::filter(., date >= as.Date('2020-01-01')) %>%
+	#     tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+	#     dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
+	#     dplyr::group_by(., date) %>%
+	#     dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
+	#     dplyr::filter(., countNa == 0) %>%
+	#     dplyr::arrange(., date) %>%
+	#     tail(., 1) %>%
+	#     .$date
 	
+	# Let end date be 10 years after the start date
+	endDate = lubridate::add_with_rollback(startDate, years(5))
 	
 	m$csm$startDate <<- startDate
 	m$csm$endDate <<- endDate
 })
 ```
 
-## Get coefficients of identity equations
+## Identity Equations
 ```{r}
 local({
 	
@@ -150,30 +152,64 @@ local({
         na.omit(.) %>%
         dplyr::filter(., date == max(date)) %>%
         dplyr::select(., -date) %>%
-        purrr::transpose(.) %>%
-        .[[1]]
-    
-    coefMatsIdentity = c(
+    	tidyr::pivot_longer(everything(), names_to = 'varname')
+
+    identityLlEquations = c(
     	'gdp = pce + pdi + ex - im + govt',
     	'pce = pceg + pces',
-		'pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother',
 		'pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother',
+		'pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother',
 		'pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit',
 		'pdin = pdinstruct + pdinequip + pdinip',
-		
+		'ex = exg + exs',
+		'im = img + ims',
+		'govt = govtf + govts'
     )
+    
+    
+    # identityEqns = c(
+    # )
 
+    
+    coefMatsIdentity =
+    	lapply(identityLlEquations, function(eqn) {
+    		
+	        yCoef = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 1] %>% str_squish(.)
+	        
+	        xCoefs =
+	            eqn %>%
+	            str_split_fixed(., '=', 2) %>%
+	            .[1, 2] %>%
+	        	# Split by whitespace following by a plus or minus
+	        	# https://stackoverflow.com/a/50650318
+    			str_split(., '\\s+(?=\\+|-)') %>%
+	        	.[[1]] %>%
+	            str_replace_all(., ' ', '')
+	        
+    		res =
+    			tibble(
+    				varname = xCoefs,
+    				rhsDenom = filter(ss, varname == yCoef)$value
+    				) %>%
+    			dplyr::mutate(
+    				.,
+    				multiplier = ifelse(str_sub(varname, 1, 1) == '-', -1, 1),
+    				varname =
+    					ifelse(str_sub(varname, 1, 1) == '-', str_sub(varname, 2),
+    						   ifelse(str_sub(varname, 1, 1) == '+', str_sub(varname, 2),
+    						   	   varname
+    						   	   ))
+    				) %>%
+    			dplyr::left_join(., transmute(ss, varname, rhsNum = value), by = c('varname')) %>%
+    			dplyr::transmute(., varname, coef = -1 * multiplier * rhsNum/rhsDenom) %>%
+    			{
+    				if (any(is.na(.$coef))) stop('Error!')
+    				else .
+    			} %>%
+    			dplyr::bind_rows(tibble(varname = yCoef, coef = 1), .) %>%
+    			tidyr::pivot_wider(., names_from = 'varname', values_from = 'coef')
+    		}) 
 
-	coefMatsIdentity = list(
-        gdp =
-    		tibble(gdp = 1, pce = -1 * ss$pce/ss$gdp, pdi = -1 * ss$pdi/ss$gdp, im = ss$im/ss$gdp, ex = -1 * ss$ex/ss$gdp, govt = -1 * ss$govt/ss$gdp),
-        pce =
-        	tibble(pce = 1, pceg = -1 * ss$pceg/ss$pce, pces = -1 * ss$pces/ss$pce),
-        pceg = 
-        	tibble()
-        govt =
-        	tibble(govt = 1, govtf = -1 * ss$govtf/ss$govt, govts = -1 * ss$govts/ss$govt)
-        )
 
 	
 	
