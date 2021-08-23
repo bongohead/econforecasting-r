@@ -112,6 +112,27 @@ local({
 })
 ```
 
+## Check for correlation
+```{r}
+local({
+	
+	corrDf =
+		m$nc$pcaVariablesDf %>%
+		na.omit(.) %>%
+		dplyr::select(., -date) %>%
+		corrr::correlate(.) %>%
+		corrr::shave(.) %>% 
+		tidyr::pivot_longer(., -term, values_drop_na = TRUE) %>%
+		dplyr::arrange(., desc(abs(value)))
+	
+	print(corrDf)
+	
+
+	m$nc$corrDf <<- corrDf
+})
+```
+
+
 ## Define stack weights
 ```{r}
 local({
@@ -467,6 +488,8 @@ local({
 local({
 	
 	kfRes = lapply(1:m$nc$bigS, function(i) {
+		
+		message(i)
 
 		bMat = m$nc$stack[[i]]$bMat
 		cMat = m$nc$stack[[i]]$cMat
@@ -1025,6 +1048,8 @@ local({
 						{
 	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
 							else if (transform == 'apchg') unapchg(fcDf[[2]], 12, histDf[[2]])
+							else if (transform == 'pchg') unpchg(fcDf[[2]], histDf[[2]])
+							else if (transform == 'diff1') undiff(fcDf[[2]], 1, histDf[[2]])
 							else if (transform == 'base') .[[2]]
 							else stop('Err: ', .varname)
 							}
@@ -1052,6 +1077,8 @@ local({
 						{
 	                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
 							else if (transform == 'apchg') unapchg(fcDf[[2]], 4, histDf[[2]])
+							else if (transform == 'pchg') unpchg(fcDf[[2]], histDf[[2]])
+							else if (transform == 'diff1') undiff(fcDf[[2]], 1, histDf[[2]])
 							else if (transform == 'base') .[[2]]
 							else stop('Err: ', .varname)
 							}
@@ -1207,6 +1234,7 @@ local({
 		                        if (transform == 'dlog') dlog(.[[2]])
 								else if (transform == 'apchg') apchg(.[[2]], 12)
 								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'diff1') diff1(.[[2]])
 								else if (transform == 'base') .[[2]]
 								else if (transform == 'none') NA
 								else stop('Err: ', .varname)
@@ -1235,6 +1263,7 @@ local({
 		                        if (transform == 'dlog') dlog(.[[2]])
 								else if (transform == 'apchg') apchg(.[[2]], 4)
 								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'diff1') diff1(.[[2]])
 								else if (transform == 'base') .[[2]]
 								else if (transform == 'none') NA
 								else stop('Err: ', .varname)
@@ -1252,7 +1281,9 @@ local({
 	
 	wide = c(wide1, wide2)
 
-	
+	print(wide$d1$m[, c('date', 'hpi')])
+	print(wide$d1$q[, c('date', 'pce', 'pdi', 'gdp')])
+
 	m$ncpred <<- wide
 })
 ```
