@@ -1,4 +1,6 @@
 # Set Constants
+Note: if get message that the leading minor of order i is not positive definite, try removing
+m$nc$pcaVarnames[i]
 ```{r purl = TRUE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
@@ -56,7 +58,8 @@ local({
 	
 	quartersForward = 1
 	
-	pcaVarnames = p$variablesDf %>% dplyr::filter(., nc_dfm_input == TRUE) %>% .$varname
+	pcaVarnames = p$variablesDf %>% dplyr::filter(., nc_dfm_input == TRUE) %>% .$varname #%>%
+		#.[!. %in% c('bankci', 'mort30y', 'mnodg')]
 	
 	pcaVariablesDf =
 		h$st$m %>%
@@ -120,7 +123,7 @@ local({
 		m$nc$pcaVariablesDf %>%
 		na.omit(.) %>%
 		dplyr::select(., -date) %>%
-		corrr::correlate(.) %>%
+		corrr::correlate(., quiet = TRUE) %>%
 		corrr::shave(.) %>% 
 		tidyr::pivot_longer(., -term, values_drop_na = TRUE) %>%
 		dplyr::arrange(., desc(abs(value)))
@@ -221,7 +224,7 @@ local({
 		# 	)/2) %>%
 		# round(., digits = 0)
 	
-	bigRs = seq(from = bigR - 1, by = 1, length.out = m$nc$bigS)
+	bigRs = seq(from = bigR, by = 1, length.out = m$nc$bigS)
 	
 	zDfs =
 		lapply(bigRs, function(thisR)
@@ -288,6 +291,8 @@ local({
 local({
 	
 	varRes = lapply(1:m$nc$bigS, function(i) {
+		
+		message(i)
 		
 		inputDf =
 			m$nc$stack[[i]]$zDf %>%
@@ -497,7 +502,7 @@ local({
 		dMat = m$nc$stack[[i]]$dMat
 		rMats = m$nc$stack[[i]]$rMats
 		qMat = m$nc$stack[[i]]$qMat
-		bigR  = m$nc$bigR + i - 2 # Adjust for stacking - start at bigR - 1
+		bigR  = m$nc$bigR + i - 1 # Adjust for stacking - start at bigR + 0 (2021-08-23)
 		
 		yMats =
 			dplyr::bind_rows(
@@ -535,7 +540,11 @@ local({
 			pT[[t]] = sigmaZTCondTMinusOne[[t]] %*% t(aMat) %*%
 				{
 					if (t %in% 1:length(m$nc$bigTDates)) solve(sigmaYTCondTMinusOne[[t]])
-					else chol2inv(chol(sigmaYTCondTMinusOne[[t]]))
+					else 
+						MASS::ginv(sigmaYTCondTMinusOne[[t]])
+						#chol2inv(chol(sigmaYTCondTMinusOne[[t]]))
+						#2. sigmaYTCondTMinusOne[[t]] %>% replace(., . == 1e20, 1e10) %>%
+					# Matrix::nearPD(., keepDiag = TRUE, base.matrix = TRUE) %>% .$mat %>% chol(.) %>% chol2inv(.)
 					}
 			zTCondT[[t]] = zTCondTMinusOne[[t]] + pT[[t]] %*% (yMats[[t]] - yTCondTMinusOne[[t]])
 			sigmaZTCondT[[t]] = sigmaZTCondTMinusOne[[t]] - (pT[[t]] %*% sigmaYTCondTMinusOne[[t]] %*% t(pT[[t]]))
