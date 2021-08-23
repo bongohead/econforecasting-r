@@ -21,7 +21,8 @@ t-ahed   lagged spy    nowcast mae     qual mae
 
 
 # CHANGELOG
-@Todo: make first several nowcast periods an exogenous model input for GDP subforecasts
+@Todo: Add in allowable "d" form as input, analogous to lma2, ma2
+
 
 ## 2021-08-18 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
 - Added CSM forecasting code
