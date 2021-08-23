@@ -1,12 +1,10 @@
-# Initialize
-## Set Options
+# Set Constants
 ```{r purl = TRUE}
-# Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M1_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-22] m1.rds'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
-INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
+VINTAGE_DATE = '2021-08-23'
 ```
 
 # Initialize
@@ -41,7 +39,7 @@ source(file.path(INPUT_DIR, 'constants.r'))
 ```{r}
 local({
 	
-	rds = readRDS(M1_PATH)
+	rds = readRDS(paste0(OUTPUT_DIR, '/[', VINTAGE_DATE, '] m1.rds'))
 
 	p <<- rds$p
 	m <<- rds$m
