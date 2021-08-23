@@ -121,21 +121,21 @@ local({
 	
 	
 	# # Pull end date by last date of CORE.EXOG variables
-	# endDate =
-	# 	m$csm$exogDfs$baseline$st$q %>%
-	#     dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.exog')$varname) %>%
-	#     dplyr::filter(., date >= as.Date('2020-01-01')) %>%
-	#     tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-	#     dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
-	#     dplyr::group_by(., date) %>%
-	#     dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
-	#     dplyr::filter(., countNa == 0) %>%
-	#     dplyr::arrange(., date) %>%
-	#     tail(., 1) %>%
-	#     .$date
+	endDate =
+		m$csm$exogDfs$baseline$st$q %>%
+	    dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.exog')$varname) %>%
+	    dplyr::filter(., date >= as.Date('2020-01-01')) %>%
+	    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+	    dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
+	    dplyr::group_by(., date) %>%
+	    dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
+	    dplyr::filter(., countNa == 0) %>%
+	    dplyr::arrange(., date) %>%
+	    tail(., 1) %>%
+	    .$date
 	
 	# Let end date be 10 years after the start date
-	endDate = lubridate::add_with_rollback(startDate, years(5))
+	# endDate = lubridate::add_with_rollback(startDate, years(5))
 	
 	m$csm$startDate <<- startDate
 	m$csm$endDate <<- endDate
@@ -210,7 +210,8 @@ local({
     			tidyr::pivot_wider(., names_from = 'varname', values_from = 'coef')
     		}) 
 
-
+	
+    # Verify that all equations marked with identity or identity.ll have been calculated
 	
 	
 	m$csm$coefMatsIdentity <<- coefMatsIdentity
