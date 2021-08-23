@@ -2,7 +2,7 @@
 ## Set Options
 ```{r purl = TRUE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
-M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-21] m3.rds'
+M3_PATH = 'D:/Onedrive/__Projects/econforecasting/model-outputs/[2021-08-22] m3.rds'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
@@ -157,6 +157,7 @@ local({
     identityLlEquations = c(
     	'gdp = pce + pdi + ex - im + govt',
     	'pce = pceg + pces',
+    	'pceg = pcegd + pcegn',
 		'pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother',
 		'pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother',
 		'pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit',
@@ -208,12 +209,21 @@ local({
     			} %>%
     			dplyr::bind_rows(tibble(varname = yCoef, coef = 1), .) %>%
     			tidyr::pivot_wider(., names_from = 'varname', values_from = 'coef')
-    		}) 
+    		}) %>%
+    	setNames(., map(., ~ colnames(.)[1]))
 
 	
     # Verify that all equations marked with identity or identity.ll have been calculated
-	
-	
+	p$variablesDf %>% 
+    	filter(., core_endog_type %in% c('identity', 'identity.ll')) %>%
+		.$varname %>%
+		sort(.) %>%
+		{. == sort(names(coefMatsIdentity))} %>%
+		{
+			if (!all(.)) stop('Mismatch')
+			else message('Identity equations checked OK')
+			}
+
 	m$csm$coefMatsIdentity <<- coefMatsIdentity
 })
 ```
@@ -222,7 +232,7 @@ local({
 ```{r}
 local({
 	
-	# Get historical data
+	# Get historical data for training
 	histDf =
 		h$st$q %>%
 		dplyr::filter(., date < m$csm$startDate)
@@ -244,31 +254,65 @@ local({
                     dplyr::rename_with(., function(x) paste0(x, '.l', l))
                 )
             )
-    	
-    # Now create coefficient matrices
-
 
     # Iterate through equations
-    eqnsList =
-        list(
-        	pceg = 'pceg = constant + pid + lma2.pceg + lma2.ue',
-        	pces = 'pces = constant + pid + lma2.pces + lma2.ue',
-            pdin = 'pdin = constant + ue + lma2.pdin',
-            pdir = 'pdir = constant + ue + hpi + lma2.pdir',
-            im = 'im = constant + ue + lma2.im',
-            ex = 'ex = constant + ue + lma2.ex',
-            pdi = 'pdi = constant + pdin + pdir',
-            govtf = 'govtf = constant + govt + lma2.govtf + lma2.ue',
-            govts = 'govts = constant + govt + lma2.govts + lma2.ue',
-            houst = 'houst = constant + hpi + lma2.houst + lma2.ue + mort30y',
-            hsold = 'hsold = constant + hpi + lma2.hsold + lma2.ue + mort30y',
-            vix = 'vix = constant + vix.l1 + spy + spy.l1',
-            moo = 'moo = constant + moo.l1 + spy + gdp',
-            metals = 'metals = constant + metals.l1 + spy + gdp'
-        	)
+    eqnsList = list(
+    	'pcegdmotor = constant + ma2.pid + ma2.ue + lma2.pcegdmotor + oil',
+    	'pcegdfurnish = constant + ma2.pid + ma2.ue + lma2.pcegdfurnish',
+    	'pcegdrec = constant + ma2.pid + ma2.ue + lma2.pcegdrec',
+    	'pcegdrec = constant + ma2.pid + ma2.ue + lma2.pcegdrec',
+    	'pcegdother = constant + ma2.pid + ma2.ue + lma2.pcegdother',
+    	'pcegnfood = constant + ma2.pid + ma2.ue + lma2.pcegnfood',
+    	'pcegnclothing = constant + ma2.pid + ma2.ue + lma2.pcegnclothing',
+    	'pcegngas = constant + ma2.pid + ma2.ue + lma2.pcegngas',
+    	'pcegnother = constant + ma2.pid + ma2.ue + lma2.pcegnother',
+    	'pceshousing = constant + ma2.pid + ma2.ue + lma2.pceshousing',
+    	'pceshealth = constant + ma2.pid + ma2.ue + lma2.pceshealth',
+    	'pcestransport = constant + pid + ma2.ue + lma2.pcestransport',
+    	'pcesrec = constant + ma2.pid + ma2.ue + lma2.pcesrec',
+    	'pcesfood = constant + ma2.pid + ma2.ue + lma2.pcesfood',
+    	'pcesfinal = constant + ma2.pid + ma2.ue + lma2.pcesfinal',
+    	'pcesother = constant + ma2.pid + ma2.ue + lma2.pcesother',
+    	'pcesnonprofit = constant + ma2.pid + ma2.ue + lma2.pcesnonprofit',
+    	
+    	'pdi = constant + pdin + pdir',
+    	'pdinstruct = constant + ma2.pce + spy + lma2.pdinstruct + lma2.t10y',
+    	'pdinequip = constant + ma2.pce + spy + lma2.pdinequip + lma2.t10y',
+    	'pdinip = constant + ma2.pce + spy + lma2.pdinip + lma2.t10y',
+    	'pdir = constant + ma2.pce + spy + lma2.pdir + lma2.mort30y + ma2.hpi',
+
+    	'exg = constant + lma2.pdin + lma2.exg',
+        'exs = constant + lma2.pdin + lma2.exs',
+        'img = constant + lma2.pdin + lma2.img',
+        'ims = constant + lma2.pdin + lma2.ims',
+    	
+        'govtf = constant + govtf.l1 + lma2.gdp',
+        'govts = constant + govts.l1 + lma2.gdp',
+
+        'houst = constant + hpi + lma2.ue + mort30y + lma2.hsold',
+        'hsold = constant + hpi + lma2.ue + mort30y + lma2.houst',
+        'hpermits = constant + hpi + lma2.ue + mort30y + lma2.hpermits',
+    	
+    	'vsales = constant + lma2.vsales + pce + oil',
+    	'emp = constant + ue + gdp',
+    	'jolts = constant + ue + gdp',
+    	
+    	'oil = constant + lma2.oil + spy + hpi',
+    	
+    	'delinqrer = constant + ma2.ue + ma2.pid + lma2.delinqrer',
+    	'delinqcc = constant + ma2.ue + ma2.pid + lma2.delinqcc',
+    	'delinqci = constant + ma2.ue + ma2.pid + lma2.delinqci',
+
+    	'mort5y = constant + mort30y',
+
+        'vix = constant + vix.l1 + spy + spy.l1',
+        'moo = constant + moo.l1 + spy + gdp',
+        'metals = constant + metals.l1 + spy + gdp'
+        )
 
     # Get estimated coefficient matrices
     estimRes = purrr::map(eqnsList, function(eqn) {
+    	
         message(eqn)
         
         yCoef = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 1] %>% str_squish(.)
@@ -290,6 +334,12 @@ local({
         xMat = inputDf %>% dplyr::select(., all_of(xCoefs)) %>% as.matrix(.)
         
         lmObj = lm(yMat ~ . - 1, data = as_tibble(xMat))
+    	gofStats =
+    		lmObj %>% broom::glance(.) %>%
+    		dplyr::transmute(., varname = yCoef, r2 = r.squared, adjr2 = adj.r.squared, aic = AIC, bic = BIC, p = p.value)
+    	
+        gofCoefStats =
+        	lmObj %>% broom::tidy(.)
         
         ##### Replace lma2.pceg coefficients with pceg.l1, pceg.l2 etc
         # stop()
@@ -320,14 +370,27 @@ local({
             dplyr::bind_rows(tibble(coefname = yCoef, value = 1), .) %>%
             tidyr::pivot_wider(., names_from = 'coefname')
         
+        fittedPlot =
+        	tibble(date = inputDf$date, hist = yMat[, 1], fitted = fitted(lmObj)) %>%
+        	tidyr::pivot_longer(., -date) %>%
+        	ggplot(.) +
+        	geom_line(aes(x = date, y = value, color = name)) +
+        	labs(title = yCoef, x = NULL, y = NULL)
+        
         return(list(
         	lmObj = lmObj,
-        	coefRes = coefRes
+        	fittedPlot = fittedPlot,
+        	gofCoefStats = gofCoefStats,
+        	gofStats = gofStats,
+        	coefRes = coefRes,
+        	varname = yCoef
         ))
-    })
+    }) %>% setNames(., map(., ~ .$varname))
     
     
     estimRegs = map(estimRes, ~ .$lmObj)
+    estimFittedPlots = map(estimRes, ~ .$fittedPlots)
+    estimGofStats = map_dfr(estimRes, ~ .$gofStats)
     coefMatsEstimated = map(estimRes,  ~ .$coefRes)
     
     
