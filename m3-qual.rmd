@@ -4,7 +4,7 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = '2021-08-23'
+VINTAGE_DATE = '2021-08-27'
 ```
 
 # Initialize
@@ -546,10 +546,11 @@ local({
 						value := {
 	                        if (transform == 'dlog') dlog(.$value)
 							else if (transform == 'apchg') apchg(.$value, 12)
+							else if (transform == 'diff1') diff(.$value, 1)
 							else if (transform == 'pchg') pchg(.$value)
 							else if (transform == 'base') .$value
 							else if (transform == 'none') NA
-							else stop('Err: ', .varname)
+							else stop('Err: ', .varname, ' | ', .form)
 						}
 					)} %>%
 					.[2:nrow(.),]
@@ -584,6 +585,7 @@ local({
 						value := {
 	                        if (transform == 'dlog') dlog(.$value)
 							else if (transform == 'apchg') apchg(.$value, 4)
+							else if (transform == 'diff1') diff(.$value, 1)
 							else if (transform == 'pchg') pchg(.$value)
 							else if (transform == 'base') .$value
 							else if (transform == 'none') NA
