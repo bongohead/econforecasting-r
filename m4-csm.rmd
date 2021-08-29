@@ -48,9 +48,9 @@ local({
 ```
 
 
-# CSM
+# CSM Estimation
 
-## Get exogenous df
+## Get Exogenous Df
 ```{r}
 local({
 	
@@ -100,7 +100,7 @@ local({
 ```
 
 
-## Forecast periods
+## Forecast Periods
 ```{r}
 local({
 	
@@ -227,7 +227,7 @@ local({
 })
 ```
 
-## Estimate coefficients
+## Estimate Coefficients
 ```{r}
 local({
 	
@@ -258,7 +258,6 @@ local({
     eqnsList = list(
     	'pcegdmotor = constant + ma2.pid + ma2.ue + lma2.pcegdmotor + oil',
     	'pcegdfurnish = constant + ma2.pid + ma2.ue + lma2.pcegdfurnish',
-    	'pcegdrec = constant + ma2.pid + ma2.ue + lma2.pcegdrec',
     	'pcegdrec = constant + ma2.pid + ma2.ue + lma2.pcegdrec',
     	'pcegdother = constant + ma2.pid + ma2.ue + lma2.pcegdother',
     	'pcegnfood = constant + ma2.pid + ma2.ue + lma2.pcegnfood',
@@ -393,23 +392,51 @@ local({
     coefMatsEstimated = map(estimRes,  ~ .$coefRes)
     
     
-    # Seperate endogeneous (estimated) and exogenous matrices
-    endogVars = names(c(coefMatsIdentity, coefMatsEstimated))
-    exogVars = p$variablesDf %>% dplyr::filter(., core_structural == 'core.exog') %>% .$varname
-    
-    coefMat =
-        purrr::imap_dfr(c(coefMatsIdentity, coefMatsEstimated), function(x, i) dplyr::bind_cols(coefname = i, x)) %>%
-        replace(., is.na(.), 0)
+    # Verify that all equations list match exactly with that specified in inputs.xlsx
+	list(
+	    tibble(a = sort(filter(p$variablesDf, core_endog_type %in% c('estimated'))$varname)),
+		tibble(a = sort(names(coefMatsEstimated)))
+		) %>%
+		{c(
+			nrow(anti_join(.[[1]], .[[2]], by = 'a')),
+			nrow(anti_join(.[[2]], .[[1]], by = 'a'))
+			)} %>%
+		{if (!all(. == 0)) stop('Mismatch') else message('Estimated equations checked OK')}
 
+	
 
-    m$csm$endogVars <<- endogVars
-    m$csm$exogVars <<- exogVars
     m$csm$estimRegs <<- estimRegs
-    m$csm$coefMat <<- coefMat
+    m$csm$estimFittedPlots <<- estimFittedPlots
+    m$csm$estimGofStats <<- estimGofStats
+    m$csm$coefMatsEstimated <<- coefMatsEstimated
 })
 ```
 
-## CSM forecasting - quarterly
+## Join Coefficient Matrices
+```{r}
+local({
+	
+    coefMat =
+        purrr::imap_dfr(c(m$csm$coefMatsIdentity, m$csm$coefMatsEstimated), function(x, i)
+        	dplyr::bind_cols(coefname = i, x)
+        	) %>%
+        replace(., is.na(.), 0)
+    
+    
+	# Seperate endog (estimated) and exogenous variables -> NOTE there may be some overlap 
+    # Partially exogenous variables will be in both the endogVars and exogVars matrices
+    endogVars = names(c(m$csm$coefMatsIdentity, m$csm$coefMatsEstimated))
+    exogVars = p$variablesDf %>% dplyr::filter(., core_structural == 'core.exog') %>% .$varname
+	
+	m$csm$coefMat <<- coefMat
+	m$csm$endogVars <<- endogVars
+	m$csm$exogVars <<- exogVars
+})
+```
+
+# CSM Forecasts
+
+## CSM Forecasts - Quarterly
 ```{r}
 local({
     
@@ -473,7 +500,7 @@ local({
 ```
 
 
-## Convert to base values
+## Convert to Base
 ```{r}
 local({
 
@@ -493,6 +520,7 @@ local({
 							{
 		                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
 								else if (transform == 'apchg') unapchg(fcDf[[2]], 4, histDf[[2]])
+								else if (transform == 'diff1') undiff(fcDf[[2]], 1, histDf[[2]])
 								else if (transform == 'pchg') unpchg(fcDf[[2]], histDf[[2]])
 								else if (transform == 'base') .[[2]]
 								else stop('Err: ', .varname)
