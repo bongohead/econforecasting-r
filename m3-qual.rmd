@@ -293,8 +293,8 @@ local({
         dplyr::filter(., date > max(p$variables$ffr$h$base$m$date)) %>%
     	dplyr::mutate(
     		.,
-    		value = ifelse(date >= as.Date('2022-01-01') & date <= as.Date('2022-06-01'), value - .2, value),
-			value = ifelse(date >= as.Date('2022-07-01') & date <= as.Date('2023-01-01'), value - .1, value)
+    		value = ifelse(date >= as.Date('2022-06-01') & date <= as.Date('2022-12-01'), value - .1, value),
+			value = ifelse(date >= as.Date('2023-01-01') & date <= as.Date('2024-01-01'), value - .05, value)
     	) %>%
         dplyr::transmute(., freq, form, date, value)
     
@@ -305,8 +305,8 @@ local({
         dplyr::filter(., date > max(p$variables$sofr$h$base$m$date)) %>%
     	dplyr::mutate(
     		.,
-    		value = ifelse(date >= as.Date('2022-01-01') & date <= as.Date('2022-06-01'), value - .2, value),
-			value = ifelse(date >= as.Date('2022-07-01') & date <= as.Date('2023-01-01'), value - .1, value)
+    		value = ifelse(date >= as.Date('2022-06-01') & date <= as.Date('2022-12-01'), value - .1, value),
+			value = ifelse(date >= as.Date('2023-01-01') & date <= as.Date('2024-01-01'), value - .05, value)
     	) %>%
         dplyr::transmute(., freq, form, date, value)
     
