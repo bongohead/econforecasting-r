@@ -143,21 +143,25 @@ local({
                 date = seq(from = lubridate::add_with_rollback(tail(.$date, 1), months(1)), by = '1 month', length.out = 60)
                 )
             ) %>%
-        # Now join with external forecast, but use historical data if external forecast has same dates
-        dplyr::left_join(
-            .,
-            m$ext$sources$spf %>%
-                dplyr::filter(., vdate == max(vdate) & varname == 'ue') %>%
-                dplyr::transmute(., form, date, value2 = value),
-            by = c('form', 'date')
-        ) %>%
-        dplyr::mutate(., value = ifelse(!is.na(value), value, value2)) %>%
+        # # Now join with external forecast, but use historical data if external forecast has same dates
+        # dplyr::left_join(
+        #     .,
+        #     m$ext$sources$spf %>%
+        #         dplyr::filter(., vdate == max(vdate) & varname == 'ue') %>%
+        #         dplyr::transmute(., form, date, value2 = value),
+        #     by = c('form', 'date')
+        # ) %>%
+        # dplyr::mutate(., value = ifelse(!is.na(value), value, value2)) %>%
+    	# dplyr::select(., -value2) %>%
         # Add in long run average
-        dplyr::mutate(., value = ifelse(date == max(date), 5.0, value)) %>%
+        dplyr::mutate(., value = ifelse(date == max(date), 4.5, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2021-10-01', 5.2, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2022-01-01', 4.8, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2023-01-01', 4.3, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2024-01-01', 4.4, value)) %>%
         # Splinal interpolate
-        dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
+        dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>% # Linear, monoH.FC
         tail(., -4) %>%
-    	dplyr::select(., -value2) %>%
     	dplyr::mutate(., freq = 'm')
     
     baseline$hpi =
