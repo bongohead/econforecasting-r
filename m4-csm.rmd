@@ -19,6 +19,9 @@ library(glue) # String Interpolation
 library(jsonlite) # JSON Parser
 library(rvest) # HTML Parser
 library(httr) # CURL Interface
+# Visualization
+library(ggpmisc) # Tables
+library(cowplot) # Join ggplots
 # SQL/Apache Spark
 library(DBI) # SQL Interface
 # library(RPostgres) # PostgreSQL
@@ -281,10 +284,10 @@ local({
     	'pcesnonprofit = constant + wma4.pid + ma2.ue + lma2.pcesnonprofit',
     	
     	'pdi = constant + pdin + pdir',
-    	'pdinstruct = constant + ma2.pce + spy + lma2.pdinstruct + lma2.t10y',
-    	'pdinequip = constant + ma2.pce + spy + lma2.pdinequip + lma2.t10y',
-    	'pdinip = constant + ma2.pce + spy + lma2.pdinip + lma2.t10y',
-    	'pdir = constant + ma2.pce + spy + lma2.pdir + lma2.mort30y + ma2.hpi',
+    	'pdinstruct = constant + wma2.pce + ue + spy + lma2.pdinstruct + wma2.t10y',
+    	'pdinequip = constant + wma2.pce + ue + spy + lma2.pdinequip + wma2.t10y',
+    	'pdinip = constant + wma2.pce + ue + spy + lma2.pdinip + wma2.t10y',
+    	'pdir = constant + wma2.pce + ue + spy + lma2.pdir + wma2.mort30y + wma2.hpi',
 
     	'exg = constant + lma2.pdin + lma2.exg',
         'exs = constant + lma2.pdin + lma2.exs',
@@ -298,7 +301,7 @@ local({
         'hsold = constant + hpi + lma2.ue + mort30y + lma2.houst',
         'hpermits = constant + hpi + lma2.ue + mort30y + lma2.hpermits',
     	
-    	'vsales = constant + lma2.vsales + pce + oil',
+    	'vsales = constant + pce + oil',
     	'emp = constant + ue + gdp',
     	'jolts = constant + ue + gdp',
     	
@@ -410,11 +413,12 @@ local({
 	    tibble(a = sort(filter(p$variablesDf, core_endog_type %in% c('estimated'))$varname)),
 		tibble(a = sort(names(coefMatsEstimated)))
 		) %>%
-		{c(
-			nrow(anti_join(.[[1]], .[[2]], by = 'a')),
-			nrow(anti_join(.[[2]], .[[1]], by = 'a'))
-			)} %>%
-		{if (!all(. == 0)) stop('Mismatch') else message('Estimated equations checked OK')}
+		{waldo::compare(.[[1]], .[[2]])}
+		# {c(
+		# 	nrow(anti_join(.[[1]], .[[2]], by = 'a')),
+		# 	nrow(anti_join(.[[2]], .[[1]], by = 'a'))
+		# 	)} %>%
+		# {if (!all(. == 0)) stop('Mismatch') else message('Estimated equations checked OK')}
 
 	
 
