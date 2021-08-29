@@ -250,6 +250,10 @@ local({
             
             dplyr::transmute_if(histDf, is.numeric, function(x) wma2(x)) %>%
                 dplyr::rename_with(., function(x) paste0('wma2.', x)),
+            
+            dplyr::transmute_if(histDf, is.numeric, function(x) wma4(x)) %>%
+                dplyr::rename_with(., function(x) paste0('wma4.', x)),
+
 
             lapply(1:4, function(l)
                 dplyr::transmute_if(histDf, is.numeric, function(x) dplyr::lag(x, l)) %>%
@@ -259,22 +263,22 @@ local({
 
     # Iterate through equations
     eqnsList = list(
-    	'pcegdmotor = constant + wma2.pid + ma2.ue + lma2.pcegdmotor + oil',
-    	'pcegdfurnish = constant + wma2.pid + ma2.ue + lma2.pcegdfurnish',
-    	'pcegdrec = constant + wma2.pid + ma2.ue + lma2.pcegdrec',
-    	'pcegdother = constant + wma2.pid + ma2.ue + lma2.pcegdother',
-    	'pcegnfood = constant + wma2.pid + ma2.ue + lma2.pcegnfood',
-    	'pcegnclothing = constant + wma2.pid + ma2.ue + lma2.pcegnclothing',
-    	'pcegngas = constant + wma2.pid + ma2.ue + lma2.pcegngas',
-    	'pcegnother = constant + wma2.pid + ma2.ue + lma2.pcegnother',
-    	'pceshousing = constant + wma2.pid + ma2.ue + lma2.pceshousing',
-    	'pceshealth = constant + wma2.pid + ma2.ue + lma2.pceshealth',
-    	'pcestransport = constant + wma2.pid + ma2.ue + lma2.pcestransport',
-    	'pcesrec = constant + wma2.pid + ma2.ue + lma2.pcesrec',
-    	'pcesfood = constant + wma2.pid + ma2.ue + lma2.pcesfood',
-    	'pcesfinal = constant + wma2.pid + ma2.ue + lma2.pcesfinal',
-    	'pcesother = constant + wma2.pid + ma2.ue + lma2.pcesother',
-    	'pcesnonprofit = constant + wma2.pid + ma2.ue + lma2.pcesnonprofit',
+    	'pcegdmotor = constant + wma4.pid + ma2.ue + lma2.pcegdmotor + oil',
+    	'pcegdfurnish = constant + wma4.pid + ma2.ue + lma2.pcegdfurnish',
+    	'pcegdrec = constant + wma4.pid + ma2.ue + lma2.pcegdrec',
+    	'pcegdother = constant + wma4.pid + ma2.ue + lma2.pcegdother',
+    	'pcegnfood = constant + wma4.pid + ma2.ue + lma2.pcegnfood',
+    	'pcegnclothing = constant + wma4.pid + ma2.ue + lma2.pcegnclothing',
+    	'pcegngas = constant + wma4.pid + ma2.ue + lma2.pcegngas',
+    	'pcegnother = constant + wma4.pid + ma2.ue + lma2.pcegnother',
+    	'pceshousing = constant + wma4.pid + ma2.ue + lma2.pceshousing',
+    	'pceshealth = constant + wma4.pid + ma2.ue + lma2.pceshealth',
+    	'pcestransport = constant + wma4.pid + ma2.ue + lma2.pcestransport',
+    	'pcesrec = constant + wma4.pid + ma2.ue + lma2.pcesrec',
+    	'pcesfood = constant + wma4.pid + ma2.ue + lma2.pcesfood',
+    	'pcesfinal = constant + wma4.pid + ma2.ue + lma2.pcesfinal',
+    	'pcesother = constant + wma4.pid + ma2.ue + lma2.pcesother',
+    	'pcesnonprofit = constant + wma4.pid + ma2.ue + lma2.pcesnonprofit',
     	
     	'pdi = constant + pdin + pdir',
     	'pdinstruct = constant + ma2.pce + spy + lma2.pdinstruct + lma2.t10y',
@@ -363,6 +367,9 @@ local({
         		} else if (str_sub(x$coefname, 1, 5) == 'wma2.') {
         			coefname = paste0(str_sub(x$coefname, 6), c('', '.l1'))
         			value = x$value * getWmaWeights(2)
+        		} else if (str_sub(x$coefname, 1, 5) == 'wma4.') {
+        			coefname = paste0(str_sub(x$coefname, 6), c('', '.l1', '.l2', '.l3'))
+        			value = x$value * getWmaWeights(4)
         		} else {
         			coefname = x$coefname
         			value = x$value
@@ -607,7 +614,7 @@ local({
 })
 ```
 
-## Reaggregate to quarterly, add identity
+## Reaggregate to Quartlery & Add Identity
 ```{r}
 local({
 	
@@ -732,7 +739,7 @@ local({
 ```
 
 
-# Finalize 
+# Final Aggregation 
 
 ## Transform 
 ```{r}
@@ -818,9 +825,6 @@ local({
 	m$csm$predFlat <<- flat
 })
 ```
-
-
-# Model Checking
 
 ## Plot
 ```{r}
@@ -966,6 +970,20 @@ local({
 	
 	
 	m$csm$predCharts <<- predCharts
+})
+```
+
+# Finalize
+
+## Export
+```{r}
+local({
+  
+    saveRDS(
+    	list(p = p, h = h, m = m),
+    	str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m4.rds')
+    	)
+    
 })
 ```
 
