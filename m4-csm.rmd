@@ -248,6 +248,9 @@ local({
             dplyr::transmute_if(histDf, is.numeric, function(x) lma2(x)) %>%
                 dplyr::rename_with(., function(x) paste0('lma2.', x)),
             
+            dplyr::transmute_if(histDf, is.numeric, function(x) wma2(x)) %>%
+                dplyr::rename_with(., function(x) paste0('wma2.', x)),
+
             lapply(1:4, function(l)
                 dplyr::transmute_if(histDf, is.numeric, function(x) dplyr::lag(x, l)) %>%
                     dplyr::rename_with(., function(x) paste0(x, '.l', l))
@@ -256,22 +259,22 @@ local({
 
     # Iterate through equations
     eqnsList = list(
-    	'pcegdmotor = constant + ma2.pid + ma2.ue + lma2.pcegdmotor + oil',
-    	'pcegdfurnish = constant + ma2.pid + ma2.ue + lma2.pcegdfurnish',
-    	'pcegdrec = constant + ma2.pid + ma2.ue + lma2.pcegdrec',
-    	'pcegdother = constant + ma2.pid + ma2.ue + lma2.pcegdother',
-    	'pcegnfood = constant + ma2.pid + ma2.ue + lma2.pcegnfood',
-    	'pcegnclothing = constant + ma2.pid + ma2.ue + lma2.pcegnclothing',
-    	'pcegngas = constant + ma2.pid + ma2.ue + lma2.pcegngas',
-    	'pcegnother = constant + ma2.pid + ma2.ue + lma2.pcegnother',
-    	'pceshousing = constant + ma2.pid + ma2.ue + lma2.pceshousing',
-    	'pceshealth = constant + ma2.pid + ma2.ue + lma2.pceshealth',
-    	'pcestransport = constant + pid + ma2.ue + lma2.pcestransport',
-    	'pcesrec = constant + ma2.pid + ma2.ue + lma2.pcesrec',
-    	'pcesfood = constant + ma2.pid + ma2.ue + lma2.pcesfood',
-    	'pcesfinal = constant + ma2.pid + ma2.ue + lma2.pcesfinal',
-    	'pcesother = constant + ma2.pid + ma2.ue + lma2.pcesother',
-    	'pcesnonprofit = constant + ma2.pid + ma2.ue + lma2.pcesnonprofit',
+    	'pcegdmotor = constant + wma2.pid + ma2.ue + lma2.pcegdmotor + oil',
+    	'pcegdfurnish = constant + wma2.pid + ma2.ue + lma2.pcegdfurnish',
+    	'pcegdrec = constant + wma2.pid + ma2.ue + lma2.pcegdrec',
+    	'pcegdother = constant + wma2.pid + ma2.ue + lma2.pcegdother',
+    	'pcegnfood = constant + wma2.pid + ma2.ue + lma2.pcegnfood',
+    	'pcegnclothing = constant + wma2.pid + ma2.ue + lma2.pcegnclothing',
+    	'pcegngas = constant + wma2.pid + ma2.ue + lma2.pcegngas',
+    	'pcegnother = constant + wma2.pid + ma2.ue + lma2.pcegnother',
+    	'pceshousing = constant + wma2.pid + ma2.ue + lma2.pceshousing',
+    	'pceshealth = constant + wma2.pid + ma2.ue + lma2.pceshealth',
+    	'pcestransport = constant + wma2.pid + ma2.ue + lma2.pcestransport',
+    	'pcesrec = constant + wma2.pid + ma2.ue + lma2.pcesrec',
+    	'pcesfood = constant + wma2.pid + ma2.ue + lma2.pcesfood',
+    	'pcesfinal = constant + wma2.pid + ma2.ue + lma2.pcesfinal',
+    	'pcesother = constant + wma2.pid + ma2.ue + lma2.pcesother',
+    	'pcesnonprofit = constant + wma2.pid + ma2.ue + lma2.pcesnonprofit',
     	
     	'pdi = constant + pdin + pdir',
     	'pdinstruct = constant + ma2.pce + spy + lma2.pdinstruct + lma2.t10y',
@@ -357,6 +360,9 @@ local({
         		} else if (str_sub(x$coefname, 1, 4) == 'ma2.') {
         			coefname = paste0(str_sub(x$coefname, 5), c('', '.l1'))
         			value = x$value * .5
+        		} else if (str_sub(x$coefname, 1, 5) == 'wma2.') {
+        			coefname = paste0(str_sub(x$coefname, 6), c('', '.l1'))
+        			value = x$value * getWmaWeights(2)
         		} else {
         			coefname = x$coefname
         			value = x$value
