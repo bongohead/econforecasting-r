@@ -537,21 +537,22 @@ local({
 ```
 
 
-## Forecast monthly variables
+## Forecast Monthly Variables
 ```{r}
 local({
 
 	# Delete quarterly forecasts on quarters where monthly data exists ->
 	# replace with monthly forecasts and interpolate with remaining monthly forecasts
-	
 
 	predbase0m = imap(m$csm$predbase0, function(df, scenarioname) {
 		
-		varnames = filter(p$variablesDf, core_structural == 'core.endog' & freq == 'm')$varname
-		exogVarnames  = filter(p$variablesDf, core_structural == 'core.exog' & freq == 'm')$varname
-		
+		varnames =
+			p$variablesDf %>%
+			dplyr::filter(core_structural %in% c('core.endog', 'core.exog.p') & freq %in% c('d', 'w', 'm')) %>%
+			.$varname
+
 		lapply(varnames, function(.varname) {
-			# message(.varname)
+			message(.varname)
 			df %>%
 				dplyr::transmute(., date, csm = .[[.varname]]) %>% # Shift back by one quarter to middle of quarter
 				mutate(., date = add_with_rollback(date, months(1))) %>%
@@ -575,16 +576,11 @@ local({
 				dplyr::mutate(., value = ifelse(!is.na(hist), hist, csm)) %>%
 				dplyr::mutate(., value = zoo::na.spline(value)) %>%
 				dplyr::transmute(., date, !!.varname := value)
-				# dplyr::left_join(
-				# 	.,
-				# 	m$ncpred$base$m %>% dplyr::transmute(., date, nc = .[[.varname]]),
-				# 	by = 'date'
-				# 	)
-			
+
 			}) %>%
 			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
 			# Bind qualitative variables for calculations
-			dplyr::left_join(., m$qual$pred[[scenarioname]]$base, by = 'date') %>%
+			dplyr::left_join(., m$qual$pred[[scenarioname]]$base$m, by = 'date') %>%
 			dplyr::arrange(., date) %>%
 			# Calculations
 			# dplyr::mutate(
@@ -774,7 +770,7 @@ local({
 						value = 
 							{
 		                        if (transform == 'dlog') dlog(.[[2]])
-								else if (transform == 'apchg') apchg(.[[2]], 12)
+								else if (transform == 'apchg') apchg(.[[2]], {if (.freq == 'q') 4 else 12})
 								else if (transform == 'pchg') pchg(.[[2]])
 								else if (transform == 'base') .[[2]]
 								else if (transform == 'none') NA
@@ -813,7 +809,157 @@ local({
 	for (scenarioname in names(res)) {
 		m$csm$pred[[scenarioname]] <<- res[[scenarioname]]
 	}
-	m$csm$pred$flat <<- flat
+	m$csm$predFlat <<- flat
+})
+```
+
+
+# Model Checking
+
+## Plot
+```{r}
+local({
+	
+	predCharts =
+		m$csm$predFlat %>%
+		dplyr::group_by(., varname) %>%
+		econforecasting::namedSplit(.) %>%
+		lapply(., function(x) {
+			
+			message(x$varname[[1]])
+			param =
+				p$variablesDf %>%
+				dplyr::filter(., varname == x$varname[[1]]) %>%
+				as.list(.)
+			
+			plots =
+				purrr::cross(list(freq = c('q', 'm'), form = c('d1', 'd2'))) %>%
+				setNames(., map_chr(., ~ paste0(.$form, '.', .$freq))) %>%
+				lapply(., function(y) {
+					
+					if (y$freq == 'm' && param$freq == 'q') return(NULL)
+					if (param[[y$form]] == 'none') return(NULL)
+					
+					# message(y$form, ';', y$freq)
+					
+					transform = param[[y$form]]
+					unitname = {
+						if (transform == 'apchg') 'Annualized % Chg'
+						else if (transform == 'pchg') 'Pct Chg'
+						else if (transform == 'dlog') 'Log-Difference'
+						else if (transform == 'base') param$units
+						else if (transform == 'none') 'None'
+						else stop ('Add transform type')
+					}
+					
+					histDf = 
+						h$flat %>%
+						dplyr::filter(., freq == y$freq, form == y$form, varname == param$varname) %>%
+						dplyr::arrange(., date) %>%
+						dplyr::transmute(., date, value, type = 'historical')
+
+					forecastDf =
+						x %>%
+						dplyr::filter(., freq == y$freq & form == y$form) %>%
+						dplyr::bind_rows(mutate(tail(histDf, 1), scenarioname = unique(.$scenarioname)), .) %>%
+						dplyr::transmute(., date, value, type = scenarioname)
+					
+					dplyr::bind_rows(histDf, forecastDf) %>%
+						ggplot(.) +
+						geom_line(aes(x = date, y = value, color = type)) +
+						geom_point(aes(x = date, y = value, color = type)) +
+						scale_color_manual(
+							values = c('historical' = 'black', 'baseline' = 'red')
+						) +
+						scale_linetype_manual(
+							values = c('historical' = 'solid', 'baseline' = 'solid')
+						) +
+						geom_table(
+							data = tibble(
+								x = max(forecastDf$date),
+								y = max(bind_rows(histDf, forecastDf)$value),
+					            z = list(
+					            	forecastDf %>%
+					            		mutate(., value = round(value, 1)) %>%
+					            		pivot_wider(., names_from = 'type', values_from = 'value') %>%
+					            		arrange(., date) %>%
+					            		.[1:4, ]
+					            	)
+							),
+							aes(x = x, y = y, label = z),
+							size = 2
+							) +
+						labs(
+							subtitle = paste0({if (y$freq == 'q') 'Quarterly' else 'Monthly'}, ' Forecast'),
+							x = NULL, y = unitname, color = NULL, linetype = NULL
+							) +
+						theme_gray(base_size = 12) +
+						theme(axis.title = element_text(size = 10), axis.title.y = element_text(size = 10))
+					}) %>%
+				purrr::keep(., ~ !is.null(.) && nrow(.$data) > 0)
+
+			title =
+				cowplot::ggdraw() +
+				cowplot::draw_label(param$fullname, fontface = 'bold', x = 0, hjust = 0) +
+				theme(plot.margin = margin(0, 0, 0, 20))
+			
+			
+			col1 =  {
+				if (!is.null(plots$d1.q) && !is.null(plots$d2.q))
+					cowplot::plot_grid(
+						plots$d1.q + theme(legend.position = 'none'),
+						plots$d2.q + theme(legend.position = 'none'),
+						ncol = 1,
+						rel_heights = c(1, .8)
+						)
+				else if (!is.null(plots$d1.q))
+					cowplot::plot_grid(plots$d1.q + theme(legend.position = 'none'), ncol = 1)
+				else
+					NULL
+				}
+					
+			col2 =  {
+				if (!is.null(plots$d1.m) && !is.null(plots$d2.m))
+					cowplot::plot_grid(
+						plots$d1.m + theme(legend.position = 'none'),
+						plots$d2.m + theme(legend.position = 'none'),
+						ncol = 1,
+						rel_heights = c(1, .8)
+						)
+				else if (!is.null(plots$d1.m))
+					cowplot::plot_grid(plots$d1.m + theme(legend.position = 'none'), ncol = 1)
+				else
+					NULL
+			}
+			
+			plotArea = {
+				if (!is.null(col1) && !is.null(col2)) cowplot::plot_grid(col1, col2, nrow = 1)
+				else if (!is.null(col1)) cowplot::plot_grid(col1, nrow = 1)
+				else stop('None')
+			}
+			
+			cowplot::plot_grid(
+				title,
+				plotArea,
+				cowplot::get_legend(plots[[1]] + guides(color = guide_legend(nrow = 1))),
+				nrow = 3,
+				rel_heights = c(.15, 1, .1)
+			)
+			
+
+			})
+	
+	print(predCharts)
+	
+	purrr::imap(predCharts, function(x, i)
+		ggsave(
+			file.path(OUTPUT_DIR, paste0('csm_', i, '.png')),
+			plot = x, scale = 2.5, width = 4, height = 3, units = 'in'
+			)
+		)
+	
+	
+	m$csm$predCharts <<- predCharts
 })
 ```
 

@@ -70,6 +70,18 @@ ma2 = function(x) {
     ma(x, 2)
 }
 
+# Weighted moving averages weight with value/(lag+1)
+wma = function(x, .length) {
+    x %>%
+        {lapply(0:(.length - 1), function(l) tibble(value = lag(., l), lag = l, dateidx = 1:length(.)))} %>%
+        dplyr::bind_rows(.) %>%
+        dplyr::mutate(., weight = 1/(lag + 1)/sum(1/(1:(.length))), wval = value * weight) %>%
+        dplyr::group_by(., dateidx) %>%
+        dplyr::summarize(., sumwval = sum(wval)) %>%
+        dplyr::arrange(., dateidx) %>%
+        .$sumwval
+}
+
 
 lma = function(x, .length) {
 	x %>%
