@@ -278,18 +278,262 @@ local({
 })
 ```
 
-## Other scenario forecasts (qual)
+## Downside
+Display in website those variables not taken from "external" source - e.g. unemp
 ```{r}
 local({
-	
-	# upside = list()
-	# 
-	# upside$ffr =
-	# 	m$qual$predraw$baseline$ffr %>%
-		
-	
-	
+
+    downside = list()
     
+    # ffr, sofr, inf, tdns1, tdns2, tdns3, pid, ue, hpi
+    downside$ffr =
+        m$ext$sources$cme %>%
+        dplyr::filter(., varname == 'ffr') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$ffr$h$base$m$date)) %>%
+    	dplyr::mutate(
+    		.,
+    		value = ifelse(date >= as.Date('2022-01-01') & date <= as.Date('2022-06-01'), value - .2, value),
+			value = ifelse(date >= as.Date('2022-07-01') & date <= as.Date('2023-01-01'), value - .1, value)
+    	) %>%
+        dplyr::transmute(., freq, form, date, value)
+    
+    downside$sofr =
+        m$ext$sources$cme %>%
+        dplyr::filter(., varname == 'sofr') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$sofr$h$base$m$date)) %>%
+    	dplyr::mutate(
+    		.,
+    		value = ifelse(date >= as.Date('2022-01-01') & date <= as.Date('2022-06-01'), value - .2, value),
+			value = ifelse(date >= as.Date('2022-07-01') & date <= as.Date('2023-01-01'), value - .1, value)
+    	) %>%
+        dplyr::transmute(., freq, form, date, value)
+    
+    downside$inf =
+        m$ext$sources$cle %>%
+        dplyr::filter(., varname == 'inf') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$inf$h$base$m$date)) %>%
+    	dplyr::mutate(
+    		.,
+    		value = ifelse(date == as.Date('2022-01-01'), value - .2, value),
+    		value = ifelse(date >= as.Date('2022-02-01') & date <= as.Date('2022-06-01'), NA, value),
+    		value = ifelse(date == as.Date('2022-07-01'), value - .3, value),
+    		value = ifelse(date >= as.Date('2022-08-01') & date <= as.Date('2023-01-01'), NA, value)
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.spline(value, method = 'natural'), form = 'd1', freq = 'm') %>%
+        dplyr::transmute(., freq, form, date, value)
+    
+    downside$tdns1 =
+        m$ext$sources$dns %>%
+        dplyr::filter(., varname == 'tdns1') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$tdns1$h$base$m$date)) %>%
+    	dplyr::mutate(
+    		.,
+    		value = ifelse(date == as.Date('2022-01-01'), value - .1, value),
+    		value = ifelse(date >= as.Date('2022-02-01') & date <= as.Date('2022-06-01'), NA, value),
+    		value = ifelse(date == as.Date('2022-07-01'), value - .1, value),
+    		value = ifelse(date >= as.Date('2022-08-01') & date <= as.Date('2023-01-01'), NA, value)
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
+        dplyr::transmute(., freq, form, date, value)
+    
+    downside$tdns2 =
+        m$ext$sources$dns %>%
+        dplyr::filter(., varname == 'tdns2') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$tdns2$h$base$m$date)) %>%
+    	dplyr::mutate(
+    		.,
+    		value = ifelse(date == as.Date('2022-01-01'), value + .2, value),
+    		value = ifelse(date >= as.Date('2022-02-01') & date <= as.Date('2022-06-01'), NA, value),
+    		value = ifelse(date == as.Date('2022-07-01'), value + .3, value),
+    		value = ifelse(date >= as.Date('2022-08-01') & date <= as.Date('2023-01-01'), NA, value)
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
+        dplyr::transmute(., freq, form, date, value)
+    
+    
+    downside$tdns3 =
+        m$ext$sources$dns %>%
+        dplyr::filter(., varname == 'tdns3') %>%
+        dplyr::filter(., vdate == max(vdate)) %>%
+        dplyr::filter(., date > max(p$variables$tdns3$h$base$m$date)) %>%
+    	dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>%
+        dplyr::transmute(., freq, form, date, value)
+
+    
+    # Use nowcast -> slice with moving average
+    downside$pid =
+		m$ncpred$d1$m[, c('date', 'pid')] %>%
+    	na.omit(.) %>%
+    	dplyr::rename(., value = 'pid') %>%
+    	dplyr::transmute(., date, value) %>%
+        dplyr::bind_rows(
+            .,
+            tribble(
+            	~ 'date', ~ 'value',
+            	as.Date('2022-04-01'), 4.00,
+            	as.Date('2022-07-01'), 4.00,
+            	as.Date('2023-10-01'), 2.50,
+            	tail(downside$ffr$date, 1), 2.80
+            )
+        ) %>%
+    	dplyr::left_join(
+    		tibble(date = seq(from = min(.$date), to = max(.$date), by = '1 month')),
+    		.,
+    		by = 'date'
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1', freq = 'm')
+
+    
+    # Display in website
+    downside$ue =
+        # Take last four quarters of historical data
+        p$variables$ue$h$base$m %>%
+        tail(., 4) %>%
+        dplyr::transmute(., form = 'd1', date, value) %>%
+        # Bind next 24 months
+        dplyr::bind_rows(
+            .,
+            tibble(
+                form = 'd1',
+                date = seq(from = lubridate::add_with_rollback(tail(.$date, 1), months(1)), by = '1 month', length.out = 60)
+                )
+            ) %>%
+        # # Now join with external forecast, but use historical data if external forecast has same dates
+        # dplyr::left_join(
+        #     .,
+        #     m$ext$sources$spf %>%
+        #         dplyr::filter(., vdate == max(vdate) & varname == 'ue') %>%
+        #         dplyr::transmute(., form, date, value2 = value),
+        #     by = c('form', 'date')
+        # ) %>%
+        # dplyr::mutate(., value = ifelse(!is.na(value), value, value2)) %>%
+    	# dplyr::select(., -value2) %>%
+        # Add in long run average
+        dplyr::mutate(., value = ifelse(date == max(date), 4.5, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2021-10-01', 5.2, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2022-01-01', 5.3, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2023-01-01', 5.0, value)) %>%
+        dplyr::mutate(., value = ifelse(date == '2024-01-01', 5.0, value)) %>%
+        # Splinal interpolate
+        dplyr::mutate(., value = zoo::na.spline(value, method = 'natural')) %>% # Linear, monoH.FC
+        tail(., -4) %>%
+    	dplyr::mutate(., freq = 'm')
+    
+    downside$hpi =
+		m$ncpred$d1$m[, c('date', 'hpi')] %>%
+    	na.omit(.) %>%
+    	dplyr::rename(., value = 'hpi') %>%
+    	dplyr::transmute(., date, value) %>%
+        dplyr::bind_rows(
+            .,
+            tribble(
+            	~ 'date', ~ 'value',
+            	as.Date('2022-04-01'), 2.00,
+            	as.Date('2022-07-01'), 4.00,
+            	as.Date('2023-10-01'), 3.50,
+            	tail(downside$ffr$date, 1), 2.80
+            )
+        ) %>%
+    	dplyr::left_join(
+    		tibble(date = seq(from = min(.$date), to = max(.$date), by = '1 month')),
+    		.,
+    		by = 'date'
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
+
+    
+    downside$spy =
+		m$ncpred$d1$m[, c('date', 'spy')] %>%
+    	na.omit(.) %>%
+    	dplyr::rename(., value = 'spy') %>%
+    	dplyr::transmute(., date, value) %>%
+        dplyr::bind_rows(
+            .,
+            tribble(
+            	~ 'date', ~ 'value',
+            	as.Date('2023-04-01'), -.1,
+            	as.Date('2024-04-01'), 0.9,
+            	as.Date('2025-04-01'), 0.90,
+            	as.Date('2026-04-01'), 0.90
+            )
+        ) %>%
+    	dplyr::left_join(
+    		tibble(date = seq(from = min(.$date), to = max(.$date), by = '1 month')),
+    		.,
+    		by = 'date'
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
+
+    # Direction of spread is almost always exactly in the opposite direction of t10y/2
+	# dplyr::inner_join(p$variables$mort15yt10yspread$h$d1$m, p$variables$t10y$h$d1$m, by = 'date') %>%
+	# ggplot(.) + geom_line(aes(x = date, y = value.x)) + geom_line(aes(x = date, y = value.y))
+    
+    downside$mort15yt10yspread =
+    	# Get change in tdns1
+    	dplyr::bind_rows(
+    		p$variables$tdns1$h$d1$m,
+    		downside$tdns1 %>% dplyr::select(., -form)
+    		) %>%
+    	dplyr::mutate(., value = (value - dplyr::lag(value, 1))) %>%
+    	# Scale to appropriate change desired in mort15y10yspread
+    	dplyr::mutate(., value = value * -1/4) %>%
+    	# Now undifference to get forecast for mortspread
+    	dplyr::filter(., date > max(p$variables$mort15yt10yspread$h$d1$m$date)) %>%
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort15yt10yspread$h$d1$m, 1)$value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
+    
+    
+    downside$mort30yt30yspread =
+    	# Get change in tdns1
+    	dplyr::bind_rows(
+    		p$variables$tdns1$h$d1$m,
+    		downside$tdns1 %>% dplyr::select(., -form)
+    		) %>%
+    	dplyr::mutate(., value = (value - dplyr::lag(value, 1))) %>%
+    	# Scale to appropriate change desired in mort15y10yspread
+    	dplyr::mutate(., value = value * -1/4) %>%
+    	# Now undifference to get forecast for mortspread
+    	dplyr::filter(., date > max(p$variables$mort30yt30yspread$h$d1$m$date)) %>%
+    	dplyr::mutate(., value = undiff(value, 1, tail(p$variables$mort30yt30yspread$h$d1$m, 1)$value), form = 'd1') %>%
+    	dplyr::mutate(., freq = 'm')
+
+    
+	# PARTIAL LENGTH FORECASTS
+    
+    # Have first four quarters of PCE, gross_pdi, etc. be exogenous in data
+    ncList = c(
+    	'pcegdmotor', 'pcegdfurnish', 'pcegdrec', 'pcegdother',
+    	'pcegnfood', 'pcegnclothing', 'pcegngas', 'pcegnother',
+    	'pceshousing', 'pceshealth', 'pcestransport', 'pcesrec', 'pcesfood', 'pcesfinal',
+    	'pcesother', 'pcesnonprofit',
+    	'pdinstruct', 'pdinequip', 'pdinip', 'pdir',
+    	'exg', 'exs', 'img', 'ims', 'govt', 'govts'
+    	)
+    
+    ncForecasts =
+    	m$ncpredFlat %>%
+    	dplyr::filter(., freq == 'q' & varname %in% ncList & form == 'd1' & vdate == max(vdate)) %>%
+    	dplyr::group_by(., varname) %>%
+    	econforecasting::namedSplit(.) %>%
+    	lapply(., function(df)
+    		df %>%
+    			dplyr::select(., freq, form, date, value)
+    		)
+
+    if (all(sort(names(ncForecasts)) != sort(ncList))) stop('Error: missing nowcasted variable')
+    downside = c(
+    	downside,
+    	ncForecasts
+    )
+
+    m$qual$predraw$downside <<- downside
 })
 ```
 
@@ -345,7 +589,7 @@ local({
 		lapply(m$qual$predqual, function(df) {
 			
 			scenario =
-				m$qual$predqual[[1]] %>% dplyr::filter(., freq == 'm') %>%
+				df %>% dplyr::filter(., freq == 'm') %>%
 				dplyr::select(., -freq) %>%
 				tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
 				dplyr::arrange(., date)
@@ -667,7 +911,9 @@ local({
 				lapply(., function(y) {
 					
 					# message(y$form, ';', y$freq)
-					
+					if (y$freq == 'm' && param$freq == 'q') return(NULL)
+					if (param[[y$form]] == 'none') return(NULL)
+
 					transform = param[[y$form]]
 					unitname = {
 						if (transform == 'apchg') 'Annualized % Chg'
@@ -687,7 +933,11 @@ local({
 					forecastDf =
 						x %>%
 						dplyr::filter(., freq == y$freq & form == y$form) %>%
-						dplyr::bind_rows(mutate(tail(histDf, 1), scenarioname = unique(.$scenarioname)), .) %>%
+						dplyr::group_by(scenarioname) %>%
+						dplyr::group_split(.) %>%
+						purrr::map_dfr(., function(z)
+							dplyr::bind_rows(mutate(tail(histDf, 1), scenarioname = unique(z$scenarioname)), z)
+							) %>%
 						dplyr::transmute(., date, value, type = scenarioname)
 					
 					dplyr::bind_rows(histDf, forecastDf) %>%
@@ -695,10 +945,10 @@ local({
 						geom_line(aes(x = date, y = value, color = type)) +
 						geom_point(aes(x = date, y = value, color = type)) +
 						scale_color_manual(
-							values = c('historical' = 'black', 'baseline' = 'red')
+							values = c('historical' = 'black', 'baseline' = 'red', 'downside' = 'blue')
 						) +
 						scale_linetype_manual(
-							values = c('historical' = 'solid', 'baseline' = 'solid')
+							values = c('historical' = 'solid', 'baseline' = 'solid', 'downside' = 'blue')
 						) +
 						labs(
 							subtitle = paste0({if (y$freq == 'q') 'Quarterly' else 'Monthly'}, ' Forecast'),
@@ -707,7 +957,7 @@ local({
 						theme_gray(base_size = 12) +
 						theme(axis.title = element_text(size = 10), axis.title.y = element_text(size = 10))
 					}) %>%
-				purrr::keep(., ~ nrow(.$data) > 0)
+				purrr::keep(., ~ !is.null(.) && nrow(.$data) > 0)
 
 			title =
 				cowplot::ggdraw() +
