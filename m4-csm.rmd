@@ -875,7 +875,11 @@ local({
 					forecastDf =
 						x %>%
 						dplyr::filter(., freq == y$freq & form == y$form) %>%
-						dplyr::bind_rows(mutate(tail(histDf, 1), scenarioname = unique(.$scenarioname)), .) %>%
+						dplyr::group_by(scenarioname) %>%
+						dplyr::group_split(.) %>%
+						purrr::map_dfr(., function(z)
+							dplyr::bind_rows(mutate(tail(histDf, 1), scenarioname = unique(z$scenarioname)), z)
+							) %>%
 						dplyr::transmute(., date, value, type = scenarioname)
 					
 					dplyr::bind_rows(histDf, forecastDf) %>%
@@ -883,10 +887,10 @@ local({
 						geom_line(aes(x = date, y = value, color = type)) +
 						geom_point(aes(x = date, y = value, color = type)) +
 						scale_color_manual(
-							values = c('historical' = 'black', 'baseline' = 'red')
+							values = c('historical' = 'black', 'baseline' = 'red', 'downside' = 'blue')
 						) +
 						scale_linetype_manual(
-							values = c('historical' = 'solid', 'baseline' = 'solid')
+							values = c('historical' = 'solid', 'baseline' = 'solid', 'downside' = 'blue')
 						) +
 						geom_table(
 							data = tibble(

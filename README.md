@@ -4,27 +4,21 @@ This project contains the code for data scraping, data cleaning, and modeling us
 ---
 
 # RUN NOTES
-- Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
-- Run model-asset-contagion.rmd, model-baseling-forecasts.rmd, model-nowcasts-backtest.rmd daily until cron server set up
-- Import Data -> Generate Nowcasts (Using History + EOM Forecasts as "Data") -> Generate Forecasts (Use Nowcasts as "Data")
+- [x] Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
+- [x] Run model-asset-contagion.rmd, model-baseling-forecasts.rmd, model-nowcasts-backtest.rmd daily until cron server set up
+- [x] Import Data -> Generate Nowcasts (Using History + EOM Forecasts as "Data") -> Generate Forecasts (Use Nowcasts as "Data")
 
 # Dev Notes
-- Add: Survey of Consumer Expectations (Has expected inflation at well updated intervals, plus home price change expectations @ one year, 3 year ahead point predictions)
-- Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong) - try later, for now use standard and see if tdns estimates are too off from actual construction
-- Add: DFM package for R
-- Idea: Horserace between different model types (esp. quantative and qualitative) - model stack qualitative/qunaitative forecasts based off relative weightings chosen by a local linear RF. LLRF is a natural choice as the time series should be linear in t(forecast periods ahead of forecast). E.g. 
-t-ahed   lagged spy    nowcast mae     qual mae
-----------------------------------------------1
-1           ..              ..           ..
-2           ..              ..           ..
-3           ..              ..           ..
+- [] Add: Survey of Consumer Expectations (Has expected inflation at well updated intervals, plus home price change expectations @ one year, 3 year ahead point predictions)
+- [] Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong) - try later, for now use standard and see if tdns estimates are too off from actual construction
+- [] Add: DFM package
 
 
 # CHANGELOG
 @Todo: Add in allowable "d" form as input, analogous to lma2, ma2
 
 
-## 2021-08-18 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
+## 2021-09-01 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
 - Added CSM forecasting code
 - Added model stacking for PCA->DFM->Kalman Filter process to reduce variance due to factor selection
 - Added qualitative forecasts for mortgage rates and mortgage spreads
@@ -34,6 +28,12 @@ t-ahed   lagged spy    nowcast mae     qual mae
 - Added automatic export of qualitative forecasting graphs for model checking
 - Added rewrite of CSM exogenous df to reflect refactoring in qualitative forecasts
 - Added split of mandatory exogenous variables (used in calc of forecast dates) from variables which can be exog for some dates, endog for others
+- Added nice charts and evaluation for structural forecasts 
+- Added better implementation of structural forecasts
+- Added allowance for multiple structural model scenarios
+- Added improved error handling in model estimation procedure
+- Added weighted moving averages to structural equations
+- Improved structuring of columns on inputs.xlsx for better notation of structural input types and output types
 - Removed CFNAI and WEI from DFM inputs
 
 ## 2021-07-26 [v0.15]
