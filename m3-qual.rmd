@@ -19,6 +19,7 @@ library(glue) # String Interpolation
 library(jsonlite) # JSON Parser
 library(rvest) # HTML Parser
 library(httr) # CURL Interface
+library(cowplot) # Join ggplots
 # SQL/Apache Spark
 library(DBI) # SQL Interface
 # library(RPostgres) # PostgreSQL
