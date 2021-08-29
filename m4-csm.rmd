@@ -301,7 +301,7 @@ local({
         'hsold = constant + hpi + lma2.ue + mort30y + lma2.houst',
         'hpermits = constant + hpi + lma2.ue + mort30y + lma2.hpermits',
     	
-    	'vsales = constant + pce + oil',
+    	'vsales = constant + lma2.vsales + wma2.pce + oil',
     	'emp = constant + ue + gdp',
     	'jolts = constant + ue + gdp',
     	
