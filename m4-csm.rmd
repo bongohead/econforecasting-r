@@ -894,7 +894,7 @@ local({
 						) +
 						geom_table(
 							data = tibble(
-								x = max(forecastDf$date),
+								x = min(forecastDf$date),
 								y = max(bind_rows(histDf, forecastDf)$value),
 					            z = list(
 					            	forecastDf %>%

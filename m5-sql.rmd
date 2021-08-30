@@ -1,0 +1,59 @@
+# Set Constants
+```{r purl = TRUE}
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
+INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
+OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
+VINTAGE_DATE = '2021-08-27'
+```
+
+# Initialize
+```{r}
+# General purpose
+library(tidyverse) # General
+library(data.table) # General
+library(devtools) # General
+library(lubridate) # Dates
+library(glue) # String Interpolation
+# Data parse/import
+library(jsonlite) # JSON Parser
+library(rvest) # HTML Parser
+library(httr) # CURL Interface
+# Visualization
+library(ggpmisc) # Tables
+library(cowplot) # Join ggplots
+# SQL/Apache Spark
+library(DBI) # SQL Interface
+# My package
+devtools::load_all(path = PACKAGE_DIR)
+devtools::document(PACKAGE_DIR)
+
+# Set working directory
+setwd(DIR)
+
+# Read constants
+source(file.path(INPUT_DIR, 'constants.r'))
+```
+
+
+## Load RDS
+```{r}
+local({
+	
+	rds = readRDS(paste0(OUTPUT_DIR, '/[', VINTAGE_DATE, '] m3.rds'))
+
+	p <<- rds$p
+	m <<- rds$m
+	h <<- rds$h
+})
+```
+
+
+# Prep Tables for SQL
+```{r}
+local({
+	
+	
+})
+```
+
