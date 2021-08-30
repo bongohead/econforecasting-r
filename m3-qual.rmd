@@ -52,6 +52,16 @@ local({
 
 # Generate Initial Forecasts
 
+## Scenario Names
+```{r}
+local({
+
+	rates = list(baseline = list(), downside = list())
+	
+})
+```
+
+
 ## CMEFI baseline forecasts (qual)
 Display in website those variables not taken from "external" source - e.g. unemp
 ```{r}
@@ -293,10 +303,11 @@ local({
         dplyr::filter(., date > max(p$variables$ffr$h$base$m$date)) %>%
     	dplyr::mutate(
     		.,
-    		value = ifelse(date >= as.Date('2022-06-01') & date <= as.Date('2022-12-01'), value - .1, value),
-			value = ifelse(date >= as.Date('2023-01-01') & date <= as.Date('2024-01-01'), value - .05, value)
+    		value = ifelse(date >= as.Date('2022-06-01') & date <= as.Date('2022-12-01'), filter(., date == as.Date('2022-05-01'))$value, value),
+			value = ifelse(date >= as.Date('2023-01-01') & date <= as.Date('2024-06-01'), NA, value)
     	) %>%
-        dplyr::transmute(., freq, form, date, value)
+        dplyr::transmute(., freq, form, date, value) %>%
+		dplyr::mutate(., value = zoo::na.approx(value))    
     
     downside$sofr =
         m$ext$sources$cme %>%
@@ -305,8 +316,8 @@ local({
         dplyr::filter(., date > max(p$variables$sofr$h$base$m$date)) %>%
     	dplyr::mutate(
     		.,
-    		value = ifelse(date >= as.Date('2022-06-01') & date <= as.Date('2022-12-01'), value - .1, value),
-			value = ifelse(date >= as.Date('2023-01-01') & date <= as.Date('2024-01-01'), value - .05, value)
+    		value = ifelse(date >= as.Date('2022-06-01') & date <= as.Date('2022-12-01'), filter(., date == as.Date('2022-05-01'))$value, value),
+			value = ifelse(date >= as.Date('2023-01-01') & date <= as.Date('2024-06-01'), NA, value)
     	) %>%
         dplyr::transmute(., freq, form, date, value)
     
