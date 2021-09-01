@@ -139,14 +139,14 @@ local({
 	
 	
 	# Benfords Law
-# 	rawDf %>%
-#     dplyr::mutate(
-#         .,
-#         article = paste0(article1, ' ', article2),
-#         date = ifelse(str_detect(date, coll('EDT')) == TRUE, format(Sys.Date(), '%b %d %Y'), date),
-#         date = as.Date(parse_date_time2(date, '%b %d %Y'))
-#     ) %>%
-#     tidytext::unnest_tokens(., word, article) %>% dplyr::filter(., str_detect(word, '^[0-9]*$')) %>% dplyr::mutate(., start = str_sub(word, 1, 1)) %>% dplyr::group_by(., start) %>% dplyr::summarize(., n = n()) %>% ggplot(.) + geom_col(aes(x = start, y = n)) %>% View(.)
+	rawDf %>%
+    dplyr::mutate(
+        .,
+        article = paste0(article1, ' ', article2),
+        date = ifelse(str_detect(date, coll('EDT')) == TRUE, format(Sys.Date(), '%b %d %Y'), date),
+        date = as.Date(parse_date_time2(date, '%b %d %Y'))
+    ) %>%
+    tidytext::unnest_tokens(., word, article) %>% dplyr::filter(., str_detect(word, '^[0-9]*$')) %>% dplyr::mutate(., start = str_sub(word, 1, 1)) %>% dplyr::group_by(., start) %>% dplyr::summarize(., n = n()) %>% ggplot(.) + geom_col(aes(x = start, y = n))
 })
 ```
 

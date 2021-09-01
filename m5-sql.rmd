@@ -4,7 +4,8 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = '2021-08-27'
+VINTAGE_DATE = '2021-08-30'
+RESET_ALL = FALSE
 ```
 
 # Initialize
@@ -40,7 +41,7 @@ source(file.path(INPUT_DIR, 'constants.r'))
 ```{r}
 local({
 	
-	rds = readRDS(paste0(OUTPUT_DIR, '/[', VINTAGE_DATE, '] m3.rds'))
+	rds = readRDS(paste0(OUTPUT_DIR, '/[', VINTAGE_DATE, '] m4.rds'))
 
 	p <<- rds$p
 	m <<- rds$m
@@ -48,12 +49,125 @@ local({
 })
 ```
 
+## Connection
+```{r}
+local({
+	
+	sql = dbConnect(
+		RPostgres::Postgres(),
+		dbname = CONST$DB_DATABASE,
+		host = CONST$DB_SERVER,
+		port = 5432,
+		user = CONST$DB_USERNAME,
+		password = CONST$DB_PASSWORD
+		)
+	
+	if (RESET_ALL == TRUE) {
+		
+		DBI::dbGetQuery(conn, 'TRUNCATE csm_releases')
+		DBI::dbGetQuery(conn, 'TRUNCATE csm_values')
+		DBI::dbGetQuery(conn, 'TRUNCATE csm_history')
+	}
+	
+	sql <<- sql
+})
+```
+
 
 # Prep Tables for SQL
+
+## Releases
+```{r}
+local({
+	
+	
+	DBI::dbGetQuery(sql, 'DROP TABLE IF EXISTS csm_releases')
+	
+	DBI::dbGetQuery(sql, '
+		CREATE TABLE csm_releases (
+			relkey VARCHAR(255) PRIMARY KEY,
+			relname VARCHAR(255) UNIQUE NOT NULL,
+			relsc VARCHAR(10) NOT NULL,
+			relsckey VARCHAR(10) ,
+			relurl VARCHAR(255),
+			relnotes TEXT
+			source VARCHAR(255) NOT NULL,
+			sckey VARCHAR(255) NOT NULL,
+			relkey VARCHAR(255) NOT NULL,
+			units VARCHAR(255) NOT NULL,
+			freq CHAR(1) NOT NULL,
+			append_eom_with_currentval CHAR(1),
+			sa CHAR(1) NOT NULL,
+			st VARCHAR(10) NOT NULL,
+			st2 VARCHAR(10) NOT NULL,
+			d1 VARCHAR(10) NOT NULL,
+			d2 VARCHAR(10) NOT NULL,
+			nc_dfm_input BOOLEAN,
+			nc_method VARCHAR(10) NOT NULL,
+			initial_forecast VARCHAR(10),
+			core_structural VARCHAR(10) NOT NULL,
+			core_endog_type VARCHAR(10),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		)
+	')
+	
+	
+		  econforecasting::createInsertQuery(
+	    ef$releaseDf,
+	    'nc_releases',
+	    'ON CONFLICT ON CONSTRAINT nc_releases_id DO UPDATE SET link=EXCLUDED.link, count=EXCLUDED.count,seriesnames=EXCLUDED.seriesnames,reldates=EXCLUDED.reldates'
+	    )
+
+	
+})
+```
+
+## Params
+```{r}
+local({
+	
+	DBI::dbGetQuery(sql, 'DROP TABLE IF EXISTS csm_params')
+	
+	DBI::dbGetQuery(sql, '
+		CREATE TABLE csm_params (
+			varname VARCHAR(255) PRIMARY KEY,
+			fullname VARCHAR(255) UNIQUE NOT NULL,
+			category VARCHAR(255) NOT NULL,
+			dispgroup VARCHAR(255),
+			disporder INT,
+			source VARCHAR(255) NOT NULL,
+			sckey VARCHAR(255) NOT NULL,
+			relkey VARCHAR(255) NOT NULL,
+			units VARCHAR(255) NOT NULL,
+			freq CHAR(1) NOT NULL,
+			append_eom_with_currentval CHAR(1),
+			sa CHAR(1) NOT NULL,
+			st VARCHAR(10) NOT NULL,
+			st2 VARCHAR(10) NOT NULL,
+			d1 VARCHAR(10) NOT NULL,
+			d2 VARCHAR(10) NOT NULL,
+			nc_dfm_input BOOLEAN,
+			nc_method VARCHAR(10) NOT NULL,
+			initial_forecast VARCHAR(10),
+			core_structural VARCHAR(10) NOT NULL,
+			core_endog_type VARCHAR(10),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		)
+	')
+
+})
+```
+
+## TS Types
 ```{r}
 local({
 	
 	
 })
+```
+
+## TS Values
+```{r}
+
 ```
 
