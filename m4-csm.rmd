@@ -4,7 +4,7 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = '2021-08-30'
+VINTAGE_DATE = '2021-09-03'
 ```
 
 # Initialize
@@ -618,7 +618,7 @@ local({
 })
 ```
 
-## Reaggregate to Quartlery & Add Identity
+## Reaggregate to Quarterly & Add Identity
 ```{r}
 local({
 	
@@ -647,7 +647,10 @@ local({
 			tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE) %>%
 			dplyr::full_join(
 				.,
-				tidyr::pivot_longer(m$csm$predbase0[[scenarioname]], -date, names_to = 'varname', values_to = 'value_prev', values_drop_na = TRUE),
+				tidyr::pivot_longer(
+					m$csm$predbase0[[scenarioname]], -date, names_to = 'varname',
+					values_to = 'value_prev', values_drop_na = TRUE
+					),
 				by = c('date', 'varname')
 				) %>%
 			dplyr::transmute(
@@ -656,6 +659,19 @@ local({
 				varname,
 				value = ifelse(!is.na(value), value, value_prev)
 			) %>%
+			# Filter out any overlaps with historical
+			dplyr::group_by(., varname) %>%
+			dplyr::group_split(.) %>%
+			purrr::map_dfr(., function(x) {
+				lastHistDate =
+					h$flat %>%
+					dplyr::filter(., form == 'base' & freq == 'q' & varname == unique(x$varname)) %>%
+					.$date %>%
+					max(.)
+				
+				x %>% dplyr::filter(., date > lastHistDate)
+			}) %>%
+			# Finalize
 			tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
 			dplyr::arrange(., date) %>%
 			# Finally add calculated variables
@@ -663,7 +679,7 @@ local({
 				.,
 				nx = ex - im
 			)
-		) 
+		)
 
 	
 	m$csm$predbaseq <<- res
@@ -851,10 +867,11 @@ local({
 				setNames(., map_chr(., ~ paste0(.$form, '.', .$freq))) %>%
 				lapply(., function(y) {
 					
+					
 					if (y$freq == 'm' && param$freq == 'q') return(NULL)
 					if (param[[y$form]] == 'none') return(NULL)
 					
-					# message(y$form, ';', y$freq)
+					message(y$form, ';', y$freq)
 					
 					transform = param[[y$form]]
 					unitname = {

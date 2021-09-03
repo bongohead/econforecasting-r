@@ -4,7 +4,7 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = '2021-08-30'
+VINTAGE_DATE = '2021-09-03'
 ```
 
 # Initialize
