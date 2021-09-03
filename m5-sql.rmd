@@ -53,7 +53,7 @@ local({
 ```{r}
 local({
 	
-	sql = dbConnect(
+	db = dbConnect(
 		RPostgres::Postgres(),
 		dbname = CONST$DB_DATABASE,
 		host = CONST$DB_SERVER,
@@ -62,14 +62,14 @@ local({
 		password = CONST$DB_PASSWORD
 		)
 	
-	if (RESET_ALL == TRUE) {
-		
-		DBI::dbGetQuery(conn, 'TRUNCATE csm_releases')
-		DBI::dbGetQuery(conn, 'TRUNCATE csm_values')
-		DBI::dbGetQuery(conn, 'TRUNCATE csm_history')
-	}
+	# if (RESET_ALL == TRUE) {
+	# 	
+	# 	DBI::dbGetQuery(conn, 'TRUNCATE csm_releases')
+	# 	DBI::dbGetQuery(conn, 'TRUNCATE csm_values')
+	# 	DBI::dbGetQuery(conn, 'TRUNCATE csm_history')
+	# }
 	
-	sql <<- sql
+	db <<- db
 })
 ```
 
@@ -81,41 +81,39 @@ local({
 local({
 	
 	
-	DBI::dbGetQuery(sql, 'DROP TABLE IF EXISTS csm_releases')
-	
-	DBI::dbGetQuery(sql, '
+	DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_releases')
+	DBI::dbGetQuery(db, '
 		CREATE TABLE csm_releases (
 			relkey VARCHAR(255) PRIMARY KEY,
 			relname VARCHAR(255) UNIQUE NOT NULL,
-			relsc VARCHAR(10) NOT NULL,
-			relsckey VARCHAR(10) ,
+			relsc VARCHAR(255) NOT NULL,
+			relsckey VARCHAR(255) ,
 			relurl VARCHAR(255),
-			relnotes TEXT
-			source VARCHAR(255) NOT NULL,
-			sckey VARCHAR(255) NOT NULL,
-			relkey VARCHAR(255) NOT NULL,
-			units VARCHAR(255) NOT NULL,
-			freq CHAR(1) NOT NULL,
-			append_eom_with_currentval CHAR(1),
-			sa CHAR(1) NOT NULL,
-			st VARCHAR(10) NOT NULL,
-			st2 VARCHAR(10) NOT NULL,
-			d1 VARCHAR(10) NOT NULL,
-			d2 VARCHAR(10) NOT NULL,
-			nc_dfm_input BOOLEAN,
-			nc_method VARCHAR(10) NOT NULL,
-			initial_forecast VARCHAR(10),
-			core_structural VARCHAR(10) NOT NULL,
-			core_endog_type VARCHAR(10),
+			relnotes TEXT,
+			n_varnames INTEGER,
+			varnames JSON,
+			n_dfm_varnames INTEGER,
+			dfm_varnames JSON,
+			varnames_dfm JSON,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)
 	')
 	
-	
-		  econforecasting::createInsertQuery(
-	    ef$releaseDf,
-	    'nc_releases',
-	    'ON CONFLICT ON CONSTRAINT nc_releases_id DO UPDATE SET link=EXCLUDED.link, count=EXCLUDED.count,seriesnames=EXCLUDED.seriesnames,reldates=EXCLUDED.reldates'
+	econforecasting::createInsertQuery(
+	    p$releasesDf %>%
+	    	transmute(
+	    		.,
+	    		relkey, relname, relsc, relsckey, relurl, relnotes,
+	    		num_vars = n_varnames,
+	    		varnames, 
+	    		varnames_dfm
+	    	),
+	    'csm_releases',
+	    'ON CONFLICT ON CONSTRAINT nc_releases_id DO UPDATE
+	    SET link=EXCLUDED.link,
+	    count=EXCLUDED.count,
+	    seriesnames=EXCLUDED.seriesnames,
+	    reldates=EXCLUDED.reldates'
 	    )
 
 	
