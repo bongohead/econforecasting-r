@@ -614,16 +614,27 @@ local({
   
     # Scrape vintage dates
     vintageDf =
-        httr::GET('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/spf-release-dates.txt?la=en&hash=B0031909EE9FFE77B26E57AC5FB39899') %>%
-        httr::content(., as = 'text', encoding = 'UTF-8') %>%
-        str_sub(
-            .,
-            str_locate(., coll('1990 Q2'))[1], str_locate(., coll('*The 1990Q2'))[1] - 1
-            ) %>%
-        readr::read_table(., col_names = FALSE) %>%
-        tidyr::fill(., X1, .direction = 'down') %>%
-        na.omit(.) %>%
-        dplyr::transmute(
+    	httr::GET('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/spf-release-dates.txt?la=en&hash=B0031909EE9FFE77B26E57AC5FB39899') %>%
+	    httr::content(., as = 'text', encoding = 'UTF-8') %>%
+	    str_sub(
+	        .,
+	        str_locate(., coll('1990 Q2'))[1], str_locate(., coll('*The 1990Q2'))[1] - 1
+	        ) %>%
+    	read_csv(., col_names = 'X1', col_types = 'c') %>%
+    	.$X1 %>%
+    	purrr::map_dfr(., function(x)
+    		x %>%
+    			str_squish(.) %>%
+    			str_split(., ' ') %>%
+    			.[[1]] %>%
+    			{
+    				if (length(.) == 4) tibble(X1 = .[1], X2 = .[2], X3 = .[3], X4 = .[4])
+    				else if (length(.) == 3) tibble(X1 = NA, X2 = .[1], X3 = .[2], X4 = .[3])
+    				else stop ('Error parsing data')
+    				}
+    		) %>%
+    	tidyr::fill(., X1, .direction = 'down') %>%
+    	dplyr::transmute(
             .,
             releaseDate = econforecasting::strdateToDate(paste0(X1, X2)),
             vintageDate = lubridate::mdy(str_replace_all(str_extract(X3, "[^\\s]+"), '[*]', ''))
