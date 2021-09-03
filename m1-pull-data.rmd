@@ -69,6 +69,9 @@ local({
 				dplyr::filter(., nc_dfm_input == 1) %>%
 				dplyr::group_by(., relkey) %>%
 				dplyr::summarize(., n_dfm_varnames = n(), dfm_varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
+			p$variablesDf %>%
+				dplyr::group_by(., relkey) %>%
+				dplyr::summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
 			by = 'relkey'
 		) %>%
 		dplyr::left_join(
