@@ -89,10 +89,9 @@ Request failed [429]. Retrying in 3.3 seconds...
 Request failed [429]. Retrying in 6.8 seconds...
 Request failed [429]. Retrying in 15.8 seconds...
 Getting data ... bankre
-Getting data ... stlfsi
-Getting data ... usd
-Getting data ... uemean
-Getting data ... advsales
+GettNo documentation for ‘cmd’ in specified packages and libraries:
+you could try ‘??cmd’
+[1] 5
 Getting data ... kclfi
 Getting data ... csent
 Getting data ... ipi
@@ -192,3 +191,7 @@ Error: Problem with `filter()` input `..1`.
 i Input `..1` is `date >= add_with_rollback(p$VINTAGE_DATE, months(-3))`.
 x no applicable method for 'reclass_date' applied to an object of class "character"
 Run `rlang::last_error()` to see where the error occurred.
+Error: '\P' is an unrecognized escape in character string starting "'"C:\P"
+Error: '\P' is an unrecognized escape in character string starting "'"C:\P"
+Warning message:
+In sink() : no sink to remove

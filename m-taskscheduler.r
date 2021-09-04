@@ -54,7 +54,13 @@ runRes = lapply(list('m1-pull-data.rmd', 'm2-qual.rmd', 'm3-qual.rmd', 'm4-csm.r
 		) %>%
 		parse(text = ., keep.source = FALSE) %>%
 		eval(.)
-			
+	
+	system(
+		'"C:/Program Files/Git/bin/bash.exe" -c  "tail -n 50 -f "D:/OneDrive/__Projects/econforecasting/sink.txt""',
+		intern = F, wait = F,
+		invisible = FALSE,
+		minimized = FALSE
+		)
 	# "C:\Program Files\Git\bin\bash.exe" -c  "ls C:/Users"
 	# tail -n 50 -f 'D:/OneDrive/__Projects/econforecasting/sink.txt'
 	# 
