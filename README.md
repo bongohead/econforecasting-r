@@ -31,6 +31,8 @@ This project contains the code for data scraping, data cleaning, and modeling us
 - Added allowance for multiple structural model scenarios
 - Added improved error handling in model estimation procedure
 - Added weighted moving averages to structural equations
+- Added refactored SQL code
+- Added propert constraints to SQL tables
 - Improved structuring of columns on inputs.xlsx for better notation of structural input types and output types
 - Removed CFNAI and WEI from DFM inputs
 
