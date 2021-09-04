@@ -1,16 +1,4 @@
-# Set Constants
-```{r purl = FALSE}
-DIR = 'D:/Onedrive/__Projects/econforecasting'
-DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
-INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
-OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-09-03')
-```
-
-
-# Initialize
-```{r}
+## ----------------------------------------------------------------------
 library(tidyverse)
 library(data.table)
 library(devtools)
@@ -50,13 +38,9 @@ dplyr::left_join(p$variablesDf, p$releasesDf, by = 'relkey') %>%
 	.$relname %>%
 	keep(., ~ is.na(.)) %>%
 	{if(length(.) != 0) stop('Error')}
-```
 
 
-# Get Historical Data
-
-## FRED Releases
-```{r}
+## ----------------------------------------------------------------------
 local({
 	
 	releaseDf =
@@ -105,11 +89,9 @@ local({
 	
 	p$releasesDf <<- releaseDf
 })
-```
 
 
-## FRED
-```{r}
+## ----------------------------------------------------------------------
 local({
 	
 	fredRes =
@@ -136,10 +118,9 @@ local({
 		p$variables[[varname]]$rawData <<- fredRes[[varname]]$dataDf
 	}
 })
-```
 
-## Yahoo Finance
-```{r}
+
+## ----------------------------------------------------------------------
 local({
 	
 	res =
@@ -168,14 +149,9 @@ local({
 		p$variables[[varname]]$rawData <<- res[[varname]]
 	}
 })
-```
 
 
-
-# Aggregate Frequencies
-
-## Move to Hist Object
-```{r}
+## ----------------------------------------------------------------------
 local({
 	
 	 res =
@@ -190,10 +166,9 @@ local({
 		p$variables[[varname]]$h$base <<- res[[varname]]
 	}
 })
-```
 
-## Monthly Agg
-```{r}
+
+## ----------------------------------------------------------------------
 local({
 	
     res =
@@ -218,10 +193,9 @@ local({
 		p$variables[[varname]]$h$base$m <<- res[[varname]]
 	}
 })
-```
 
-## Quarterly Aggregation
-```{r}
+
+## ----------------------------------------------------------------------
 local({
 	
     res =
@@ -243,14 +217,9 @@ local({
 	}
     
 })
-```
 
 
-
-# Add Calculated Variables
-
-## Trailing Inflation
-```{r}
+## ----------------------------------------------------------------------
 local({
 	
     mDf =
@@ -270,13 +239,9 @@ local({
     p$variables$inf$h$base$m <<- mDf
     p$variables$inf$h$base$q <<- qDf
 })
-```
 
 
-## DNS Model - Interest Rates
-Let tyield = ffr + dns_curve(ttm)
-Exogenously choose ffr and tyield_10y_3m (negative of 10year - 3month spread; 3-month driven heavily by ffr)
-```{r}
+## ----------------------------------------------------------------------
 local({
   
     # Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
@@ -381,10 +346,9 @@ local({
     m$dnsFitChart <<- dnsFitChart
     m$dnsYieldCurveNamesMap <<- yieldCurveNamesMap
 })
-```
 
-## Other Interest Rate Spreads
-```{r}
+
+## ----------------------------------------------------------------------
 local({
     
     resDfs =
@@ -410,14 +374,9 @@ local({
 	p$variables[[varname]]$h$base <<- resDfs[[varname]]
   }
 })
-```
 
 
-
-# Transformations
-
-## Deseasonalize
-```{r}
+## ----------------------------------------------------------------------
 local({
 	# seasDf =
 	# 	p$h$sourceDf %>%
@@ -438,10 +397,9 @@ local({
 	# 
 	# p$h$seasDf <<- df
 })
-```
 
-## Stationarity
-```{r}
+
+## ----------------------------------------------------------------------
 local({
 
 	resDfs =
@@ -480,12 +438,9 @@ local({
 		}
 	}
 })
-```
 
-# Checks
 
-## Add histEnd to each variable
-```{r}
+## ----------------------------------------------------------------------
 local({
 	
 	for (varname in names(p$variables)) {
@@ -496,13 +451,9 @@ local({
 	}
 	
 })
-```
 
 
-# Aggregate
-
-## Flat
-```{r}
+## ----------------------------------------------------------------------
 local({
 	
 	flat =
@@ -517,10 +468,9 @@ local({
 
 	h$flat <<- flat
 })
-```
 
-## Create monthly/quarterly matrixes
-```{r}
+
+## ----------------------------------------------------------------------
 local({
 	
 	wide =
@@ -542,12 +492,9 @@ local({
 	h$d1 <<- wide$d1
 	h$d2 <<- wide$d2
 })
-```
 
-# External
 
-## Atlanta Fed
-```{r}
+## ----------------------------------------------------------------------
 local({
   
   ##### GDP #####
@@ -569,10 +516,9 @@ local({
 
 	m$ext$sources$atl <<- df
 })
-```
 
-## St. Louis Fed
-```{r}
+
+## ----------------------------------------------------------------------
 local({
  
 	df =
@@ -583,10 +529,9 @@ local({
     
 	m$ext$sources$stl <<- df
 })
-```
 
-## New York Fed
-```{r}
+
+## ----------------------------------------------------------------------
 local({
   
     file = file.path(DL_DIR, 'nyf.xlsx')
@@ -606,10 +551,9 @@ local({
 
   m$ext$sources$nyf <<- df
 })
-```
 
-## Philadelphia Fed
-```{r}
+
+## ----------------------------------------------------------------------
 local({
   
     # Scrape vintage dates
@@ -689,11 +633,9 @@ local({
         
 	m$ext$sources$spf <<- df
 })
-```
 
-## WSJ Economic Survey
-WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
-```{r}
+
+## ----------------------------------------------------------------------
 local({
     
     orgsDf =
@@ -825,11 +767,9 @@ local({
             
     m$ext$sources$wsj <<- df   
 })
-```
 
 
-## CBO Forecasts
-```{r}
+## ----------------------------------------------------------------------
 local({
 
   urlDf =
@@ -910,11 +850,9 @@ local({
     
   m$ext$sources$cbo <<- df   
 })
-```
 
 
-## EINF Model - Cleveland Fed
-```{r}
+## ----------------------------------------------------------------------
 local({
 	
   file = file.path(DL_DIR, paste0('inf.xls'))
@@ -956,10 +894,9 @@ local({
 
     m$ext$sources$cle <<- df
 })
-```
 
-## CME Model
-```{r}
+
+## ----------------------------------------------------------------------
 local({
   
 	# First get from Quandl
@@ -1126,16 +1063,9 @@ local({
 
 	m$ext$sources$cme <<- finalDf
 })
-```
 
-## DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, and Spreads
-DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
-Calculated TDNS1: TYield_10y 
-Calculated TDNS2: -1 * (t10y - t03m)
-Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
-Keep these treasury yield forecasts as the external forecasts ->
-note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to 
-```{r}
+
+## ----------------------------------------------------------------------
 local({
     
     dnsCoefs = m$dnsCoefs
@@ -1236,12 +1166,9 @@ local({
     
     m$ext$sources$dns <<- dplyr::bind_rows(df1, df2)
 })
-```
 
-# Finalize
 
-## Export
-```{r}
+## ----------------------------------------------------------------------
 local({
   
     saveRDS(
@@ -1250,5 +1177,4 @@ local({
     	)
     
 })
-```
 
