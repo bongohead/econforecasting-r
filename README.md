@@ -16,7 +16,12 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 # CHANGELOG
 
-## 2021-09-01 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
+
+## [v0.17] (Minor Fixes for New Model Web Launch)
+- Added task scheduling abilities for updated models
+
+
+## 2021-09-03 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
 - Added CSM forecasting code
 - Added model stacking for PCA->DFM->Kalman Filter process to reduce variance due to factor selection
 - Added qualitative forecasts for mortgage rates and mortgage spreads
