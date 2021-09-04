@@ -819,7 +819,8 @@ local({
                 dplyr::right_join(., orgsDf, by = 'fcfullname') %>%
                 dplyr::select(., -fcfullname)
         }) %>%
-        dplyr::bind_rows(.)
+        dplyr::bind_rows(.) %>%
+    	na.omit(.)
 
             
     m$ext$sources$wsj <<- df   
