@@ -679,7 +679,7 @@ local({
 	            dplyr::mutate(., obsDate = add_with_rollback(releaseDate, months(fcPeriods * 3))) %>%
 	            na.omit(.) %>%
 	            dplyr::inner_join(., vintageDf, by = 'releaseDate') %>%
-	            dplyr::transmute(., fcname = 'spf', varname = x$varname, form = 'd1', vdate = vintageDate, date = obsDate, value)
+	            dplyr::transmute(., fcname = 'spf', varname = x$varname, freq = 'q', form = 'd1', vdate = vintageDate, date = obsDate, value)
 	            }) %>%
 	            dplyr::bind_rows(.) %>%
 	            return(.)
