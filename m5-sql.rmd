@@ -1,5 +1,5 @@
 # Set Constants
-```{r purl = TRUE}
+```{r purl = FALSE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
@@ -312,4 +312,3 @@ local({
 		DBI::dbGetQuery(db, .)
 })
 ```
-

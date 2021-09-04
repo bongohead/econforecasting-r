@@ -1,7 +1,6 @@
 # Set Constants
-Note: if get message that the leading minor of order i is not positive definite, try removing
-m$nc$pcaVarnames[i]
-```{r purl = TRUE}
+Note: if get message that the leading minor of order i is not positive definite, try removing m$nc$pcaVarnames[i]
+```{r purl = FALSE}
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
