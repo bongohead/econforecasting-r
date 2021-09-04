@@ -16,6 +16,8 @@ createInsertQuery = function(df, tblname, .append = '') {
             dplyr::mutate_if(is.Date, as.character) %>%
             # dplyr::mutate_if(is.character, function(x) paste0("'", x, "'")) %>%
             dplyr::mutate_if(is.character, function(x) dbQuoteString(ANSI(), x)) %>%
+            dplyr::mutate_if(is.numeric, function(x) dbQuoteString(ANSI(), as.character(x))) %>%
+
             tidyr::unite(., 'x', sep = ',') %>%
             dplyr::mutate(., x = paste0('(', x, ')')) %>%
             .$x %>%

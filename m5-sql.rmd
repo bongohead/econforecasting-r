@@ -84,8 +84,8 @@ local({
 	DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_releases')
 	DBI::dbGetQuery(db, '
 		CREATE TABLE csm_releases (
-			relkey VARCHAR(255) PRIMARY KEY,
-			relname VARCHAR(255) UNIQUE NOT NULL,
+			relkey VARCHAR(255) CONSTRAINT relkey_pk PRIMARY KEY,
+			relname VARCHAR(255) CONSTRAINT relname_uk UNIQUE NOT NULL,
 			relsc VARCHAR(255) NOT NULL,
 			relsckey VARCHAR(255) ,
 			relurl VARCHAR(255),
@@ -94,7 +94,6 @@ local({
 			varnames JSON,
 			n_dfm_varnames INTEGER,
 			dfm_varnames JSON,
-			varnames_dfm JSON,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)
 	')
@@ -103,18 +102,24 @@ local({
 	    p$releasesDf %>%
 	    	transmute(
 	    		.,
-	    		relkey, relname, relsc, relsckey, relurl, relnotes,
-	    		num_vars = n_varnames,
-	    		varnames, 
-	    		varnames_dfm
+	    		relkey, relname, relsc, relsckey , relurl, relnotes,
+	    		n_varnames = ifelse(is.na(n_varnames), 0, n_varnames), varnames,
+	    		n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames
 	    	),
 	    'csm_releases',
-	    'ON CONFLICT ON CONSTRAINT nc_releases_id DO UPDATE
-	    SET link=EXCLUDED.link,
-	    count=EXCLUDED.count,
-	    seriesnames=EXCLUDED.seriesnames,
-	    reldates=EXCLUDED.reldates'
-	    )
+	    str_squish('ON CONFLICT ON CONSTRAINT relkey_pk DO UPDATE
+	    SET
+	    relname=EXCLUDED.relname,
+	    relsc=EXCLUDED.relsc,
+	    relsckey=EXCLUDED.relsckey,
+	    relurl=EXCLUDED.relurl,
+	    relnotes=EXCLUDED.relnotes,
+	    n_varnames=EXCLUDED.n_varnames,
+	    varnames=EXCLUDED.varnames,
+	    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
+	    dfm_varnames=EXCLUDED.dfm_varnames
+	    ')) %>%
+		DBI::dbSendQuery(db, .)
 
 	
 })
@@ -124,34 +129,48 @@ local({
 ```{r}
 local({
 	
-	DBI::dbGetQuery(sql, 'DROP TABLE IF EXISTS csm_params')
-	
-	DBI::dbGetQuery(sql, '
+	DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_params')
+	DBI::dbGetQuery(db, '
 		CREATE TABLE csm_params (
-			varname VARCHAR(255) PRIMARY KEY,
-			fullname VARCHAR(255) UNIQUE NOT NULL,
+			varname VARCHAR(255) CONSTRAINT varname_pk PRIMARY KEY,
+			fullname VARCHAR(255) CONSTRAINT fullname_uk UNIQUE NOT NULL,
 			category VARCHAR(255) NOT NULL,
 			dispgroup VARCHAR(255),
 			disporder INT,
 			source VARCHAR(255) NOT NULL,
-			sckey VARCHAR(255) NOT NULL,
+			sckey VARCHAR(255),
 			relkey VARCHAR(255) NOT NULL,
 			units VARCHAR(255) NOT NULL,
 			freq CHAR(1) NOT NULL,
 			append_eom_with_currentval CHAR(1),
 			sa CHAR(1) NOT NULL,
-			st VARCHAR(10) NOT NULL,
-			st2 VARCHAR(10) NOT NULL,
-			d1 VARCHAR(10) NOT NULL,
-			d2 VARCHAR(10) NOT NULL,
+			st VARCHAR(50) NOT NULL,
+			st2 VARCHAR(50) NOT NULL,
+			d1 VARCHAR(50) NOT NULL,
+			d2 VARCHAR(50) NOT NULL,
 			nc_dfm_input BOOLEAN,
-			nc_method VARCHAR(10) NOT NULL,
-			initial_forecast VARCHAR(10),
-			core_structural VARCHAR(10) NOT NULL,
-			core_endog_type VARCHAR(10),
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+			nc_method VARCHAR(50) NOT NULL,
+			initial_forecast VARCHAR(50),
+			core_structural VARCHAR(50) NOT NULL,
+			core_endog_type VARCHAR(50),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT relkey_fk FOREIGN KEY (relkey) REFERENCES csm_releases (relkey)
+				ON DELETE CASCADE ON UPDATE CASCADE
 		)
 	')
+	
+	econforecasting::createInsertQuery(
+	    p$variablesDf %>%
+	    	transmute(
+	    		.,
+	    		varname, fullname, category, dispgroup, disporder,
+	    		source, sckey, relkey, units, freq, append_eom_with_currentval,
+	    		sa, st, st2, d1, d2, nc_dfm_input, nc_method, initial_forecast,
+	    		core_structural, core_endog_type
+	    	),
+	    'csm_params',
+	    ) %>%
+		DBI::dbSendQuery(db, .)
 
 })
 ```
@@ -160,12 +179,67 @@ local({
 ```{r}
 local({
 	
+	DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_tstypes')
 	
+	# tstypes 'hist', 'forecast', 'nc'
+	DBI::dbGetQuery(db, '
+		CREATE TABLE csm_tstypes (
+			tskey VARCHAR(10) CONSTRAINT tskey_pk PRIMARY KEY,
+			tstype CHAR(1) NOT NULL, --h or fc
+			fctype VARCHAR(255), -- fc type
+			shortname VARCHAR(100) NOT NULL,
+			fullname VARCHAR(255) NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+	')
+	
+	DBI::dbGetQuery(db, 'CREATE INDEX tstype_ix ON csm_tstypes (tstype);')
+	DBI::dbGetQuery(db, 'CREATE INDEX fctype_ix ON csm_tstypes (fctype);')
+	
+	tsTypes = tribble(
+		~ tskey, ~ tstype, ~ fctype, ~ shortname, ~ fullname,
+		'hist', 'h', NA, 'Historical Data', 'Historical Data',
+		'baseline', 'f', 'csm', 'Baseline Model', 'CMEFI Baseline Economic Forecast',
+		'downside', 'f', 'csm', 'Downside Model', 'CMEFI Downside Economic Forecast',
+		'nc', 'f', 'nc', 'Nowcast Model', 'CMEFI Macroeconomic Nowcast',
+		'atl', 'f', 'ext', 'Atlanta Fed GDPNow', 'Atlanta Fed GDPNow Model',
+		'stl', 'f', 'ext', 'St. Louis Fed Nowcast', 'St. Louis Fed Economic News Model',
+		'nyf', 'f', 'ext', 'NY Fed Nowcast', 'New York Fed Stat Nowcast',
+		'spf', 'f', 'ext', 'Survey of Professional Forecasters', 'Survey of Professional Forecasters',
+		'wsj', 'f', 'ext', 'WSJ Consensus', 'Wall Street Journal Consensus Forecast',
+		'cbo', 'f', 'ext', 'CBO', 'Congressional Budget Office Projections',
+		'cle', 'f', 'fut', 'Futures-Implied Inflation Rates', 'Futures-Implied Expected Inflation Model',
+		'cme', 'f', 'fut', 'Futures-Implied Interest Rates', 'Futures-Implied Expected Benchmark Rates Model',
+		'dns', 'f', 'fut', 'Futures-Implied Treasury Yield', 'Futures-Implied Expected Treasury Yields Model'
+		)
+
+	econforecasting::createInsertQuery(tsTypes, 'csm_tstypes') %>%
+		DBI::dbSendQuery(db, .)
+
+
 })
 ```
 
 ## TS Values
 ```{r}
+local({
+	
+	
+	DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_tstypes')
+	
+	# tstypes 'hist', 'forecast', 'nc'
+	DBI::dbGetQuery(db, '
+		CREATE TABLE csm_tstypes (
+			tskey VARCHAR(10) CONSTRAINT tskey_pk PRIMARY KEY,
+			tstype CHAR(1) NOT NULL, --h or fc
+			fctype VARCHAR(255), -- fc type
+			shortname VARCHAR(100) NOT NULL,
+			fullname VARCHAR(255) NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		);
+	')
 
+	
+})
 ```
 
