@@ -4,7 +4,7 @@ DIR = 'D:/Onedrive/__Projects/econforecasting'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = '2021-09-03'
+VINTAGE_DATE = '2021-09-05'
 ```
 
 # Initialize
@@ -296,7 +296,9 @@ local({
     	
         'govtf = constant + govtf.l1 + lma2.gdp',
         'govts = constant + govts.l1 + lma2.gdp',
-
+    	
+    	
+        'hpi20 = constant + hpi + lma2.hpi20 + inf',
         'houst = constant + hpi + lma2.ue + mort30y + lma2.hsold',
         'hsold = constant + hpi + lma2.ue + mort30y + lma2.houst',
         'hpermits = constant + hpi + lma2.ue + mort30y + lma2.hpermits',

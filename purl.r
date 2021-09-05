@@ -14,9 +14,12 @@ library(ggpmisc) # Tables
 library(cowplot) # Join ggplots
 # SQL/Apache Spark
 library(DBI) # SQL Interface
+# library(RPostgres) # PostgreSQL
+# library(rsparklyr) # Spark
 # My package
 devtools::load_all(path = PACKAGE_DIR)
 devtools::document(PACKAGE_DIR)
+# library(econforecasting)
 
 # Set working directory
 setwd(DIR)
@@ -28,7 +31,7 @@ source(file.path(INPUT_DIR, 'constants.r'))
 ## ----------------------------------------------------------------------
 local({
 	
-	rds = readRDS(paste0(OUTPUT_DIR, '/[', VINTAGE_DATE, '] m4.rds'))
+	rds = readRDS(paste0(OUTPUT_DIR, '/[', VINTAGE_DATE, '] m3.rds'))
 
 	p <<- rds$p
 	m <<- rds$m
@@ -39,255 +42,932 @@ local({
 ## ----------------------------------------------------------------------
 local({
 	
-	db = dbConnect(
-		RPostgres::Postgres(),
-		dbname = CONST$DB_DATABASE,
-		host = CONST$DB_SERVER,
-		port = 5432,
-		user = CONST$DB_USERNAME,
-		password = CONST$DB_PASSWORD
+	# Get exogenous df - combine historical for all variables with forecasts from qual
+	# There should be no overlap but if so, overwrites historical from qual
+	exogDfs =
+		m$qual$predFlat %>%
+		as.data.table(.) %>%
+		split(., by = 'scenarioname', keep.by = FALSE) %>%
+		lapply(., function(forecastDf)
+			dplyr::full_join(
+				forecastDf %>% as_tibble(.) %>% dplyr::rename(., qual = value),
+				h$flat %>% dplyr::transmute(., form, freq, varname, date, hist = value),
+				by = c('form', 'freq', 'varname', 'date')
+				) %>%
+				dplyr::transmute(., form, freq, varname, date, value = ifelse(!is.na(hist), hist, qual)) %>%
+				as.data.table(.) %>%
+				split(., by = c('form', 'freq'), keep.by = FALSE, flatten = FALSE) %>%
+				lapply(., function(y)
+					lapply(y, function(z)
+						z %>%
+							tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+							dplyr::arrange(., date)
+						)
+					)
+			)
+	
+	
+	exogFlat = 
+		exogDfs %>% 
+		purrr::imap_dfr(., function(x, .scenarioname)
+			purrr::imap_dfr(x, function(y, .form)
+				purrr::imap_dfr(y, function(z, .freq)
+					z %>%
+						tidyr::pivot_longer(-date, values_to = 'value', names_to = 'varname') %>%
+						dplyr::mutate(., freq = .freq)
+					) %>%
+					dplyr::mutate(., form = .form)
+				) %>%
+				dplyr::mutate(., scenarioname = .scenarioname)
+			)
+	
+	
+	m$csm$exogDfs <<- exogDfs
+	m$csm$exogFlat <<- exogFlat
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+	# Pull start date by finding the first date where at least one CORE.ENDOG variables is non-empty
+	startDate =
+		m$csm$exogDfs$baseline$st$q %>%
+		dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.endog')$varname) %>%
+		dplyr::filter(., date >= as.Date('2020-01-01')) %>%
+		tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+	    dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
+	    dplyr::group_by(., date) %>%
+	    dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
+		dplyr::filter(., countNa > 0) %>%
+		dplyr::arrange(., date) %>%
+		head(., 1) %>%
+		.$date
+	
+	
+	# # Pull end date by last date of CORE.EXOG variables
+	endDate =
+		m$csm$exogDfs$baseline$st$q %>%
+	    dplyr::select(., date, dplyr::filter(p$variablesDf, core_structural == 'core.exog')$varname) %>%
+	    dplyr::filter(., date >= as.Date('2020-01-01')) %>%
+	    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+	    dplyr::mutate(., isNa = ifelse(is.na(value), 1, 0)) %>%
+	    dplyr::group_by(., date) %>%
+	    dplyr::summarize(., countNa = sum(isNa), .groups = 'drop') %>%
+	    dplyr::filter(., countNa == 0) %>%
+	    dplyr::arrange(., date) %>%
+	    tail(., 1) %>%
+	    .$date
+	
+	# Let end date be 10 years after the start date
+	# endDate = lubridate::add_with_rollback(startDate, years(5))
+	
+	m$csm$startDate <<- startDate
+	m$csm$endDate <<- endDate
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+    # Get steady-state values
+    ss =
+        h$base$q %>%
+        na.omit(.) %>%
+        dplyr::filter(., date == max(date)) %>%
+        dplyr::select(., -date) %>%
+    	tidyr::pivot_longer(everything(), names_to = 'varname')
+
+    identityLlEquations = c(
+    	'gdp = pce + pdi + ex - im + govt',
+    	'pce = pceg + pces',
+    	'pceg = pcegd + pcegn',
+		'pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother',
+		'pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother',
+		'pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit',
+		'pdin = pdinstruct + pdinequip + pdinip',
+		'ex = exg + exs',
+		'im = img + ims',
+		'govt = govtf + govts'
+    )
+    
+    
+    # identityEqns = c(
+    # )
+
+    
+    coefMatsIdentity =
+    	lapply(identityLlEquations, function(eqn) {
+    		
+	        yCoef = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 1] %>% str_squish(.)
+	        
+	        xCoefs =
+	            eqn %>%
+	            str_split_fixed(., '=', 2) %>%
+	            .[1, 2] %>%
+	        	# Split by whitespace following by a plus or minus
+	        	# https://stackoverflow.com/a/50650318
+    			str_split(., '\\s+(?=\\+|-)') %>%
+	        	.[[1]] %>%
+	            str_replace_all(., ' ', '')
+	        
+    		res =
+    			tibble(
+    				varname = xCoefs,
+    				rhsDenom = filter(ss, varname == yCoef)$value
+    				) %>%
+    			dplyr::mutate(
+    				.,
+    				multiplier = ifelse(str_sub(varname, 1, 1) == '-', -1, 1),
+    				varname =
+    					ifelse(str_sub(varname, 1, 1) == '-', str_sub(varname, 2),
+    						   ifelse(str_sub(varname, 1, 1) == '+', str_sub(varname, 2),
+    						   	   varname
+    						   	   ))
+    				) %>%
+    			dplyr::left_join(., transmute(ss, varname, rhsNum = value), by = c('varname')) %>%
+    			dplyr::transmute(., varname, coef = -1 * multiplier * rhsNum/rhsDenom) %>%
+    			{
+    				if (any(is.na(.$coef))) stop('Error!')
+    				else .
+    			} %>%
+    			dplyr::bind_rows(tibble(varname = yCoef, coef = 1), .) %>%
+    			tidyr::pivot_wider(., names_from = 'varname', values_from = 'coef')
+    		}) %>%
+    	setNames(., map(., ~ colnames(.)[1]))
+
+	
+    # Verify that all equations marked with identity or identity.ll have been calculated
+	p$variablesDf %>% 
+    	filter(., core_endog_type %in% c('identity', 'identity.ll')) %>%
+		.$varname %>%
+		sort(.) %>%
+		{. == sort(names(coefMatsIdentity))} %>%
+		{
+			if (!all(.)) stop('Mismatch')
+			else message('Identity equations checked OK')
+			}
+
+	m$csm$coefMatsIdentity <<- coefMatsIdentity
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+	# Get historical data for training
+	histDf =
+		h$st$q %>%
+		dplyr::filter(., date < m$csm$startDate)
+	
+
+    histDfAll =
+        histDf %>%
+        dplyr::bind_cols(
+            .,
+            constant = 1,
+            dplyr::transmute_if(histDf, is.numeric, function(x) ma2(x)) %>%
+                dplyr::rename_with(., function(x) paste0('ma2.', x)),
+
+            dplyr::transmute_if(histDf, is.numeric, function(x) lma2(x)) %>%
+                dplyr::rename_with(., function(x) paste0('lma2.', x)),
+            
+            dplyr::transmute_if(histDf, is.numeric, function(x) wma2(x)) %>%
+                dplyr::rename_with(., function(x) paste0('wma2.', x)),
+            
+            dplyr::transmute_if(histDf, is.numeric, function(x) wma4(x)) %>%
+                dplyr::rename_with(., function(x) paste0('wma4.', x)),
+
+
+            lapply(1:4, function(l)
+                dplyr::transmute_if(histDf, is.numeric, function(x) dplyr::lag(x, l)) %>%
+                    dplyr::rename_with(., function(x) paste0(x, '.l', l))
+                )
+            )
+
+    # Iterate through equations
+    eqnsList = list(
+    	'pcegdmotor = constant + wma4.pid + ma2.ue + lma2.pcegdmotor + oil',
+    	'pcegdfurnish = constant + wma4.pid + ma2.ue + lma2.pcegdfurnish',
+    	'pcegdrec = constant + wma4.pid + ma2.ue + lma2.pcegdrec',
+    	'pcegdother = constant + wma4.pid + ma2.ue + lma2.pcegdother',
+    	'pcegnfood = constant + wma4.pid + ma2.ue + lma2.pcegnfood',
+    	'pcegnclothing = constant + wma4.pid + ma2.ue + lma2.pcegnclothing',
+    	'pcegngas = constant + wma4.pid + ma2.ue + lma2.pcegngas',
+    	'pcegnother = constant + wma4.pid + ma2.ue + lma2.pcegnother',
+    	'pceshousing = constant + wma4.pid + ma2.ue + lma2.pceshousing',
+    	'pceshealth = constant + wma4.pid + ma2.ue + lma2.pceshealth',
+    	'pcestransport = constant + wma4.pid + ma2.ue + lma2.pcestransport',
+    	'pcesrec = constant + wma4.pid + ma2.ue + lma2.pcesrec',
+    	'pcesfood = constant + wma4.pid + ma2.ue + lma2.pcesfood',
+    	'pcesfinal = constant + wma4.pid + ma2.ue + lma2.pcesfinal',
+    	'pcesother = constant + wma4.pid + ma2.ue + lma2.pcesother',
+    	'pcesnonprofit = constant + wma4.pid + ma2.ue + lma2.pcesnonprofit',
+    	
+    	'pdi = constant + pdin + pdir',
+    	'pdinstruct = constant + wma2.pce + ue + spy + lma2.pdinstruct + wma2.t10y',
+    	'pdinequip = constant + wma2.pce + ue + spy + lma2.pdinequip + wma2.t10y',
+    	'pdinip = constant + wma2.pce + ue + spy + lma2.pdinip + wma2.t10y',
+    	'pdir = constant + wma2.pce + ue + spy + lma2.pdir + wma2.mort30y + wma2.hpi',
+
+    	'exg = constant + lma2.pdin + lma2.exg',
+        'exs = constant + lma2.pdin + lma2.exs',
+        'img = constant + lma2.pdin + lma2.img',
+        'ims = constant + lma2.pdin + lma2.ims',
+    	
+        'govtf = constant + govtf.l1 + lma2.gdp',
+        'govts = constant + govts.l1 + lma2.gdp',
+    	
+    	
+        'hpi20 = constant + hpi + lma2.hpi20 + inf',
+        'houst = constant + hpi + lma2.ue + mort30y + lma2.hsold',
+        'hsold = constant + hpi + lma2.ue + mort30y + lma2.houst',
+        'hpermits = constant + hpi + lma2.ue + mort30y + lma2.hpermits',
+    	
+    	'vsales = constant + lma2.vsales + wma2.pce + oil',
+    	'emp = constant + ue + gdp',
+    	'jolts = constant + ue + gdp',
+    	
+    	'oil = constant + lma2.oil + spy + hpi',
+    	
+    	'delinqrer = constant + ma2.ue + ma2.pid + lma2.delinqrer',
+    	'delinqcc = constant + ma2.ue + ma2.pid + lma2.delinqcc',
+    	'delinqci = constant + ma2.ue + ma2.pid + lma2.delinqci',
+
+    	'mort5y = constant + mort30y',
+
+        'vix = constant + vix.l1 + spy + spy.l1',
+        'moo = constant + moo.l1 + spy + gdp',
+        'metals = constant + metals.l1 + spy + gdp'
+        )
+
+    # Get estimated coefficient matrices
+    estimRes = purrr::map(eqnsList, function(eqn) {
+    	
+        message(eqn)
+        
+        yCoef = eqn %>% str_split_fixed(., '=', 2) %>% .[1, 1] %>% str_squish(.)
+        
+        xCoefs =
+            eqn %>%
+            str_split_fixed(., '=', 2) %>%
+            .[1, 2] %>%
+            str_split(., '\\+') %>%
+            .[[1]] %>%
+            str_squish(.)
+        	
+        inputDf =
+            histDfAll %>%
+            dplyr::select(., date, all_of(c(yCoef, xCoefs))) %>%
+            na.omit(.)
+        
+        yMat = inputDf %>% dplyr::select(., all_of(yCoef)) %>% as.matrix(.)
+        xMat = inputDf %>% dplyr::select(., all_of(xCoefs)) %>% as.matrix(.)
+        
+        lmObj = lm(yMat ~ . - 1, data = as_tibble(xMat))
+    	gofStats =
+    		lmObj %>% broom::glance(.) %>%
+    		dplyr::transmute(., varname = yCoef, r2 = r.squared, adjr2 = adj.r.squared, aic = AIC, bic = BIC, p = p.value)
+    	
+        gofCoefStats =
+        	lmObj %>% broom::tidy(.)
+        
+        ##### Replace lma2.pceg coefficients with pceg.l1, pceg.l2 etc
+        # stop()
+        
+        coefRes =
+            solve(t(xMat) %*% xMat) %*% (t(xMat) %*% yMat) %>%
+            as.data.frame(.) %>%
+            rownames_to_column(.) %>%
+            setNames(., c('coefname', 'value')) %>%
+            as_tibble(.) %>%
+        	purrr::transpose(.) %>%
+        	purrr::map_dfr(., function(x) {
+        		
+        		if (str_sub(x$coefname, 1, 5) == 'lma2.') {
+        			coefname = paste0(str_sub(x$coefname, 6), c('.l1', '.l2'))
+        			value = x$value * .5
+        		} else if (str_sub(x$coefname, 1, 4) == 'ma2.') {
+        			coefname = paste0(str_sub(x$coefname, 5), c('', '.l1'))
+        			value = x$value * .5
+        		} else if (str_sub(x$coefname, 1, 5) == 'wma2.') {
+        			coefname = paste0(str_sub(x$coefname, 6), c('', '.l1'))
+        			value = x$value * getWmaWeights(2)
+        		} else if (str_sub(x$coefname, 1, 5) == 'wma4.') {
+        			coefname = paste0(str_sub(x$coefname, 6), c('', '.l1', '.l2', '.l3'))
+        			value = x$value * getWmaWeights(4)
+        		} else {
+        			coefname = x$coefname
+        			value = x$value
+        		}
+        		
+        		tibble(coefname = coefname, value = value)
+        	}) %>%
+            dplyr::transmute(., coefname, value = value * -1) %>%
+            dplyr::bind_rows(tibble(coefname = yCoef, value = 1), .) %>%
+            tidyr::pivot_wider(., names_from = 'coefname')
+        
+        fittedPlot =
+        	tibble(date = inputDf$date, hist = yMat[, 1], fitted = fitted(lmObj)) %>%
+        	tidyr::pivot_longer(., -date) %>%
+        	ggplot(.) +
+        	geom_line(aes(x = date, y = value, color = name)) +
+        	labs(title = yCoef, x = NULL, y = NULL)
+        
+        return(list(
+        	lmObj = lmObj,
+        	fittedPlot = fittedPlot,
+        	gofCoefStats = gofCoefStats,
+        	gofStats = gofStats,
+        	coefRes = coefRes,
+        	varname = yCoef
+        ))
+    }) %>% setNames(., map(., ~ .$varname))
+    
+    
+    estimRegs = map(estimRes, ~ .$lmObj)
+    estimFittedPlots = map(estimRes, ~ .$fittedPlots)
+    estimGofStats = map_dfr(estimRes, ~ .$gofStats)
+    coefMatsEstimated = map(estimRes,  ~ .$coefRes)
+    
+    
+    # Verify that all equations list match exactly with that specified in inputs.xlsx
+	list(
+	    tibble(a = sort(filter(p$variablesDf, core_endog_type %in% c('estimated'))$varname)),
+		tibble(a = sort(names(coefMatsEstimated)))
+		) %>%
+		{waldo::compare(.[[1]], .[[2]])}
+		# {c(
+		# 	nrow(anti_join(.[[1]], .[[2]], by = 'a')),
+		# 	nrow(anti_join(.[[2]], .[[1]], by = 'a'))
+		# 	)} %>%
+		# {if (!all(. == 0)) stop('Mismatch') else message('Estimated equations checked OK')}
+
+	
+
+    m$csm$estimRegs <<- estimRegs
+    m$csm$estimFittedPlots <<- estimFittedPlots
+    m$csm$estimGofStats <<- estimGofStats
+    m$csm$coefMatsEstimated <<- coefMatsEstimated
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+    coefMat =
+        purrr::imap_dfr(c(m$csm$coefMatsIdentity, m$csm$coefMatsEstimated), function(x, i)
+        	dplyr::bind_cols(coefname = i, x)
+        	) %>%
+        replace(., is.na(.), 0)
+    
+    
+	# Seperate endog (estimated) and exogenous variables -> NOTE there may be some overlap 
+    # Partially exogenous variables will be in both the endogVars and exogVars matrices
+    endogVars = names(c(m$csm$coefMatsIdentity, m$csm$coefMatsEstimated))
+    exogVars = p$variablesDf %>% dplyr::filter(., core_structural == 'core.exog') %>% .$varname
+	
+	m$csm$coefMat <<- coefMat
+	m$csm$endogVars <<- endogVars
+	m$csm$exogVars <<- exogVars
+})
+
+
+## ----------------------------------------------------------------------
+local({
+    
+	coefMat = m$csm$coefMat
+
+	forecasts = lapply(m$csm$exogDfs, function(exogScenarioDf) {
+		
+	    # Create exog df - start 4 quarters before forecast start date
+	    exogDf =
+			exogScenarioDf$st$q %>%
+	    	dplyr::filter(., date >= lubridate::add_with_rollback(m$csm$startDate, months(-12)) & date <= m$csm$endDate)
+	
+	
+	    # Pass accumulator new exogenous variables each time
+	    resDf = purrr::reduce(5:nrow(exogDf), function(df, .row) {
+	        
+	        allCoefDf =
+	            df %>%
+	            dplyr::bind_cols(
+	                .,
+	                constant = 1,
+	                lapply(1:4, function(l)
+	                    dplyr::transmute_if(df, is.numeric, function(x) dplyr::lag(x, l)) %>%
+	                        dplyr::rename_with(., function(x) paste0(x, '.l', l))
+	                    )
+	                ) %>%
+	            dplyr::select(., c('date', colnames(coefMat) %>% .[. != 'coefname'])) %>%
+	            .[.row, ]
+	        
+	        
+	        bMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., is.na(value)) %>% .$name
+	        dMatVars = allCoefDf %>% tidyr::pivot_longer(., -date) %>% dplyr::filter(., !is.na(value)) %>% .$name
+	        # Only keep equations where not already filled
+	        cMat =
+	        	coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>%
+	        	{. * -1}
+	        aMat = coefMat %>% dplyr::filter(., coefname %in% bMatVars) %>% dplyr::select(., all_of(bMatVars)) %>% as.matrix(.)
+	        dMat = allCoefDf %>% dplyr::select(., all_of(dMatVars)) %>% as.matrix(.) %>% t(.)
+	        
+	        bMat = solve(aMat) %*% (cMat %*% dMat)
+	        bMatVec = bMat %>% as.data.frame(.) %>% rownames_to_column(.) %>% {setNames(.$V1, .$rowname)}
+	        
+	        for (varname in names(bMatVec)) {
+	            df[[.row, varname]] = bMatVec[[varname]]
+	        }
+	        
+	        return(df)
+	    }, .init = exogDf)
+	    
+	    
+	    pred =
+	    	resDf %>%
+	    	dplyr::filter(., date >= m$csm$startDate) %>%
+	    	dplyr::select(., all_of(c('date', m$csm$endogVars, m$csm$exogVars)))
+
+	})
+	
+	
+    m$csm$predst <<- forecasts
+})
+
+
+## ----------------------------------------------------------------------
+local({
+
+	res =
+		m$csm$predst %>%
+		lapply(., function(df)
+			lapply(colnames(df) %>% .[. != 'date'], function(.varname) {
+			
+				transform = dplyr::filter(p$variablesDf, varname == .varname)$st
+				fcDf = dplyr::select(df, date, .varname) %>% na.omit(.)
+				histDf = tail(dplyr::filter(na.omit(h$base$q[, c('date', .varname)]), date < min(fcDf$date)), 1)
+				
+				fcDf %>%
+					dplyr::mutate(
+						.,
+						!!.varname := 
+							{
+		                        if (transform == 'dlog') undlog(fcDf[[2]], histDf[[2]])
+								else if (transform == 'apchg') unapchg(fcDf[[2]], 4, histDf[[2]])
+								else if (transform == 'diff1') undiff(fcDf[[2]], 1, histDf[[2]])
+								else if (transform == 'pchg') unpchg(fcDf[[2]], histDf[[2]])
+								else if (transform == 'base') .[[2]]
+								else stop('Err: ', .varname)
+								}
+							)
+				
+				}) %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date)
+		)
+
+	m$csm$predbase0 <<- res
+})
+
+
+## ----------------------------------------------------------------------
+local({
+
+	# Delete quarterly forecasts on quarters where monthly data exists ->
+	# replace with monthly forecasts and interpolate with remaining monthly forecasts
+
+	predbase0m = imap(m$csm$predbase0, function(df, scenarioname) {
+		
+		varnames =
+			p$variablesDf %>%
+			dplyr::filter(core_structural %in% c('core.endog', 'core.exog.p') & freq %in% c('d', 'w', 'm')) %>%
+			.$varname
+
+		lapply(varnames, function(.varname) {
+			message(.varname)
+			df %>%
+				dplyr::transmute(., date, csm = .[[.varname]]) %>% # Shift back by one quarter to middle of quarter
+				mutate(., date = add_with_rollback(date, months(1))) %>%
+				dplyr::left_join(
+					tibble(
+						date =
+							seq(
+								from = add_with_rollback(head(.$date, 1), months(-4)),
+								to = add_with_rollback(tail(.$date, 1), months(1)),
+								by = '1 month'
+								)
+						),
+					.,
+					by = 'date'
+					) %>%
+				dplyr::left_join(
+					.,
+					h$base$m %>% dplyr::transmute(., date, hist = .[[.varname]]),
+					by = 'date'
+					) %>%
+				dplyr::mutate(., value = ifelse(!is.na(hist), hist, csm)) %>%
+				dplyr::mutate(., value = zoo::na.spline(value)) %>%
+				dplyr::transmute(., date, !!.varname := value)
+
+			}) %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+			# Bind qualitative variables for calculations
+			dplyr::left_join(., m$qual$pred[[scenarioname]]$base$m, by = 'date') %>%
+			dplyr::arrange(., date) %>%
+			# Calculations
+			# dplyr::mutate(
+			# 	.,
+			# 	ps = pid - po,
+			# 	psr = ps/pi
+			# ) %>%
+			# Now get columns to show only if after historical data
+			{lapply(colnames(.) %>% .[. != 'date'], function(varname)
+				dplyr::select(., all_of(c('date', varname))) %>%
+					dplyr::filter(., date > max(na.omit(h$base$m[, c('date', varname)])$date))
+			)} %>%
+			purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date'))
+		})
+	
+	
+	m$csm$predbase0m <<- predbase0m
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+	# Aggregate monthly variables to quarterly and replace existing quarterly variables in m$csm$predbase0
+	res = imap(m$csm$predbase0m, function(df, scenarioname)
+		
+		# First need to bind to historical variables in case needed for quarterly aggregation
+		df %>%
+			tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE) %>%
+			dplyr::group_by(., varname) %>%
+			namedSplit(.) %>%
+		    imap(., function(x, .varname)
+		    	x %>%
+		    		dplyr::bind_rows(
+		    			dplyr::filter(h$flat, date < x$date[[1]] & varname == .varname & freq == 'm' & form == 'base')[, c('date', 'varname', 'value')],
+		                .
+		                ) %>%
+		    	 	na.omit(.) %>%
+		    	 	econforecasting::monthlyDfToQuarterlyDf(.) %>%
+		    	 	dplyr::filter(., date > tail(na.omit(h$base$q[, c('date', .varname)]), 1)$date) %>%
+		    		set_names(., c('date', .varname))
+		    	) %>%
+			purrr::reduce(., function(x, y) full_join(x, y, by = 'date')) %>%
+			dplyr::arrange(., date) %>%
+			# Now replace existing quarterly variables in m$csm$predbase0
+			tidyr::pivot_longer(., -date, names_to = 'varname', values_to = 'value', values_drop_na = TRUE) %>%
+			dplyr::full_join(
+				.,
+				tidyr::pivot_longer(
+					m$csm$predbase0[[scenarioname]], -date, names_to = 'varname',
+					values_to = 'value_prev', values_drop_na = TRUE
+					),
+				by = c('date', 'varname')
+				) %>%
+			dplyr::transmute(
+				.,
+				date,
+				varname,
+				value = ifelse(!is.na(value), value, value_prev)
+			) %>%
+			# Filter out any overlaps with historical
+			dplyr::group_by(., varname) %>%
+			dplyr::group_split(.) %>%
+			purrr::map_dfr(., function(x) {
+				lastHistDate =
+					h$flat %>%
+					dplyr::filter(., form == 'base' & freq == 'q' & varname == unique(x$varname)) %>%
+					.$date %>%
+					max(.)
+				
+				x %>% dplyr::filter(., date > lastHistDate)
+			}) %>%
+			# Finalize
+			tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+			dplyr::arrange(., date) %>%
+			# Finally add calculated variables
+			dplyr::mutate(
+				.,
+				nx = ex - im
+			)
+		)
+
+	
+	m$csm$predbaseq <<- res
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+	# Combine with nowcasts and external forecasts
+	# Merge external from SPF
+	
+	
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+	# Convert all to monthly, then deaggregate
+	
+	# flat0 =
+	# 	dplyr::bind_rows(
+	# 		purrr::imap_dfr(m$csm$predbaseq, function(x, i)
+	# 			tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+	# 				dplyr::mutate(., freq = 'q', scenarioname = i, form = 'base')
+	# 			),
+	# 		purrr::imap_dfr(m$csm$predbase0m, function(x, i)
+	# 			tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+	# 				dplyr::mutate(., freq = 'm', scenarioname = i, form = 'base')
+	# 			)
+	# 		) %>%
+	# 	dplyr::group_by(., freq, scenarioname, form, varname) %>%
+	# 	dplyr::group_split(.) %>%
+	# 	lapply(., function(x) {
+	# 		
+	# 		.varname = x$varname[[1]]
+	# 		.freq = x$freq[[1]]
+	# 		.scenarioname = x$scenarioname[[1]]
+	# 		
+	# 		transform = dplyr::filter(p$variablesDf, varname == .varname)[['st']]
+	# 		fcDf = dplyr::select(x, date, value) %>% na.omit(.)
+	# 		histDf =
+	# 			dplyr::filter(na.omit(p$variables[[.varname]]$h[['st']][[.freq]]), date < min(fcDf$date)) %>%
+	# 			tail(., 1) %>%
+	# 			dplyr::select(., date, value)
+	# 			
+	# 		dplyr::bind_rows(histDf, fcDf) %>%
+	# 			dplyr::mutate(
+	# 				.,
+	# 				value = 
+	# 					{
+	#                         if (transform == 'dlog') dlog(.[[2]])
+	# 						else if (transform == 'apchg') apchg(.[[2]], 12)
+	# 						else if (transform == 'pchg') pchg(.[[2]])
+	# 						else if (transform == 'base') .[[2]]
+	# 						else if (transform == 'none') NA
+	# 						else stop('Err: ', .varname)
+	# 						}
+	# 					) %>%
+	# 			.[2:nrow(.),] %>%
+	# 			dplyr::mutate(
+	# 				.,
+	# 				scenarioname = .scenarioname,
+	# 				varname = .varname,
+	# 				freq = .freq
+	# 			)
+	# 	})
+
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+	flatBase =
+		dplyr::bind_rows(
+			purrr::imap_dfr(m$csm$predbaseq, function(x, i)
+				tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+					dplyr::mutate(., freq = 'q', scenarioname = i, form = 'base')
+				),
+			purrr::imap_dfr(m$csm$predbase0m, function(x, i)
+				tidyr::pivot_longer(x, -date, names_to = 'varname', values_drop_na = TRUE) %>%
+					dplyr::mutate(., freq = 'm', scenarioname = i, form = 'base')
+				)
+			)
+
+	flat =
+		flatBase %>%
+		dplyr::group_by(., freq, scenarioname, form, varname) %>%
+		dplyr::group_split(.) %>%
+		purrr::imap_dfr(., function(x, i) {
+			# message(i)
+			.varname = x$varname[[1]]
+			.freq = x$freq[[1]]
+			.scenarioname = x$scenarioname[[1]]
+
+			fcDf = dplyr::select(x, date, value) %>% na.omit(.)
+			histDf =
+				dplyr::filter(na.omit(p$variables[[.varname]]$h[['base']][[.freq]]), date < min(fcDf$date)) %>%
+				tail(., 1) %>%
+				dplyr::select(., date, value)
+			
+			purrr::map_dfr(c('d1', 'd2'), function(.form) {
+				
+				transform = dplyr::filter(p$variablesDf, varname == .varname)[[.form]]
+
+				dplyr::bind_rows(histDf, fcDf) %>%
+					dplyr::mutate(
+						.,
+						value = 
+							{
+		                        if (transform == 'dlog') dlog(.[[2]])
+								else if (transform == 'apchg') apchg(.[[2]], {if (.freq == 'q') 4 else 12})
+								else if (transform == 'pchg') pchg(.[[2]])
+								else if (transform == 'base') .[[2]]
+								else if (transform == 'none') NA
+								else stop('Err: ', .varname)
+								}
+							) %>%
+					.[2:nrow(.),] %>%
+					dplyr::mutate(
+						.,
+						scenarioname = .scenarioname,
+						varname = .varname,
+						freq = .freq,
+						form = .form
+					)
+			}) %>% na.omit(.)
+		}) %>%
+		dplyr::bind_rows(flatBase, .)
+	
+	
+	
+	res =
+		flat %>%
+		as.data.table(.) %>% 
+		split(., by = c('scenarioname', 'freq', 'form'), flatten = FALSE, keep.by = FALSE) %>%
+		lapply(., function(x)
+			lapply(x, function(y)
+				lapply(y, function(z)
+					as_tibble(z) %>%
+						tidyr::pivot_wider(., names_from = 'varname', values_from = 'value') %>%
+						dplyr::arrange(., date)
+					)
+				)
+			)
+	
+	
+	for (scenarioname in names(res)) {
+		m$csm$pred[[scenarioname]] <<- res[[scenarioname]]
+	}
+	m$csm$predFlat <<- flat
+})
+
+
+## ----------------------------------------------------------------------
+local({
+	
+	predCharts =
+		m$csm$predFlat %>%
+		dplyr::group_by(., varname) %>%
+		econforecasting::namedSplit(.) %>%
+		lapply(., function(x) {
+			
+			message(x$varname[[1]])
+			param =
+				p$variablesDf %>%
+				dplyr::filter(., varname == x$varname[[1]]) %>%
+				as.list(.)
+			
+			plots =
+				purrr::cross(list(freq = c('q', 'm'), form = c('d1', 'd2'))) %>%
+				setNames(., map_chr(., ~ paste0(.$form, '.', .$freq))) %>%
+				lapply(., function(y) {
+					
+					
+					if (y$freq == 'm' && param$freq == 'q') return(NULL)
+					if (param[[y$form]] == 'none') return(NULL)
+					
+					message(y$form, ';', y$freq)
+					
+					transform = param[[y$form]]
+					unitname = {
+						if (transform == 'apchg') 'Annualized % Chg'
+						else if (transform == 'pchg') 'Pct Chg'
+						else if (transform == 'dlog') 'Log-Difference'
+						else if (transform == 'base') param$units
+						else if (transform == 'none') 'None'
+						else stop ('Add transform type')
+					}
+					
+					histDf = 
+						h$flat %>%
+						dplyr::filter(., freq == y$freq, form == y$form, varname == param$varname) %>%
+						dplyr::arrange(., date) %>%
+						dplyr::transmute(., date, value, type = 'historical')
+
+					forecastDf =
+						x %>%
+						dplyr::filter(., freq == y$freq & form == y$form) %>%
+						dplyr::group_by(scenarioname) %>%
+						dplyr::group_split(.) %>%
+						purrr::map_dfr(., function(z)
+							dplyr::bind_rows(mutate(tail(histDf, 1), scenarioname = unique(z$scenarioname)), z)
+							) %>%
+						dplyr::transmute(., date, value, type = scenarioname)
+					
+					dplyr::bind_rows(histDf, forecastDf) %>%
+						ggplot(.) +
+						geom_line(aes(x = date, y = value, color = type)) +
+						geom_point(aes(x = date, y = value, color = type)) +
+						scale_color_manual(
+							values = c('historical' = 'black', 'baseline' = 'red', 'downside' = 'blue')
+						) +
+						scale_linetype_manual(
+							values = c('historical' = 'solid', 'baseline' = 'solid', 'downside' = 'blue')
+						) +
+						geom_table(
+							data = tibble(
+								x = min(forecastDf$date),
+								y = max(bind_rows(histDf, forecastDf)$value),
+					            z = list(
+					            	forecastDf %>%
+					            		mutate(., value = round(value, 1)) %>%
+					            		pivot_wider(., names_from = 'type', values_from = 'value') %>%
+					            		arrange(., date) %>%
+					            		.[1:4, ]
+					            	)
+							),
+							aes(x = x, y = y, label = z),
+							size = 2
+							) +
+						labs(
+							subtitle = paste0({if (y$freq == 'q') 'Quarterly' else 'Monthly'}, ' Forecast'),
+							x = NULL, y = unitname, color = NULL, linetype = NULL
+							) +
+						theme_gray(base_size = 12) +
+						theme(axis.title = element_text(size = 10), axis.title.y = element_text(size = 10))
+					}) %>%
+				purrr::keep(., ~ !is.null(.) && nrow(.$data) > 0)
+
+			title =
+				cowplot::ggdraw() +
+				cowplot::draw_label(param$fullname, fontface = 'bold', x = 0, hjust = 0) +
+				theme(plot.margin = margin(0, 0, 0, 20))
+			
+			
+			col1 =  {
+				if (!is.null(plots$d1.q) && !is.null(plots$d2.q))
+					cowplot::plot_grid(
+						plots$d1.q + theme(legend.position = 'none'),
+						plots$d2.q + theme(legend.position = 'none'),
+						ncol = 1,
+						rel_heights = c(1, .8)
+						)
+				else if (!is.null(plots$d1.q))
+					cowplot::plot_grid(plots$d1.q + theme(legend.position = 'none'), ncol = 1)
+				else
+					NULL
+				}
+					
+			col2 =  {
+				if (!is.null(plots$d1.m) && !is.null(plots$d2.m))
+					cowplot::plot_grid(
+						plots$d1.m + theme(legend.position = 'none'),
+						plots$d2.m + theme(legend.position = 'none'),
+						ncol = 1,
+						rel_heights = c(1, .8)
+						)
+				else if (!is.null(plots$d1.m))
+					cowplot::plot_grid(plots$d1.m + theme(legend.position = 'none'), ncol = 1)
+				else
+					NULL
+			}
+			
+			plotArea = {
+				if (!is.null(col1) && !is.null(col2)) cowplot::plot_grid(col1, col2, nrow = 1)
+				else if (!is.null(col1)) cowplot::plot_grid(col1, nrow = 1)
+				else stop('None')
+			}
+			
+			cowplot::plot_grid(
+				title,
+				plotArea,
+				cowplot::get_legend(plots[[1]] + guides(color = guide_legend(nrow = 1))),
+				nrow = 3,
+				rel_heights = c(.15, 1, .1)
+			)
+			
+
+			})
+	
+	print(predCharts)
+	
+	purrr::imap(predCharts, function(x, i)
+		ggsave(
+			file.path(OUTPUT_DIR, paste0('csm_', i, '.png')),
+			plot = x, scale = 2.5, width = 4, height = 3, units = 'in'
+			)
 		)
 	
-	# if (RESET_ALL == TRUE) {
-	# 	
-	# 	DBI::dbGetQuery(conn, 'TRUNCATE csm_releases')
-	# 	DBI::dbGetQuery(conn, 'TRUNCATE csm_values')
-	# 	DBI::dbGetQuery(conn, 'TRUNCATE csm_history')
-	# }
 	
-	db <<- db
+	m$csm$predCharts <<- predCharts
 })
 
 
 ## ----------------------------------------------------------------------
 local({
-	
-	if (RESET_ALL) {
-		DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_releases CASCADE')
-		DBI::dbGetQuery(db, '
-			CREATE TABLE csm_releases (
-				relkey VARCHAR(255) CONSTRAINT relkey_pk PRIMARY KEY,
-				relname VARCHAR(255) CONSTRAINT relname_uk UNIQUE NOT NULL,
-				relsc VARCHAR(255) NOT NULL,
-				relsckey VARCHAR(255) ,
-				relurl VARCHAR(255),
-				relnotes TEXT,
-				n_varnames INTEGER,
-				varnames JSON,
-				n_dfm_varnames INTEGER,
-				dfm_varnames JSON,
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-			)
-		')
-	}
-	
-	econforecasting::createInsertQuery(
-	    p$releasesDf %>%
-	    	transmute(
-	    		.,
-	    		relkey, relname, relsc, relsckey , relurl, relnotes,
-	    		n_varnames = ifelse(is.na(n_varnames), 0, n_varnames), varnames,
-	    		n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames
-	    	),
-	    'csm_releases',
-	    str_squish('ON CONFLICT ON CONSTRAINT relkey_pk DO UPDATE
-	    SET
-	    relname=EXCLUDED.relname,
-	    relsc=EXCLUDED.relsc,
-	    relsckey=EXCLUDED.relsckey,
-	    relurl=EXCLUDED.relurl,
-	    relnotes=EXCLUDED.relnotes,
-	    n_varnames=EXCLUDED.n_varnames,
-	    varnames=EXCLUDED.varnames,
-	    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
-	    dfm_varnames=EXCLUDED.dfm_varnames
-	    ')) %>%
-		DBI::dbSendQuery(db, .)
-
-	
-})
-
-
-## ----------------------------------------------------------------------
-local({
-	
-	if (RESET_ALL) {
-		DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_params CASCADE')
-		DBI::dbGetQuery(db, '
-			CREATE TABLE csm_params (
-				varname VARCHAR(255) CONSTRAINT varname_pk PRIMARY KEY,
-				fullname VARCHAR(255) CONSTRAINT fullname_uk UNIQUE NOT NULL,
-				category VARCHAR(255) NOT NULL,
-				dispgroup VARCHAR(255),
-				disporder INT,
-				source VARCHAR(255) NOT NULL,
-				sckey VARCHAR(255),
-				relkey VARCHAR(255) NOT NULL,
-				units VARCHAR(255) NOT NULL,
-				freq CHAR(1) NOT NULL,
-				append_eom_with_currentval CHAR(1),
-				sa CHAR(1) NOT NULL,
-				st VARCHAR(50) NOT NULL,
-				st2 VARCHAR(50) NOT NULL,
-				d1 VARCHAR(50) NOT NULL,
-				d2 VARCHAR(50) NOT NULL,
-				nc_dfm_input BOOLEAN,
-				nc_method VARCHAR(50) NOT NULL,
-				initial_forecast VARCHAR(50),
-				core_structural VARCHAR(50) NOT NULL,
-				core_endog_type VARCHAR(50),
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				CONSTRAINT relkey_fk FOREIGN KEY (relkey) REFERENCES csm_releases (relkey)
-					ON DELETE CASCADE ON UPDATE CASCADE
-			)
-		')
-	}
-	
-	econforecasting::createInsertQuery(
-	    p$variablesDf %>%
-	    	transmute(
-	    		.,
-	    		varname, fullname, category, dispgroup, disporder,
-	    		source, sckey, relkey, units, freq, append_eom_with_currentval,
-	    		sa, st, st2, d1, d2, nc_dfm_input, nc_method, initial_forecast,
-	    		core_structural, core_endog_type
-	    	),
-	    'csm_params',
-	    ) %>%
-		DBI::dbSendQuery(db, .)
-
-})
-
-
-## ----------------------------------------------------------------------
-local({
-	
-	if (RESET_ALL) {
-		DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_tstypes CASCADE')
-		
-		# tstypes 'hist', 'forecast', 'nc'
-		DBI::dbGetQuery(db, '
-			CREATE TABLE csm_tstypes (
-				tskey VARCHAR(10) CONSTRAINT tskey_pk PRIMARY KEY,
-				tstype CHAR(1) NOT NULL, --h or fc
-				fctype VARCHAR(255), -- fc type
-				shortname VARCHAR(100) NOT NULL,
-				fullname VARCHAR(255) NOT NULL,
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-			);
-		')
-		
-		DBI::dbGetQuery(db, 'CREATE INDEX tstype_ix ON csm_tstypes (tstype);')
-		DBI::dbGetQuery(db, 'CREATE INDEX fctype_ix ON csm_tstypes (fctype);')
-	}
-		
-	tsTypes = tribble(
-		~ tskey, ~ tstype, ~ fctype, ~ shortname, ~ fullname,
-		'hist', 'h', NA, 'Historical Data', 'Historical Data',
-		'baseline', 'f', 'csm', 'Baseline Model', 'CMEFI Baseline Economic Forecast',
-		'downside', 'f', 'csm', 'Downside Model', 'CMEFI Downside Economic Forecast',
-		'nc', 'f', 'nc', 'Nowcast Model', 'CMEFI Macroeconomic Nowcast',
-		'atl', 'f', 'ext', 'Atlanta Fed', 'Atlanta Fed GDPNow Model',
-		'stl', 'f', 'ext', 'St. Louis Fed', 'St. Louis Fed Economic News Model',
-		'nyf', 'f', 'ext', 'NY Fed', 'New York Fed Staff Nowcast',
-		'spf', 'f', 'ext', 'Survey of Professional Forecasters', 'Survey of Professional Forecasters',
-		'wsj', 'f', 'ext', 'WSJ Consensus', 'Wall Street Journal Consensus Forecast',
-		'fnm', 'f', 'ext', 'Fannie Mae', 'Fannie Mae Forecast',
-		'gsu', 'f', 'ext', 'GSU', 'Georgia State University Forecast',
-		'gsc', 'f', 'ext', 'Goldman Sachs', 'Goldman Sachs Forecast',
-		'spg', 'f', 'ext', 'S&P Global', 'S&P Global Ratings',
-		'ucl', 'f', 'ext', 'UCLA Anderson', 'UCLA Anderson Forecast',
-		'wfc', 'f', 'ext', 'Wells Fargo', 'Wells Fargo Forecast',
-
-		'cbo', 'f', 'ext', 'CBO', 'Congressional Budget Office Projections',
-		'cle', 'f', 'fut', 'Futures-Implied Inflation Rates', 'Futures-Implied Expected Inflation Model',
-		'cme', 'f', 'fut', 'Futures-Implied Interest Rates', 'Futures-Implied Expected Benchmark Rates Model',
-		'dns', 'f', 'fut', 'Futures-Implied Treasury Yield', 'Futures-Implied Expected Treasury Yields Model'
-		)
-
-	econforecasting::createInsertQuery(tsTypes, 'csm_tstypes') %>%
-		DBI::dbSendQuery(db, .)
-
-
-})
-
-
-## ----------------------------------------------------------------------
-local({
-	
-	if (RESET_ALL) {
-		DBI::dbGetQuery(db, 'DROP TABLE IF EXISTS csm_tsvalues')
-		
-		# tstypes 'hist', 'forecast', 'nc'
-		DBI::dbGetQuery(db, '
-			CREATE TABLE csm_tsvalues (
-				tskey VARCHAR(10) NOT NULL,
-				vdate DATE NOT NULL,
-				freq CHAR(1) NOT NULL,
-				form VARCHAR(5) NOT NULL,
-				varname VARCHAR(255) NOT NULL,
-				date DATE NOT NULL,
-				value NUMERIC(20, 4) NOT NULL,
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				CONSTRAINT tsvalues_pk PRIMARY KEY (tskey, vdate, freq, form, varname, date),
-				CONSTRAINT tskey_fk FOREIGN KEY (tskey) REFERENCES csm_tstypes (tskey)
-					ON DELETE CASCADE ON UPDATE CASCADE,
-				CONSTRAINT varname_fk FOREIGN KEY (varname) REFERENCES csm_params (varname)
-					ON DELETE CASCADE ON UPDATE CASCADE
-			);
-		')
-	}
-	
-	onConflict = str_squish('ON CONFLICT ON CONSTRAINT tsvalues_pk DO UPDATE
-	    SET
-	    tskey=EXCLUDED.tskey,
-	    vdate=EXCLUDED.vdate,
-	    freq=EXCLUDED.freq,
-	    form=EXCLUDED.form,
-	    varname=EXCLUDED.varname,
-	    date=EXCLUDED.date
-	    ')
-	
-	resVals = list()
-	
-	# Hist
-	resVals$hist =
-		econforecasting::createInsertQuery(
-			h$flat %>%
-	    	transmute(., tskey = 'hist', vdate = VINTAGE_DATE, freq, form, varname, date, value),
-		    'csm_tsvalues',
-		    onConflict
-			) %>%
-		DBI::dbGetQuery(db, .)
-
-	# CSM
-	resVals$csm =
-		econforecasting::createInsertQuery(
-			m$csm$predFlat %>%
-	    		transmute(., tskey = scenarioname, vdate = VINTAGE_DATE, freq, form, varname, date, value),
-		    'csm_tsvalues',
-		    onConflict
-			) %>%
-		DBI::dbGetQuery(db, .)
-
-	# NC
-	resVals$nc =
-		econforecasting::createInsertQuery(
-			m$ncpredFlat %>%
-				transmute(., tskey = 'nc', vdate, freq, form, varname, date, value),
-			'csm_tsvalues',
-			onConflict
-			) %>%
-		DBI::dbGetQuery(db, .)
-	
-	# External Forecasts
-	resVals$ext =
-		econforecasting::createInsertQuery(
-			dplyr::bind_rows(m$ext$sources) %>%
-				transmute(., tskey = fcname, vdate, freq, form, varname, date, value),
-	    	'csm_tsvalues',
-	    	onConflict
-	    	) %>%
-		DBI::dbGetQuery(db, .)
+  
+    saveRDS(
+    	list(p = p, h = h, m = m),
+    	str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m4.rds')
+    	)
+    
 })
 
