@@ -866,7 +866,7 @@ local({
       'gdp', 'Output', 'Real GDP', 'Percentage change, annual rate',
       'pcepi', 'Prices', 'Price Index, Personal Consumption Expenditures (PCE)', 'Percentage change, annual rate',
       'inf', 'Prices', 'Consumer Price Index, All Urban Consumers (CPI-U)', 'Percentage change, annual rate',
-      'wti', 'Prices', 'Price of Crude Oil, West Texas Intermediate (WTI)', 'Dollars per barrel',
+      'oil', 'Prices', 'Price of Crude Oil, West Texas Intermediate (WTI)', 'Dollars per barrel',
       'ue', 'Labor', 'Unemployment Rate, Civilian, 16 Years or Older', 'Percent',
       'ffr', 'Interest Rates', 'Federal Funds Rate', 'Percent',
       'pce', 'Components of GDP (Real)', 'Personal Consumption Expenditures', 'Percentage change, annual rate',
@@ -1249,7 +1249,7 @@ local({
 	predFlat =
 		m$ext$sources %>%
 		dplyr::bind_rows(.) %>%
-		dplyr::transmute(., vdate, freq, form, varname, date, value)
+		dplyr::transmute(., fcname, vdate, freq, form, varname, date, value)
 
 	if (nrow(na.omit(predFlat)) != nrow(predFlat)) stop('Missing obs')
 	

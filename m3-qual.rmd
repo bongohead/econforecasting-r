@@ -105,18 +105,26 @@ local({
     ##### INF #####
 
     rates$baseline$inf =
-        m$ext$sources$cle %>%
-        dplyr::filter(., varname == 'inf') %>%
-        dplyr::filter(., vdate == max(vdate)) %>%
-        dplyr::filter(., date > max(p$variables$inf$h$base$m$date)) %>%
-        dplyr::transmute(., freq, form, date, value)
-    
+    	# Add hist and interpolate any missing values between hist and forecast; then filter out hist
+    	p$variables$inf$h$base$m %>%
+    	dplyr::bind_rows(
+    		.,
+	        filter(m$ext$sources$cle, date > max(.$date) & varname == 'inf' & freq == 'm' & form == 'd1') %>%
+		        dplyr::transmute(., freq, form, date, value),
+    	) %>%
+    	# Add missing rows
+    	dplyr::left_join(
+    		tibble(date = seq(from = min(.$date), to = max(.$date), by = '1 month')),
+    		.,
+    		by = 'date'
+    	) %>%
+    	dplyr::mutate(., value = zoo::na.approx(value), form = 'd1', freq = 'm') %>%
+    	dplyr::filter(., date > max(p$variables$inf$h$base$m$date)) %>%
+    	dplyr::transmute(., freq, form, date, value)
+
     
     rates$downside$inf =
-        m$ext$sources$cle %>%
-        dplyr::filter(., varname == 'inf') %>%
-        dplyr::filter(., vdate == max(vdate)) %>%
-        dplyr::filter(., date > max(p$variables$inf$h$base$m$date)) %>%
+    	rates$baseline$inf %>%
     	dplyr::mutate(
     		.,
     		value = ifelse(date == as.Date('2022-01-01'), value - .2, value),
