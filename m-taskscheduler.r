@@ -27,7 +27,7 @@ system(
 )
 
 # Convert to R -> Run
-runRes = lapply(list('m1-pull-data.rmd', 'm2-nc.rmd', 'm3-qual.rmd', 'm4-csm.rmd', 'm5-sql.rmd'), function(filename) {
+runRes = lapply(list('m1-pull-data.rmd', 'm2-nowcast.rmd', 'm3-qual.rmd', 'm4-csm.rmd', 'm5-sql.rmd'), function(filename) {
 	
 	message('\n\n########## Started - ', filename, ': ', Sys.time(), ' ##########\n\n')
 	
