@@ -3,7 +3,7 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = '2021-09-04'
+VINTAGE_DATE = as.Date('2021-09-04')
 RESET_ALL = TRUE
 
 
@@ -19,9 +19,15 @@ sink(sinkFile, type = 'message')
 
 message('Run :', Sys.Date())
 
+system(
+	'"C:/Program Files/Git/bin/bash.exe" -c  "tail -n 50 -f "D:/OneDrive/__Projects/econforecasting/sink.txt""',
+	intern = F, wait = F,
+	invisible = FALSE,
+	minimized = FALSE
+)
 
 # Convert to R -> Run
-runRes = lapply(list('m1-pull-data.rmd', 'm2-qual.rmd', 'm3-qual.rmd', 'm4-csm.rmd', 'm5-sql.rmd'), function(filename) {
+runRes = lapply(list('m1-pull-data.rmd', 'm2-nc.rmd', 'm3-qual.rmd', 'm4-csm.rmd', 'm5-sql.rmd'), function(filename) {
 	
 	message('\n\n########## Started - ', filename, ': ', Sys.time(), ' ##########\n\n')
 	
@@ -44,7 +50,7 @@ runRes = lapply(list('m1-pull-data.rmd', 'm2-qual.rmd', 'm3-qual.rmd', 'm4-csm.r
 			PACKAGE_DIR = \'{PACKAGE_DIR}\',
 			INPUT_DIR = \'{INPUT_DIR}\',
 			OUTPUT_DIR = \'{OUTPUT_DIR}\',
-			VINTAGE_DATE = \'{VINTAGE_DATE}\',
+			VINTAGE_DATE = as.Date(\'{VINTAGE_DATE}\'),
 			RESET_ALL = {RESET_ALL}
 			) {{
 			{body}
@@ -55,12 +61,6 @@ runRes = lapply(list('m1-pull-data.rmd', 'm2-qual.rmd', 'm3-qual.rmd', 'm4-csm.r
 		parse(text = ., keep.source = FALSE) %>%
 		eval(.)
 	
-	system(
-		'"C:/Program Files/Git/bin/bash.exe" -c  "tail -n 50 -f "D:/OneDrive/__Projects/econforecasting/sink.txt""',
-		intern = F, wait = F,
-		invisible = FALSE,
-		minimized = FALSE
-		)
 	# "C:\Program Files\Git\bin\bash.exe" -c  "ls C:/Users"
 	# tail -n 50 -f 'D:/OneDrive/__Projects/econforecasting/sink.txt'
 	# 
