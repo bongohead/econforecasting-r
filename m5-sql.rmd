@@ -304,7 +304,7 @@ local({
 	# External Forecasts
 	resVals$ext =
 		econforecasting::createInsertQuery(
-			dplyr::bind_rows(m$ext$sources) %>%
+			m$ext$predFlat %>%
 				transmute(., tskey = fcname, vdate, freq, form, varname, date, value),
 	    	'csm_tsvalues',
 	    	onConflict

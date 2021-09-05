@@ -5,7 +5,7 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-09-03')
+VINTAGE_DATE = as.Date('2021-09-04')
 ```
 
 
@@ -555,7 +555,11 @@ local({
 	tribble(
       ~ varname, ~ fredId, 
       'gdp', 'GDPNOW',
-      'pce', 'PCECONTRIBNOW'
+      'pce', 'PCENOW',
+      'pdi', 'GDPINOW',
+      'govt', 'GOVNOW',
+      'ex', 'EXPORTSNOW',
+      'im', 'IMPORTSNOW'
     )
   
   # GDPNow
@@ -1134,7 +1138,7 @@ Calculated TDNS1: TYield_10y
 Calculated TDNS2: -1 * (t10y - t03m)
 Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 Keep these treasury yield forecasts as the external forecasts ->
-note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to 
+note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to
 ```{r}
 local({
     
@@ -1198,7 +1202,7 @@ local({
     df1 =
         df0 %>%
         dplyr::select(., varname, date, value) %>%
-        dplyr::left_join(
+        dplyr::inner_join(
             .,
             m$ext$sources$cme %>%
                 dplyr::filter(., vdate == max(vdate)) %>%
@@ -1238,6 +1242,22 @@ local({
 })
 ```
 
+## Get Combined Data
+```{r}
+local({
+	
+	predFlat =
+		m$ext$sources %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::transmute(., vdate, freq, form, varname, date, value)
+
+	if (nrow(na.omit(predFlat)) != nrow(predFlat)) stop('Missing obs')
+	
+	m$ext$predFlat <<- predFlat
+})
+```
+
+
 # Finalize
 
 ## Export
@@ -1248,7 +1268,7 @@ local({
     	list(p = p, h = h, m = m),
     	str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m1.rds')
     	)
-    
+	
 })
 ```
 
