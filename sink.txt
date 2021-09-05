@@ -1141,3 +1141,16 @@ Error in sum(resVals) : invalid 'type' (list) of argument
 Error in sum(resVals) : invalid 'type' (list) of argument
 Error in sum(resVals) : invalid 'type' (list) of argument
 Error in sum(.) : invalid 'type' (list) of argument
+Error in sum(resVals) : invalid 'type' (list) of argument
+1565011387915947512 rows successfully added
+1565011387915947512 rows successfully added
+1565011387915947512 rows successfully added
+143459 rows successfully added
+Warning in print.default(sum(unlist(resVals)), " rows successfully added") :
+  NAs introduced by coercion
+Error in print.default(sum(unlist(resVals)), " rows successfully added") : 
+  invalid printing digits -2147483648
+Error: unexpected symbol in:
+"        sum(unlist(resVals)
+        print"
+143459 rows successfully added
