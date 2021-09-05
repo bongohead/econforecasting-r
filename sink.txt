@@ -15,7 +15,7 @@ Run :2021-09-05
  .... [TRUNCATED] 
 
 
-########## Started - m1-pull-data.rmd: 2021-09-05 16:57:39 ##########
+########## Started - m1-pull-data.rmd: 2021-09-05 17:25:19 ##########
 
 
 
@@ -136,6 +136,10 @@ Getting data ... jolts
 Getting data ... wei
 Getting data ... oil
 Getting data ... bankci
+Request failed [429]. Retrying in 1 seconds...
+Request failed [429]. Retrying in 3.3 seconds...
+Request failed [429]. Retrying in 7.1 seconds...
+Request failed [429]. Retrying in 13 seconds...
 Getting data ... bankdeposits
 Getting data ... bankre
 Getting data ... stlfsi
@@ -349,7 +353,7 @@ pi
 pid
 ue
 bankcredit
-[1mindexing[0m [34mfile20887f252267[0m [=================================] [32m?[0m, eta: [36m 0s[0m                                                                                                            -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       2021-01-01
+[1mindexing[0m [34mfile27942c2a613e[0m [=========------------------------] [32m?[0m, eta: [36m 0s[0m[1mindexing[0m [34mfile27942c2a613e[0m [=================================] [32m?[0m, eta: [36m 0s[0m                                                                                                            -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       2021-01-01
 -/                                                                       -/                                                                       2021-04-01
 -/                                                                       -/                                                                       2021-07-01
 -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       -/                                                                       trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
@@ -357,18 +361,18 @@ Content type 'application/vnd.ms-excel' length 396288 bytes (387 KB)
 downloaded 387 KB
 
 -/                                                                       Starting Quandl data scrape...
-[1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m?[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       Completed Quandl data scrape
+[1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m?[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m?[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                       Completed Quandl data scrape
 Starting CME data scrape...
 Completed CME data scrape...
 Adding monthly interpolation ...
 
 
-########## Finished - m1-pull-data.rmd: 2021-09-05 17:00:07 ##########
+########## Finished - m1-pull-data.rmd: 2021-09-05 17:28:15 ##########
 
 
 
 
-########## Started - m2-nowcast.rmd: 2021-09-05 17:00:07 ##########
+########## Started - m2-nowcast.rmd: 2021-09-05 17:28:15 ##########
 
 
 
@@ -425,16 +429,16 @@ This message is displayed once per session.
 # A tibble: 2 x 4
   date         pce   pdi   gdp
   <date>     <dbl> <dbl> <dbl>
-1 2021-07-01  7.97 13.5   6.33
-2 2021-10-01  2.43  4.74  2.47
+1 2021-07-01  7.47 13.7   7.13
+2 2021-10-01  2.28  5.24  2.85
 
 
-########## Finished - m2-nowcast.rmd: 2021-09-05 17:00:55 ##########
+########## Finished - m2-nowcast.rmd: 2021-09-05 17:29:01 ##########
 
 
 
 
-########## Started - m3-qual.rmd: 2021-09-05 17:00:55 ##########
+########## Started - m3-qual.rmd: 2021-09-05 17:29:01 ##########
 
 
 
@@ -557,12 +561,12 @@ $ue
 
 
 
-########## Finished - m3-qual.rmd: 2021-09-05 17:02:09 ##########
+########## Finished - m3-qual.rmd: 2021-09-05 17:30:15 ##########
 
 
 
 
-########## Started - m4-csm.rmd: 2021-09-05 17:02:09 ##########
+########## Started - m4-csm.rmd: 2021-09-05 17:30:15 ##########
 
 
 
@@ -627,100 +631,513 @@ mort5y = constant + mort30y
 vix = constant + vix.l1 + spy + spy.l1
 moo = constant + moo.l1 + spy + gdp
 metals = constant + metals.l1 + spy + gdp
-Error in solve.default(aMat) : 'a' (22 x 23) must be square
-In addition: Warning messages:
-1: package ‘ggpmisc’ was built under R version 4.1.1 
-2: package ‘ggpp’ was built under R version 4.1.1 
-i Loading econforecasting
+hpi20
+houst
+hsold
+hpermits
+vsales
+emp
+jolts
+oil
+mort5y
+vix
+moo
+metals
+hpi20
+houst
+hsold
+hpermits
+vsales
+emp
+jolts
+oil
+mort5y
+vix
+moo
+metals
+delinqcc
+d1;q
+delinqci
+d1;q
+delinqrer
+d1;q
+emp
+d1;q
+d1;m
+ex
+d1;q
+d2;q
+exg
+d1;q
+d2;q
+exs
+d1;q
+d2;q
+ffr
+d1;q
+d1;m
+gdp
+d1;q
+d2;q
+govt
+d1;q
+d2;q
+govtf
+d1;q
+d2;q
+govts
+d1;q
+d2;q
+houst
+d1;q
+d1;m
+hpermits
+d1;q
+d1;m
+hpi
+d1;q
+d1;m
+hpi20
+d1;q
+d1;m
+hsold
+d1;q
+d1;m
+im
+d1;q
+d2;q
+img
+d1;q
+d2;q
+ims
+d1;q
+d2;q
+inf
+d1;q
+d1;m
+jolts
+d1;q
+d1;m
+metals
+d1;q
+d1;m
+d2;q
+d2;m
+moo
+d1;q
+d1;m
+d2;q
+d2;m
+mort15y
+d1;q
+d1;m
+mort15yt10yspread
+d1;q
+d1;m
+mort30y
+d1;q
+d1;m
+mort30yt30yspread
+d1;q
+d1;m
+mort5y
+d1;q
+d1;m
+nx
+d1;q
+d2;q
+oil
+d1;q
+d1;m
+pce
+d1;q
+d2;q
+pceg
+d1;q
+d2;q
+pcegd
+d1;q
+d2;q
+pcegdfurnish
+d1;q
+d2;q
+pcegdmotor
+d1;q
+d2;q
+pcegdother
+d1;q
+d2;q
+pcegdrec
+d1;q
+d2;q
+pcegn
+d1;q
+d2;q
+pcegnclothing
+d1;q
+d2;q
+pcegnfood
+d1;q
+d2;q
+pcegngas
+d1;q
+d2;q
+pcegnother
+d1;q
+d2;q
+pces
+d1;q
+d2;q
+pcesfinal
+d1;q
+d2;q
+pcesfood
+d1;q
+d2;q
+pceshealth
+d1;q
+d2;q
+pceshousing
+d1;q
+d2;q
+pcesnonprofit
+d1;q
+d2;q
+pcesother
+d1;q
+d2;q
+pcesrec
+d1;q
+d2;q
+pcestransport
+d1;q
+d2;q
+pdi
+d1;q
+d2;q
+pdin
+d1;q
+d2;q
+pdinequip
+d1;q
+d2;q
+pdinip
+d1;q
+d2;q
+pdinstruct
+d1;q
+d2;q
+pdir
+d1;q
+d2;q
+pid
+d1;q
+d1;m
+d2;q
+d2;m
+sofr
+d1;q
+d1;m
+spy
+d1;q
+d1;m
+d2;q
+d2;m
+t01m
+d1;q
+d1;m
+t01y
+d1;q
+d1;m
+t02y
+d1;q
+d1;m
+t03m
+d1;q
+d1;m
+t05y
+d1;q
+d1;m
+t06m
+d1;q
+d1;m
+t07y
+d1;q
+d1;m
+t10y
+d1;q
+d1;m
+t20y
+d1;q
+d1;m
+t30y
+d1;q
+d1;m
+tdns1
+d1;q
+d1;m
+tdns2
+d1;q
+d1;m
+tdns3
+d1;q
+d1;m
+ue
+d1;q
+d1;m
+vix
+d1;q
+d1;m
+vsales
+d1;q
+d1;m
+$delinqcc
+
+$delinqci
+
+$delinqrer
+
+$emp
+
+$ex
+
+$exg
+
+$exs
+
+$ffr
+
+$gdp
+
+$govt
+
+$govtf
+
+$govts
+
+$houst
+
+$hpermits
+
+$hpi
+
+$hpi20
+
+$hsold
+
+$im
+
+$img
+
+$ims
+
+$inf
+
+$jolts
+
+$metals
+
+$moo
+
+$mort15y
+
+$mort15yt10yspread
+
+$mort30y
+
+$mort30yt30yspread
+
+$mort5y
+
+$nx
+
+$oil
+
+$pce
+
+$pceg
+
+$pcegd
+
+$pcegdfurnish
+
+$pcegdmotor
+
+$pcegdother
+
+$pcegdrec
+
+$pcegn
+
+$pcegnclothing
+
+$pcegnfood
+
+$pcegngas
+
+$pcegnother
+
+$pces
+
+$pcesfinal
+
+$pcesfood
+
+$pceshealth
+
+$pceshousing
+
+$pcesnonprofit
+
+$pcesother
+
+$pcesrec
+
+$pcestransport
+
+$pdi
+
+$pdin
+
+$pdinequip
+
+$pdinip
+
+$pdinstruct
+
+$pdir
+
+$pid
+
+$sofr
+
+$spy
+
+$t01m
+
+$t01y
+
+$t02y
+
+$t03m
+
+$t05y
+
+$t06m
+
+$t07y
+
+$t10y
+
+$t20y
+
+$t30y
+
+$tdns1
+
+$tdns2
+
+$tdns3
+
+$ue
+
+$vix
+
+$vsales
+
+
+
+########## Finished - m4-csm.rmd: 2021-09-05 17:33:09 ##########
+
+
+
+
+########## Started - m5-sql.rmd: 2021-09-05 17:33:09 ##########
+
+
+
+
+processing file: D:/Onedrive/__Projects/econforecasting/m5-sql.rmd
+  |                                                                       |                                                               |   0%  |                                                                       |....                                                           |   6%  |                                                                       |........                                                       |  12%  |                                                                       |............                                                   |  19%  |                                                                       |................                                               |  25%  |                                                                       |....................                                           |  31%  |                                                                       |........................                                       |  38%  |                                                                       |............................                                   |  44%  |                                                                       |................................                               |  50%  |                                                                       |...................................                            |  56%  |                                                                       |.......................................                        |  62%  |                                                                       |...........................................                    |  69%  |                                                                       |...............................................                |  75%  |                                                                       |...................................................            |  81%  |                                                                       |.......................................................        |  88%  |                                                                       |...........................................................    |  94%  |                                                                       |...............................................................| 100%
+output file: D:/Onedrive/__Projects/econforecasting/purl.r
+
+[1mindexing[0m [34mpurl.r[0m [===========================================] [32m?[0m, eta: [36m 0s[0m                                                                                                            i Loading econforecasting
 i Updating econforecasting documentation
 i Loading econforecasting
 Writing NAMESPACE
 Writing NAMESPACE
-Identity equations checked OK
-pcegdmotor = constant + wma4.pid + ma2.ue + lma2.pcegdmotor + oil
-pcegdfurnish = constant + wma4.pid + ma2.ue + lma2.pcegdfurnish
-pcegdrec = constant + wma4.pid + ma2.ue + lma2.pcegdrec
-pcegdother = constant + wma4.pid + ma2.ue + lma2.pcegdother
-pcegnfood = constant + wma4.pid + ma2.ue + lma2.pcegnfood
-pcegnclothing = constant + wma4.pid + ma2.ue + lma2.pcegnclothing
-pcegngas = constant + wma4.pid + ma2.ue + lma2.pcegngas
-pcegnother = constant + wma4.pid + ma2.ue + lma2.pcegnother
-pceshousing = constant + wma4.pid + ma2.ue + lma2.pceshousing
-pceshealth = constant + wma4.pid + ma2.ue + lma2.pceshealth
-pcestransport = constant + wma4.pid + ma2.ue + lma2.pcestransport
-pcesrec = constant + wma4.pid + ma2.ue + lma2.pcesrec
-pcesfood = constant + wma4.pid + ma2.ue + lma2.pcesfood
-pcesfinal = constant + wma4.pid + ma2.ue + lma2.pcesfinal
-pcesother = constant + wma4.pid + ma2.ue + lma2.pcesother
-pcesnonprofit = constant + wma4.pid + ma2.ue + lma2.pcesnonprofit
-pdi = constant + pdin + pdir
-pdinstruct = constant + wma2.pce + ue + spy + lma2.pdinstruct + wma2.t10y
-pdinequip = constant + wma2.pce + ue + spy + lma2.pdinequip + wma2.t10y
-pdinip = constant + wma2.pce + ue + spy + lma2.pdinip + wma2.t10y
-pdir = constant + wma2.pce + ue + spy + lma2.pdir + wma2.mort30y + wma2.hpi
-exg = constant + lma2.pdin + lma2.exg
-exs = constant + lma2.pdin + lma2.exs
-img = constant + lma2.pdin + lma2.img
-ims = constant + lma2.pdin + lma2.ims
-govtf = constant + govtf.l1 + lma2.gdp
-govts = constant + govts.l1 + lma2.gdp
-hpi20 = constant + hpi + lma2.hpi20 + inf
-houst = constant + hpi + lma2.ue + mort30y + lma2.hsold
-hsold = constant + hpi + lma2.ue + mort30y + lma2.houst
-hpermits = constant + hpi + lma2.ue + mort30y + lma2.hpermits
-vsales = constant + lma2.vsales + wma2.pce + oil
-emp = constant + ue + gdp
-jolts = constant + ue + gdp
-oil = constant + lma2.oil + spy + hpi
-delinqrer = constant + ma2.ue + ma2.pid + lma2.delinqrer
-delinqcc = constant + ma2.ue + ma2.pid + lma2.delinqcc
-delinqci = constant + ma2.ue + ma2.pid + lma2.delinqci
-mort5y = constant + mort30y
-vix = constant + vix.l1 + spy + spy.l1
-moo = constant + moo.l1 + spy + gdp
-metals = constant + metals.l1 + spy + gdp
-
-Call:
-lm(formula = yMat ~ . - 1, data = as_tibble(xMat))
-
-Coefficients:
-  constant         hpi  lma2.hpi20         inf  
--0.0002285   0.9984499   0.1380849  -0.0005095  
 
 
-Call:
-lm(formula = yMat ~ . - 1, data = as_tibble(xMat))
+########## Finished - m5-sql.rmd: 2021-09-05 17:33:50 ##########
 
-Coefficients:
-  constant         hpi  lma2.hpi20         inf  
--0.0002285   0.9984499   0.1380849  -0.0005095  
 
-Error in solve.default(aMat) : 'a' (22 x 23) must be square
-Error: object 'coefMat' not found
+
+> sink()
+There were 19 warnings (use warnings() to see them)
+i Loading econforecasting
+i Updating econforecasting documentation
+i Loading econforecasting
+Warning in result_create(conn@ptr, statement) :
+  Closing open result set, cancelling previous query
+Warning in result_create(conn@ptr, statement) :
+  Closing open result set, cancelling previous query
+Warning in result_create(conn@ptr, statement) :
+  Closing open result set, cancelling previous query
+Error: Failed to fetch row: ERROR:  out of memory
+DETAIL:  Failed on request of size 1048576 in memory context "ErrorContext".
+Error: Failed to fetch row: ERROR:  out of memory
+DETAIL:  Failed on request of size 1048576 in memory context "ErrorContext".
+Error in h(simpleError(msg, call)) : 
+  error in evaluating the argument 'statement' in selecting a method for function 'dbExecute': object 'onConflict' not found
+Error: Failed to fetch row: ERROR:  out of memory
+DETAIL:  Failed on request of size 1048576 in memory context "ErrorContext".
+Error: Failed to prepare query: ERROR:  out of memory
+DETAIL:  Failed on request of size 524288 in memory context "ErrorContext".
+Error: Failed to prepare query: ERROR:  out of memory
+DETAIL:  Failed on request of size 524288 in memory context "ErrorContext".
+Error: Failed to fetch row: ERROR:  out of memory
+DETAIL:  Failed on request of size 262144 in memory context "ErrorContext".
+
+
+Error in match.fun(FUN) : 
+  c("'{' is not a function, character or symbol", "'    seq(from = 1, to = nrow(.), by = 10000)' is not a function, character or symbol", "'}' is not a function, character or symbol")
+
+
+Error in match.fun(FUN) : 
+  c("'{' is not a function, character or symbol", "'    seq(from = 1, to = nrow(.), by = 10000)' is not a function, character or symbol", "'}' is not a function, character or symbol")
+Error in match.fun(FUN) : 
+  c("'{' is not a function, character or symbol", "'    seq(from = 1, to = nrow(.), by = 10000)' is not a function, character or symbol", "'}' is not a function, character or symbol")
+Error in match.fun(FUN) : 
+  c("'{' is not a function, character or symbol", "'    seq(from = 1, to = nrow(.), by = 10000)' is not a function, character or symbol", "'}' is not a function, character or symbol")
+Warning message:
+... is ignored in group_split(<grouped_df>), please use group_by(..., .add = TRUE) %>% group_split() 
+Warning message:
+... is ignored in group_split(<grouped_df>), please use group_by(..., .add = TRUE) %>% group_split() 
+Error: Problem with `mutate()` column `split`.
+i `split = n(.)/10000`.
+x unused argument (.)
 Run `rlang::last_error()` to see where the error occurred.
-Error: object 'coefMat' not found
+Error: Problem with `mutate()` column `split`.
+i `split = ceil((1:nrow(.))/10000)`.
+x could not find function "ceil"
 Run `rlang::last_error()` to see where the error occurred.
-Error in solve.default(aMat) : 'a' (22 x 23) must be square
-Error: object 'bMatVArs' not found
-Error: object 'akkCiefDf' not found
-Error: object 'akkCoefDf' not found
-Error in m$csm$exogDfs[, c("date", "inf")] : 
-  incorrect number of dimensions
-Error: object 'd' not found
-Error: Problem with `filter()` input `..1`.
-x Input `..1` is named.
-i This usually means that you've used `=` instead of `==`.
-i Did you mean `form == "base"`?
-Run `rlang::last_error()` to see where the error occurred.
-Error: Problem with `filter()` input `..1`.
-x Input `..1` is named.
-i This usually means that you've used `=` instead of `==`.
-i Did you mean `form == "d1"`?
-Run `rlang::last_error()` to see where the error occurred.
-Error: Problem with `filter()` input `..1`.
-x Input `..1` is named.
-i This usually means that you've used `=` instead of `==`.
-i Did you mean `form == "d1"`?
-Run `rlang::last_error()` to see where the error occurred.
-Error in rates$baseline$inf = p$variables$inf$h$base$m %>% dplyr::bind_rows(.,  : 
-  object 'rates' not found
+Error: Failed to prepare query: ERROR:  column "split" of relation "csm_tsvalues" does not exist
+LINE 1: ...sm_tsvalues (tskey,vdate,freq,form,varname,date,value,split)
+                                                                 ^
+Error: Failed to prepare query: ERROR:  column "split" of relation "csm_tsvalues" does not exist
+LINE 1: ...sm_tsvalues (tskey,vdate,freq,form,varname,date,value,split)
+                                                                 ^
+Error in sum(.) : invalid 'type' (list) of argument
+Error in sum(.) : invalid 'type' (list) of argument
+csm: 15650
+nc: 1138
+ext: 79159
+hist: 47512
+Error in sum(resVals) : invalid 'type' (list) of argument
+Error in sum(resVals) : invalid 'type' (list) of argument
+Error in sum(resVals) : invalid 'type' (list) of argument
+Error: object 'resVa' not found
+Error in sum(resVals) : invalid 'type' (list) of argument
+Error in sum(resVals) : invalid 'type' (list) of argument
+Error in sum(resVals) : invalid 'type' (list) of argument
+Error in sum(.) : invalid 'type' (list) of argument

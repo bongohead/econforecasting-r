@@ -4,7 +4,7 @@ PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
 VINTAGE_DATE = as.Date('2021-09-05')
-RESET_ALL = TRUE
+RESET_ALL = FALSE
 
 
 library(dplyr)
