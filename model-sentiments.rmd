@@ -19,8 +19,6 @@ library(httr) # CURL Interface
 library(tidytext) # Text analysis
 # SQL/Apache Spark
 library(DBI) # SQL Interface
-# library(RPostgres) # PostgreSQL
-# library(rsparklyr) # Spark
 # My package
 devtools::load_all(path = PACKAGE_DIR)
 devtools::document(PACKAGE_DIR)
@@ -32,14 +30,60 @@ setwd(DIR)
 source(file.path(INPUT_DIR, 'constants.r'))
 ```
 
-# Text analysis
+## Database Conn
 ```{r}
 local({
+	
+	db <<- dbConnect(
+		RPostgres::Postgres(),
+		dbname = CONST$DB_DATABASE,
+		host = CONST$DB_SERVER,
+		port = 5432,
+		user = CONST$DB_USERNAME,
+		password = CONST$DB_PASSWORD
+		)
+})
+```
+
+## Create Table
+```{r}
+local({
+	
+	DBI::dbExecute(db, '
+		CREATE TABLE sent_meta (
+			date DATE PRIMARY KEY,
+			n_articles INTEGER,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		)
+	')
+	
+	DBI::dbExecute(db, '
+		CREATE TABLE sent_data (
+			date DATE,
+			page INTEGER,
+			article1 TEXT,
+			article2 TEXT,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+		)
+	')
+
+
+})
+```
+
+
+# Pull Data
+
+## Web Scrape
+```{r}
+local({
+	
+	sentMeta = DBI::dbGetQuery(db, 'SELECT * FROM sent_meta') %>% as_tibble(.)
 	
 	rawDf =
 		# Iterate through pages
 		# Go up to 3000
-		purrr::map_dfr(1:3000, function(page) {
+		purrr::reduce(1:3000, function(accum, page) {
 		    #if (page %% 20 == 1)
 			message('Downloading data for page ', page)
 			pageContent =
@@ -53,9 +97,69 @@ local({
     				article1 = html_text(html_nodes(pageContent, 'h3.story-title'), trim = TRUE),
     				article2 = html_text(html_nodes(pageContent, 'div.story-content > p'), trim = TRUE),
     				date = html_text(html_nodes(pageContent, 'span.timestamp'), trim = TRUE)
-					)
+					) %>%
+				mutate(
+					.,
+					date = ifelse(str_detect(date, coll('EDT')) == TRUE, format(Sys.Date(), '%b %d %Y'), date),
+					date = as.Date(parse_date_time2(date, '%b %d %Y'))
+					) %>%
+				bind_rows(accum, .)
+			
+			if (any(as.Date(res$date) %in% sentMeta$date)) return(done(res))
 			return(res)
-			})
+			}, .init = tibble()) %>%
+		dplyr::filter(., date < as.Date(Sys.Date()) & date %in% sentMeta$date)
+	
+	
+	rawDf <<- rawDf
+})
+```
+## Data to SQL
+```{r}
+local({
+	
+	
+	rowsAdded =
+		rawDf %>%
+		transmute(., date, page, article1, article2) %>%
+		mutate(., split = ceiling((1:nrow(.))/100)) %>% # Sent 100 max data points at a time
+		group_by(., split) %>%
+		group_split(., .keep = FALSE) %>%
+		imap(., function(x, i) {
+			message('Sending data to SQL ... ', i)
+			econforecasting::createInsertQuery(x, 'sent_data') %>%
+				DBI::dbExecute(db, .)
+			}) %>% {if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+
+	print(rowsAdded)
+
+})
+```
+
+## Meta Table Update
+```{r}
+local({
+	
+	rowsAdded =
+		rawDf %>%
+		group_by(., date) %>%
+		summarize(., n_articles = n()) %>%
+		transmute(., date, n_articles) %>%
+		econforecasting::createInsertQuery(., 'sent_meta') %>%
+		DBI::dbExecute(db, .) %>%
+		{if (is.null(.)) stop('SQL Error')}
+
+	print(rowsAdded)
+})
+```
+
+
+
+
+## Text Analysis
+```{r}
+local({
+	
 	
 	emotionsPlot =
 		rawDf %>%
@@ -147,6 +251,8 @@ local({
         date = as.Date(parse_date_time2(date, '%b %d %Y'))
     ) %>%
     tidytext::unnest_tokens(., word, article) %>% dplyr::filter(., str_detect(word, '^[0-9]*$')) %>% dplyr::mutate(., start = str_sub(word, 1, 1)) %>% dplyr::group_by(., start) %>% dplyr::summarize(., n = n()) %>% ggplot(.) + geom_col(aes(x = start, y = n))
+
 })
 ```
+
 
