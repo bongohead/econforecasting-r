@@ -15,12 +15,13 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 
 # CHANGELOG
-
+TBD: Split out sentiments model into separate Git repo w/Shiny WebApp & 
 
 ## [v0.17] (New Model Fixes for Web Launch)
 - Added task scheduling abilities for updated models
 - Added splitting of SQL inserts due to memory issues
 - Added code for sentiments analysis to SQL
+- Added advanced sales subcomponents, and disprank/disptabs for website display
 - Fixed issue with inflation forecast spacing
 - Fixed issue with using SQL queries not returning modified rows
 

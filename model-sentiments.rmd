@@ -108,7 +108,7 @@ local({
 			if (any(as.Date(res$date) %in% sentMeta$date)) return(done(res))
 			return(res)
 			}, .init = tibble()) %>%
-		dplyr::filter(., date < as.Date(Sys.Date()) & date %in% sentMeta$date)
+		dplyr::filter(., date < as.Date(Sys.Date()) & !date %in% sentMeta$date)
 	
 	
 	rawDf <<- rawDf
@@ -129,7 +129,7 @@ local({
 			message('Sending data to SQL ... ', i)
 			econforecasting::createInsertQuery(x, 'sent_data') %>%
 				DBI::dbExecute(db, .)
-			}) %>% {if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+			}) %>% unlist(.) %>% {if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
 	print(rowsAdded)
 
