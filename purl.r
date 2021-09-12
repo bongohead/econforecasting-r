@@ -1,14 +1,4 @@
-# Set Constants
-```{r purl = FALSE}
-DIR = 'D:/Onedrive/__Projects/econforecasting'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
-INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
-OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = '2021-09-12'
-```
-
-# Initialize
-```{r}
+## -------------------------------------------------------------------
 # General purpose
 library(tidyverse) # General
 library(data.table) # General
@@ -36,10 +26,9 @@ setwd(DIR)
 
 # Read constants
 source(file.path(INPUT_DIR, 'constants.r'))
-```
 
-## Load RDS
-```{r}
+
+## -------------------------------------------------------------------
 local({
 	
 	rds = readRDS(paste0(OUTPUT_DIR, '/[', VINTAGE_DATE, '] m3.rds'))
@@ -48,13 +37,9 @@ local({
 	m <<- rds$m
 	h <<- rds$h
 })
-```
 
 
-# CSM Estimation
-
-## Get Exogenous Df
-```{r}
+## -------------------------------------------------------------------
 local({
 	
 	# Get exogenous df - combine historical for all variables with forecasts from qual
@@ -100,11 +85,9 @@ local({
 	m$csm$exogDfs <<- exogDfs
 	m$csm$exogFlat <<- exogFlat
 })
-```
 
 
-## Forecast Periods
-```{r}
+## -------------------------------------------------------------------
 local({
 	
 	# Pull start date by finding the first date where at least one CORE.ENDOG variables is non-empty
@@ -142,10 +125,9 @@ local({
 	m$csm$startDate <<- startDate
 	m$csm$endDate <<- endDate
 })
-```
 
-## Identity Equations
-```{r}
+
+## -------------------------------------------------------------------
 local({
 	
     # Get steady-state values
@@ -229,10 +211,9 @@ local({
 
 	m$csm$coefMatsIdentity <<- coefMatsIdentity
 })
-```
 
-## Estimate Coefficients
-```{r}
+
+## -------------------------------------------------------------------
 local({
 	
 	# Get historical data for training
@@ -319,7 +300,7 @@ local({
     	'advsalesnonstore = constant + lma2.advsalesnonstore + pce + pce.l1',
     	'advsalesfoodservices = constant + lma2.advsalesfoodservices + pce + pce.l1',
     	
-    	# 'advsales = constant + lma2.advsales + pce + pce.l1',
+    	'advsales = constant + lma2.advsales + pce + pce.l1',
     	
     	'emp = constant + ue + gdp',
     	'jolts = constant + ue + gdp',
@@ -451,10 +432,9 @@ local({
     m$csm$estimGofStats <<- estimGofStats
     m$csm$coefMatsEstimated <<- coefMatsEstimated
 })
-```
 
-## Join Coefficient Matrices
-```{r}
+
+## -------------------------------------------------------------------
 local({
 	
     coefMat =
@@ -473,12 +453,9 @@ local({
 	m$csm$endogVars <<- endogVars
 	m$csm$exogVars <<- exogVars
 })
-```
 
-# CSM Forecasts
 
-## CSM Forecasts - Quarterly
-```{r}
+## -------------------------------------------------------------------
 local({
     
 	coefMat = m$csm$coefMat
@@ -538,11 +515,9 @@ local({
 	
     m$csm$predst <<- forecasts
 })
-```
 
 
-## Convert to Base
-```{r}
+## -------------------------------------------------------------------
 local({
 
 	res =
@@ -575,11 +550,9 @@ local({
 
 	m$csm$predbase0 <<- res
 })
-```
 
 
-## Forecast Monthly Variables
-```{r}
+## -------------------------------------------------------------------
 local({
 
 	# Delete quarterly forecasts on quarters where monthly data exists ->
@@ -640,10 +613,9 @@ local({
 	
 	m$csm$predbase0m <<- predbase0m
 })
-```
 
-## Reaggregate to Quarterly & Add Identity
-```{r}
+
+## -------------------------------------------------------------------
 local({
 	
 	# Aggregate monthly variables to quarterly and replace existing quarterly variables in m$csm$predbase0
@@ -708,13 +680,9 @@ local({
 	
 	m$csm$predbaseq <<- res
 })
-```
 
 
-# Model Stacking
-
-## Monthly (convert to stationary form then aggregate) 
-```{r}
+## -------------------------------------------------------------------
 local({
 	
 	# Combine with nowcasts and external forecasts
@@ -722,11 +690,9 @@ local({
 	
 	
 })
-```
 
 
-## Quarterly
-```{r}
+## -------------------------------------------------------------------
 local({
 	
 	# Convert all to monthly, then deaggregate
@@ -780,13 +746,9 @@ local({
 	# 	})
 
 })
-```
 
 
-# Final Aggregation 
-
-## Transform 
-```{r}
+## -------------------------------------------------------------------
 local({
 	
 	flatBase =
@@ -868,10 +830,9 @@ local({
 	}
 	m$csm$predFlat <<- flat
 })
-```
 
-## Plot
-```{r}
+
+## -------------------------------------------------------------------
 local({
 	
 	predCharts =
@@ -1020,12 +981,9 @@ local({
 	
 	m$csm$predCharts <<- predCharts
 })
-```
 
-# Finalize
 
-## Export
-```{r}
+## -------------------------------------------------------------------
 local({
   
     saveRDS(
@@ -1034,5 +992,4 @@ local({
     	)
     
 })
-```
 

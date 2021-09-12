@@ -3,8 +3,8 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-09-05')
-RESET_ALL = FALSE
+VINTAGE_DATE = as.Date('2021-09-12')
+RESET_ALL = TRUE
 
 
 library(dplyr)

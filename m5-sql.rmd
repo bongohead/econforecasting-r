@@ -138,6 +138,8 @@ local({
 				fullname VARCHAR(255) CONSTRAINT fullname_uk UNIQUE NOT NULL,
 				category VARCHAR(255) NOT NULL,
 				dispgroup VARCHAR(255),
+				disprank INT,
+				disptabs INT,
 				disporder INT,
 				source VARCHAR(255) NOT NULL,
 				sckey VARCHAR(255),
@@ -166,7 +168,7 @@ local({
 	    p$variablesDf %>%
 	    	transmute(
 	    		.,
-	    		varname, fullname, category, dispgroup, disporder,
+	    		varname, fullname, category, dispgroup, disprank, disptabs, disporder,
 	    		source, sckey, relkey, units, freq, append_eom_with_currentval,
 	    		sa, st, st2, d1, d2, nc_dfm_input, nc_method, initial_forecast,
 	    		core_structural, core_endog_type
