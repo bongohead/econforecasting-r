@@ -2,7 +2,7 @@
 > sink(sinkFile, type = 'message')
 
 > message('Run :', Sys.Date())
-Run :2021-09-12
+Run :2021-09-14
 
 > system(
 + 	'"C:/Program Files/Git/bin/bash.exe" -c  "tail -n 50 -f "D:/OneDrive/__Projects/econforecasting/sink.txt""',
@@ -15,7 +15,7 @@ Run :2021-09-12
  .... [TRUNCATED] 
 
 
-########## Started - m1-pull-data.rmd: 2021-09-12 16:56:56 ##########
+########## Started - m1-pull-data.rmd: 2021-09-14 21:27:47 ##########
 
 
 
@@ -136,12 +136,6 @@ Getting data ... jolts
 Getting data ... wei
 Getting data ... oil
 Getting data ... bankci
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 2.7 seconds...
-Request failed [429]. Retrying in 3.2 seconds...
-Request failed [429]. Retrying in 5.6 seconds...
-Request failed [429]. Retrying in 1 seconds...
-Request failed [429]. Retrying in 47.7 seconds...
 Getting data ... bankdeposits
 Getting data ... bankre
 Getting data ... stlfsi
@@ -394,26 +388,26 @@ advsalesmerch
 advsalesmisc
 advsalesnonstore
 advsalesfoodservices
-[1mindexing[0m [34mfile23cc1e074542[0m [==============================] [32m?[0m, eta: [36m 0s[0m                                                                                                         -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    2021-01-01
+[1mindexing[0m [34mfile309c131d5de8[0m [==================----] [32m20.90MB/s[0m, eta: [36m 0s[0m[1mindexing[0m [34mfile309c131d5de8[0m [======================] [32m25.45MB/s[0m, eta: [36m 0s[0m                                                                                                         -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    2021-01-01
 -/                                                                    -/                                                                    2021-04-01
 -/                                                                    -/                                                                    2021-07-01
 -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    -/                                                                    trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
-Content type 'application/vnd.ms-excel' length 396288 bytes (387 KB)
+Content type 'application/vnd.ms-excel' length 396800 bytes (387 KB)
 downloaded 387 KB
 
 -/                                                                    Starting Quandl data scrape...
-[1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    Completed Quandl data scrape
+[1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m?[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m?[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                    Completed Quandl data scrape
 Starting CME data scrape...
 Completed CME data scrape...
 Adding monthly interpolation ...
 
 
-########## Finished - m1-pull-data.rmd: 2021-09-12 17:00:29 ##########
+########## Finished - m1-pull-data.rmd: 2021-09-14 21:30:23 ##########
 
 
 
 
-########## Started - m2-nowcast.rmd: 2021-09-12 17:00:29 ##########
+########## Started - m2-nowcast.rmd: 2021-09-14 21:30:23 ##########
 
 
 
@@ -470,16 +464,16 @@ This message is displayed once per session.
 # A tibble: 2 x 4
   date         pce   pdi   gdp
   <date>     <dbl> <dbl> <dbl>
-1 2021-07-01  7.49 16.0   5.71
-2 2021-10-01  1.95  4.56  1.51
+1 2021-07-01  6.90 15.3   5.94
+2 2021-10-01  1.82  4.40  1.82
 
 
-########## Finished - m2-nowcast.rmd: 2021-09-12 17:01:21 ##########
+########## Finished - m2-nowcast.rmd: 2021-09-14 21:31:12 ##########
 
 
 
 
-########## Started - m3-qual.rmd: 2021-09-12 17:01:21 ##########
+########## Started - m3-qual.rmd: 2021-09-14 21:31:12 ##########
 
 
 
@@ -488,7 +482,7 @@ processing file: D:/Onedrive/__Projects/econforecasting/m3-qual.rmd
   |                                                                    |                                                            |   0%  |                                                                    |..                                                          |   3%  |                                                                    |...                                                         |   6%  |                                                                    |.....                                                       |   8%  |                                                                    |.......                                                     |  11%  |                                                                    |........                                                    |  14%  |                                                                    |..........                                                  |  17%  |                                                                    |............                                                |  19%  |                                                                    |.............                                               |  22%  |                                                                    |...............                                             |  25%  |                                                                    |.................                                           |  28%  |                                                                    |..................                                          |  31%  |                                                                    |....................                                        |  33%  |                                                                    |......................                                      |  36%  |                                                                    |.......................                                     |  39%  |                                                                    |.........................                                   |  42%  |                                                                    |...........................                                 |  44%  |                                                                    |............................                                |  47%  |                                                                    |..............................                              |  50%  |                                                                    |................................                            |  53%  |                                                                    |.................................                           |  56%  |                                                                    |...................................                         |  58%  |                                                                    |.....................................                       |  61%  |                                                                    |......................................                      |  64%  |                                                                    |........................................                    |  67%  |                                                                    |..........................................                  |  69%  |                                                                    |...........................................                 |  72%  |                                                                    |.............................................               |  75%  |                                                                    |...............................................             |  78%  |                                                                    |................................................            |  81%  |                                                                    |..................................................          |  83%  |                                                                    |....................................................        |  86%  |                                                                    |.....................................................       |  89%  |                                                                    |.......................................................     |  92%  |                                                                    |.........................................................   |  94%  |                                                                    |..........................................................  |  97%  |                                                                    |............................................................| 100%
 output file: D:/Onedrive/__Projects/econforecasting/purl.r
 
-[1mindexing[0m [34mpurl.r[0m [========================================] [32m?[0m, eta: [36m 0s[0m                                                                                                         
+[1mindexing[0m [34mpurl.r[0m [========================----------------] [32m?[0m, eta: [36m 0s[0m[1mindexing[0m [34mpurl.r[0m [========================================] [32m?[0m, eta: [36m 0s[0m                                                                                                         
 Attaching package: ‘cowplot’
 
 The following object is masked from ‘package:lubridate’:
@@ -602,12 +596,12 @@ $ue
 
 
 
-########## Finished - m3-qual.rmd: 2021-09-12 17:02:37 ##########
+########## Finished - m3-qual.rmd: 2021-09-14 21:32:24 ##########
 
 
 
 
-########## Started - m4-csm.rmd: 2021-09-12 17:02:37 ##########
+########## Started - m4-csm.rmd: 2021-09-14 21:32:24 ##########
 
 
 
@@ -616,7 +610,7 @@ processing file: D:/Onedrive/__Projects/econforecasting/m4-csm.rmd
   |                                                                    |                                                            |   0%  |                                                                    |..                                                          |   3%  |                                                                    |...                                                         |   6%  |                                                                    |.....                                                       |   9%  |                                                                    |.......                                                     |  11%  |                                                                    |.........                                                   |  14%  |                                                                    |..........                                                  |  17%  |                                                                    |............                                                |  20%  |                                                                    |..............                                              |  23%  |                                                                    |...............                                             |  26%  |                                                                    |.................                                           |  29%  |                                                                    |...................                                         |  31%  |                                                                    |.....................                                       |  34%  |                                                                    |......................                                      |  37%  |                                                                    |........................                                    |  40%  |                                                                    |..........................                                  |  43%  |                                                                    |...........................                                 |  46%  |                                                                    |.............................                               |  49%  |                                                                    |...............................                             |  51%  |                                                                    |.................................                           |  54%  |                                                                    |..................................                          |  57%  |                                                                    |....................................                        |  60%  |                                                                    |......................................                      |  63%  |                                                                    |.......................................                     |  66%  |                                                                    |.........................................                   |  69%  |                                                                    |...........................................                 |  71%  |                                                                    |.............................................               |  74%  |                                                                    |..............................................              |  77%  |                                                                    |................................................            |  80%  |                                                                    |..................................................          |  83%  |                                                                    |...................................................         |  86%  |                                                                    |.....................................................       |  89%  |                                                                    |.......................................................     |  91%  |                                                                    |.........................................................   |  94%  |                                                                    |..........................................................  |  97%  |                                                                    |............................................................| 100%
 output file: D:/Onedrive/__Projects/econforecasting/purl.r
 
-[1mindexing[0m [34mpurl.r[0m [========================================] [32m?[0m, eta: [36m 0s[0m                                                                                                         Loading required package: ggpp
+[1mindexing[0m [34mpurl.r[0m [=====-----------------------------------] [32m?[0m, eta: [36m 0s[0m[1mindexing[0m [34mpurl.r[0m [========================================] [32m?[0m, eta: [36m 0s[0m                                                                                                         Loading required package: ggpp
 
 Attaching package: ‘ggpp’
 
@@ -1257,12 +1251,12 @@ $vsales
 
 
 
-########## Finished - m4-csm.rmd: 2021-09-12 17:06:32 ##########
+########## Finished - m4-csm.rmd: 2021-09-14 21:36:09 ##########
 
 
 
 
-########## Started - m5-sql.rmd: 2021-09-12 17:06:32 ##########
+########## Started - m5-sql.rmd: 2021-09-14 21:36:09 ##########
 
 
 
@@ -1282,7 +1276,7 @@ nc: 1379
 ext: 79169[1] 160619
 
 
-########## Finished - m5-sql.rmd: 2021-09-12 17:07:33 ##########
+########## Finished - m5-sql.rmd: 2021-09-14 21:37:15 ##########
 
 
 
