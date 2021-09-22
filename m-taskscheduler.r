@@ -3,7 +3,7 @@ DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
 PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package'
 INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs'
 OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-09-12')
+VINTAGE_DATE = as.Date('2021-09-21')
 RESET_ALL = TRUE
 
 
