@@ -11,16 +11,18 @@
 
 getDataFred = function(seriesId, apiKey, .freq = NULL, .returnVintages = FALSE, .vintageDate = NULL, .verbose = FALSE) {
 
+    today = Sys.Date() # as_date(with_tz(now(), tz = 'America/Chicago'))
+
     url =
         paste0(
             'https://api.stlouisfed.org/fred/series/observations?',
             'series_id=', seriesId,
             '&api_key=', apiKey,
             '&file_type=json',
-            '&realtime_start=', if (.returnVintages == TRUE & is.null(.vintageDate)) '2000-01-01' else if (.returnVintages == TRUE & !is.null(.vintageDate)) .vintageDate else Sys.Date(),
-            '&realtime_end=', if (.returnVintages == TRUE & !is.null(.vintageDate)) .vintageDate else Sys.Date(),
+            '&realtime_start=', if (.returnVintages == TRUE & is.null(.vintageDate)) '2000-01-01' else if (.returnVintages == TRUE & !is.null(.vintageDate)) .vintageDate else today,
+            '&realtime_end=', if (.returnVintages == TRUE & !is.null(.vintageDate)) .vintageDate else today,
             '&obs_start=', '2000-01-01',
-            '&obs_end=', Sys.Date(),
+            '&obs_end=', today,
             if(!is.null(.freq)) paste0('&frequency=', .freq) else '',
             '&aggregation_method=avg'
         )
