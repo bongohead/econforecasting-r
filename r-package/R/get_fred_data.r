@@ -1,7 +1,5 @@
 #' Returns data from St. Louis Federal Reserve Economic Database (FRED)
 #'
-#' @import httr
-#'
 #' @param series_id The FRED identifier of the time series to pull.
 #' @param api_key A valid FRED API key.
 #' @param .freq One of 'd', 'm', 'q'. If NULL, returns highest available frequency.
