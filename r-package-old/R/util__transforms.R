@@ -118,4 +118,3 @@ lma2 = function(x) {
 }
 
 
-# tibble(thisEl = seq(1, 1.05, .01)) %>% purrr::transpose(.) %>% purrr::accumulate(., function(accum, x) list(thisEl = accum$thisEl + x$thisEl))
