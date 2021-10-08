@@ -176,7 +176,7 @@ wma4 = function(x) {
 
 #' @rdname ma
 #' @export
-getWmaWeights = function(length) {
+get_wma_weights = function(length) {
 	lapply(0:(length - 1), function(l) tibble(lag = l)) %>%
 		dplyr::bind_rows(.) %>%
 		dplyr::mutate(., weight = 1/(lag + 1)/sum(1/(1:(length)))) %>%

@@ -1,11 +1,13 @@
 #' Convert monthly or quarterly dates into nicely formatted dates
 #'
-#' @param x A vector of R dates.
-#' @param frequency One of 'q', 'quarter', 'm', or 'month'.
-#'
 #' @description
 #' Converts monthly dates and quarterly dates into a pretty string format.
 #'  2020-01-01 will be converted into 2020Q1 if quarterly, 2020M1 if monthly.
+#'
+#' @param x A vector of R dates.
+#' @param frequency One of 'q', 'quarter', 'm', or 'month'.
+#'
+#' @export
 to_pretty_date = function(x, frequency) {
 
 	if (frequency %in% c('q', 'quarter')) {
@@ -21,6 +23,8 @@ to_pretty_date = function(x, frequency) {
 #'
 #' @param A vector of formatted dates.
 #' @param frequency One of 'q', 'quarter', 'm', or 'month'.
+#'
+#' @rdname to_pretty_date
 #'
 #' @export
 from_pretty_date = function(x, frequency) {
