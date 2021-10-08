@@ -1,11 +1,23 @@
+library(tidyverse)
+library(httr)
 library(econforecasting)
+DIR = 'D:/Onedrive/__Projects/econforecasting'
+DL_DIR = file.path(DIR, 'tmp')
+if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
+dir.create(DL_DIR, recursive = TRUE)
+
+source(file.path(DIR, 'model-inputs', 'constants.r'))
+
+
+ext = list()
+
 
 local({
-  
+
   ##### GDP #####
   paramsDf =
 	tribble(
-      ~ varname, ~ fred_id, 
+      ~ varname, ~ fred_id,
       'gdp', 'GDPNOW',
       'pce', 'PCENOW',
       'pdi', 'GDPINOW',
@@ -13,7 +25,7 @@ local({
       'ex', 'EXPORTSNOW',
       'im', 'IMPORTSNOW'
     )
-  
+
   # GDPNow
   df =
   	paramsDf %>%
@@ -34,20 +46,20 @@ local({
       ) %>%
     dplyr::bind_rows(.)
 
-	res$atl <<- df
+	ext$atl <<- df
 })
 
 
 ## St. Louis Fed
 local({
- 
+
 	df =
 		get_fred_data('STLENI', CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
 		dplyr::filter(., date >= .$vintage_date - months(3)) %>%
 		dplyr::transmute(
 			.,
 			fcname = 'stl',
-			varname = 'gdp', 
+			varname = 'gdp',
 			form = 'd1',
 			freq = 'q',
 			date,
@@ -55,39 +67,38 @@ local({
 			value
 			)
 
-	res$stl <<- df
+	ext$stl <<- df
 })
 
 
 ## New York Fed
 local({
-  
+
     file = file.path(DL_DIR, 'nyf.xlsx')
     httr::GET(
-        'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx?la=en',
+        'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx',
         httr::write_disk(file, overwrite = TRUE)
         )
-  
+
     df =
         readxl::read_excel(file, sheet = 'Forecasts By Quarter', skip = 13) %>%
-        dplyr::rename(., vintageDate = 1) %>%
-        dplyr::mutate(., vintageDate = as.Date(vintageDate)) %>%
-        tidyr::pivot_longer(., -vintageDate, names_to = 'obsDate', values_to = 'value') %>%
+        dplyr::rename(., vdate = 1) %>%
+        dplyr::mutate(., vdate = as_date(vdate)) %>%
+        tidyr::pivot_longer(., -vdate, names_to = 'date', values_to = 'value') %>%
         na.omit(.) %>%
-        dplyr::mutate(., obsDate = econforecasting::strdateToDate(obsDate)) %>%
-        dplyr::transmute(., fcname = 'nyf', varname = 'gdp', form = 'd1', freq = 'q', date = obsDate, vdate = vintageDate, value)
+        dplyr::mutate(., date = from_pretty_date(date, 'q')) %>%
+        dplyr::transmute(., fcname = 'nyf', varname = 'gdp', form = 'd1', freq = 'q', date, vdate, value)
 
-  m$ext$sources$nyf <<- df
+  ext$nyf <<- df
 })
-```
+
 
 ## Philadelphia Fed
-```{r}
 local({
-  
+
     # Scrape vintage dates
     vintageDf =
-    	httr::GET('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/spf-release-dates.txt?la=en&hash=B0031909EE9FFE77B26E57AC5FB39899') %>%
+    	httr::GET('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/spf-release-dates.txt?') %>%
 	    httr::content(., as = 'text', encoding = 'UTF-8') %>%
 	    str_sub(
 	        .,
@@ -114,7 +125,7 @@ local({
         ) %>%
         # Don't include first date - weirdly has same vintage date as second date
         dplyr::filter(., releaseDate >= as.Date('2000-01-01'))
-        
+
     paramsDf =
         tribble(
           ~ varname, ~ spfname, ~ method,
@@ -126,8 +137,8 @@ local({
           'houst', 'HOUSING', 'level',
           'inf', 'CORECPI', 'level'
           )
-  
-  
+
+
 	df =
 		lapply(c('level', 'growth'), function(m) {
 		    file = file.path(DL_DIR, paste0('spf-', m, '.xlsx'))
@@ -136,7 +147,7 @@ local({
 	                'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/historical-data/median', m, '.xlsx?la=en'),
 	                httr::write_disk(file, overwrite = TRUE)
 	            )
-	        
+
 	        lapply(paramsDf %>% dplyr::filter(., method == m) %>% purrr::transpose(.), function(x) {
 	            readxl::read_excel(file, na = '#N/A', sheet = x$spfname) %>%
 	            dplyr::select(
@@ -156,25 +167,28 @@ local({
 	            }) %>%
 	            dplyr::bind_rows(.) %>%
 	            return(.)
-	        
+
 	        }) %>%
 	        dplyr::bind_rows(.)
-        
+
 	m$ext$sources$spf <<- df
 })
-```
+
+
+
+
 
 ## WSJ Economic Survey
 WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 ```{r}
 local({
-    
+
     orgsDf =
         tibble(
           fcname = c('wsj', 'fnm', 'wfc', 'gsu', 'spg', 'ucl', 'gsc'),
           fcfullname = c('WSJ Consensus', 'Fannie Mae', 'Wells Fargo & Co.', 'Georgia State University', 'S&P Global Ratings', 'UCLA Anderson Forecast', 'Goldman, Sachs & Co.')
         )
-    
+
     filePaths =
         seq(as.Date('2021-01-01'), to = add_with_rollback(p$VINTAGE_DATE, months(0)), by = '3 months') %>%
         purrr::map(., function(x)
@@ -183,7 +197,7 @@ local({
                 file = paste0('wsjecon', str_sub(x, 6, 7), str_sub(x, 3, 4), '.xls')
                 )
             )
-    
+
     df =
         lapply(filePaths, function(x) {
             message(x$date)
@@ -196,10 +210,10 @@ local({
                 mode = 'wb',
                 quiet = TRUE
                 )
-            
+
             # Read first two lines to parse column names
             xlDf = suppressMessages(readxl::read_excel(dest, col_names = FALSE, .name_repair = 'unique'))
-            
+
             # Create new column names
             xlRepair =
                 xlDf %>%
@@ -244,7 +258,7 @@ local({
                     date = as_date(date)
                     )
 
-            
+
             df =
                 suppressMessages(readxl::read_excel(
                     dest,
@@ -295,8 +309,8 @@ local({
         dplyr::bind_rows(.) %>%
     	na.omit(.)
 
-            
-    m$ext$sources$wsj <<- df   
+
+    m$ext$sources$wsj <<- df
 })
 ```
 
@@ -326,9 +340,9 @@ local({
       dplyr::mutate(., date = as.Date(date)) %>%
       dplyr::filter(., date >= as.Date('2018-01-01'))
 
-    
+
   tempPath = file.path(DL_DIR, 'cbo.xlsx')
-  
+
   paramsDf =
     tribble(
       ~ varname, ~ cboCategory, ~ cboname, ~ cboUnits,
@@ -342,15 +356,15 @@ local({
       't10y', 'Interest Rates', '10-Year Treasury Note', 'Percent',
       't03m', 'Interest Rates', '3-Month Treasury Bill', 'Percent'
       )
-  
-  
+
+
   df =
     urlDf %>%
     purrr::transpose(.) %>%
     lapply(., function(x) {
 
       download.file(x$url, tempPath, mode = 'wb', quiet = TRUE)
-          
+
       # Starts earlier form Jan 2019
       xl =
         suppressMessages(readxl::read_excel(
@@ -365,7 +379,7 @@ local({
         tidyr::fill(., cboname, .direction = 'down') %>%
         na.omit(.)
 
-      
+
       xl %>%
         dplyr::inner_join(., paramsDf, by = c('cboCategory', 'cboname', 'cboUnits')) %>%
         dplyr::select(., -cboCategory, -cboname, -cboUnits) %>%
@@ -376,12 +390,12 @@ local({
       }) %>%
     dplyr::bind_rows(.) %>%
     dplyr::transmute(., fcname = 'cbo', varname, form = 'd1', freq = 'q', date = obsDate, vdate = vintageDate, value)
-  
+
   # Count number of forecasts per group
   # df %>% dplyr::group_by(vintageDate, varname) %>% dplyr::summarize(., n = n()) %>% View(.)
-  
-    
-  m$ext$sources$cbo <<- df   
+
+
+  m$ext$sources$cbo <<- df
 })
 ```
 
@@ -389,7 +403,7 @@ local({
 ## EINF Model - Cleveland Fed
 ```{r}
 local({
-	
+
   file = file.path(DL_DIR, paste0('inf.xls'))
 
   download.file('https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls', file, mode = 'wb')
@@ -434,7 +448,7 @@ local({
 ## CME Model
 ```{r}
 local({
-  
+
 	# First get from Quandl
 	message('Starting Quandl data scrape...')
 	df =
@@ -462,9 +476,9 @@ local({
 			varname = 'ffr',
 			fcname = 'cme'
 			)
-	
+
 	message('Completed Quandl data scrape')
-	
+
 	message('Starting CME data scrape...')
 	cookieVal =
 	    httr::GET(
@@ -480,8 +494,8 @@ local({
                 ))
             ) %>%
 	    httr::cookies(.) %>% as_tibble(.) %>% dplyr::filter(., name == 'ak_bmsc') %>% .$value
-	
-	
+
+
 	# Get CME Vintage Date
 	lastTradeDate =
 		httr::GET(
@@ -498,8 +512,8 @@ local({
 				'Host' = 'www.cmegroup.com'
 			))
 		) %>% content(., 'parsed') %>% .$tradeDate %>% lubridate::parse_date_time(., 'd-b-Y') %>% as_date(.)
-		
-	
+
+
 	df2 =
 		tribble(
 			~ varname, ~ cmeId,
@@ -527,7 +541,7 @@ local({
 						))
 					) %>%
 					httr::content(., as = 'parsed')
-			
+
 			content %>%
 				.$quotes %>%
 				purrr::map_dfr(., function(x) {
@@ -539,7 +553,7 @@ local({
 						)
 					}) %>%
 				return(.)
-			}) %>% 
+			}) %>%
 		# Now average out so that there's only one value for each (varname, obsDate) combo
 		dplyr::group_by(varname, obsDate) %>%
 		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
@@ -549,10 +563,10 @@ local({
 		# Assume vintagedate is the same date as the last Quandl obs
 		dplyr::mutate(., vintageDate = lastTradeDate, fcname = 'cme') %>%
 		dplyr::filter(., value != 100)
-	
-	
+
+
 	message('Completed CME data scrape...')
-	
+
 	# Now combine, replacing df2 with df1 if necessary
 	combinedDf =
 		dplyr::full_join(df, df2, by = c('fcname', 'vintageDate', 'obsDate', 'varname')) %>%
@@ -565,8 +579,8 @@ local({
 #   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
 #     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 # 		View(.)
-	
-	
+
+
 	## Add monthly interpolation
 	message('Adding monthly interpolation ...')
 
@@ -593,7 +607,7 @@ local({
 					date = obsDate,
 					vdate = head(vintageDate, 1),
 					value = zoo::na.spline(value)
-					)		
+					)
 			}) %>%
 		dplyr::bind_rows(.)
 
@@ -603,18 +617,18 @@ local({
 
 ## DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, and Spreads
 DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
-Calculated TDNS1: TYield_10y 
+Calculated TDNS1: TYield_10y
 Calculated TDNS2: -1 * (t10y - t03m)
 Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 Keep these treasury yield forecasts as the external forecasts ->
 note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to
 ```{r}
 local({
-    
+
     dnsCoefs = m$dnsCoefs
     dnsLambda = m$dnsLambda
     dnsYieldCurveNamesMap = m$dnsYieldCurveNamesMap
-    
+
     # Monthly forecast up to 10 years
     # Get cumulative return starting from curDate
     fittedCurve =
@@ -622,7 +636,7 @@ local({
         dplyr::mutate(., curDate = floor_date(p$VINTAGE_DATE, 'months')) %>%
         dplyr::mutate(
           .,
-          annualizedYield = 
+          annualizedYield =
             dnsCoefs$b1 +
             dnsCoefs$b2 * (1-exp(-1 * dnsLambda * ttm))/(dnsLambda * ttm) +
             dnsCoefs$b3 * ((1-exp(-1 * dnsLambda * ttm))/(dnsLambda * ttm) - exp(-1 * dnsLambda * ttm)),
@@ -632,11 +646,11 @@ local({
 
     # Test for 20 year forecast
     # fittedCurve %>% dplyr::mutate(., futNetYield = dplyr::lead(annualizedYield, 240)/cumReturn, futYield = (futNetYield^(12/240) - 1) * 100) %>% dplyr::filter(., ttm < 120) %>% ggplot(.) + geom_line(aes(x = ttm, y = futYield))
-    
+
     # fittedCurve %>% dplyr::mutate(., futYield = (dplyr::lead(cumYield, 3)/cumYield - 1) * 100)
-    
+
     # Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
-    # and for each, iterate over the original "ttms" 1, 2, 3, 
+    # and for each, iterate over the original "ttms" 1, 2, 3,
     # ..., 120 and for each forecast the cumulative return for the yttm period ahead.
     df0 =
         dnsYieldCurveNamesMap$ttm %>%
@@ -666,7 +680,7 @@ local({
             vdate = p$VINTAGE_DATE,
             value = yttmAheadAnnualizedYield
             )
-    
+
     # Add ffr to forecasts
     df1 =
         df0 %>%
@@ -706,7 +720,7 @@ local({
             ) %>%
         tidyr::pivot_longer(., -date, names_to = 'varname') %>%
         dplyr::transmute(., fcname = 'dns', varname, date, form = 'd1', freq = 'm', vdate = p$VINTAGE_DATE, value)
-    
+
     m$ext$sources$dns <<- dplyr::bind_rows(df1, df2)
 })
 ```
@@ -714,14 +728,14 @@ local({
 ## Get Combined Data
 ```{r}
 local({
-	
+
 	predFlat =
 		m$ext$sources %>%
 		dplyr::bind_rows(.) %>%
 		dplyr::transmute(., fcname, vdate, freq, form, varname, date, value)
 
 	if (nrow(na.omit(predFlat)) != nrow(predFlat)) stop('Missing obs')
-	
+
 	m$ext$predFlat <<- predFlat
 })
 ```
