@@ -98,7 +98,9 @@ local({
 
     # Scrape vintage dates
     vintageDf =
-    	httr::GET('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/spf-release-dates.txt?') %>%
+    	httr::GET(paste0('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+    		'survey-of-professional-forecasters/spf-release-dates.txt?'
+    		)) %>%
 	    httr::content(., as = 'text', encoding = 'UTF-8') %>%
 	    str_sub(
 	        .,
@@ -120,17 +122,22 @@ local({
     	tidyr::fill(., X1, .direction = 'down') %>%
     	dplyr::transmute(
             .,
-            releaseDate = econforecasting::strdateToDate(paste0(X1, X2)),
-            vintageDate = lubridate::mdy(str_replace_all(str_extract(X3, "[^\\s]+"), '[*]', ''))
+            releasedate = from_pretty_date(paste0(X1, X2), 'q'),
+            vdate = lubridate::mdy(str_replace_all(str_extract(X3, "[^\\s]+"), '[*]', ''))
         ) %>%
         # Don't include first date - weirdly has same vintage date as second date
-        dplyr::filter(., releaseDate >= as.Date('2000-01-01'))
+        dplyr::filter(., releasedate >= as.Date('2000-01-01'))
+
 
     paramsDf =
         tribble(
           ~ varname, ~ spfname, ~ method,
           'gdp', 'RGDP', 'growth',
           'pce', 'RCONSUM', 'growth',
+          'pdin', 'RNRESIN', 'growth',
+          'pdir', 'RRESINV', 'growth',
+          'govtf', 'RFEDGOV', 'growth',
+          'govts', 'RSLGOV', 'growth',
           'ue', 'UNEMP', 'level',
           't03m', 'TBILL', 'level',
           't10y', 'TBOND', 'level',
@@ -141,37 +148,46 @@ local({
 
 	df =
 		lapply(c('level', 'growth'), function(m) {
-		    file = file.path(DL_DIR, paste0('spf-', m, '.xlsx'))
+
+			file = file.path(DL_DIR, paste0('spf-', m, '.xlsx'))
 	        httr::GET(
 	            paste0(
-	                'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/survey-of-professional-forecasters/historical-data/median', m, '.xlsx?la=en'),
+	                'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+	                'survey-of-professional-forecasters/historical-data/median', m, '.xlsx?la=en'
+	                ),
 	                httr::write_disk(file, overwrite = TRUE)
 	            )
 
-	        lapply(paramsDf %>% dplyr::filter(., method == m) %>% purrr::transpose(.), function(x) {
-	            readxl::read_excel(file, na = '#N/A', sheet = x$spfname) %>%
-	            dplyr::select(
-	            .,
-	            c('YEAR', 'QUARTER', {
-	              if (m == 'level') paste0(x$spfname, 2:6) else paste0('d', str_to_lower(x$spfname), 2:6)
-	              })
-	            ) %>%
-	            dplyr::mutate(., releaseDate = econforecasting::strdateToDate(paste0(YEAR, 'Q', QUARTER))) %>%
-	            dplyr::select(., -YEAR, -QUARTER) %>%
-	            tidyr::pivot_longer(., -releaseDate, names_to = 'fcPeriods') %>%
-	            dplyr::mutate(., fcPeriods = as.numeric(str_sub(fcPeriods, -1)) - 2) %>%
-	            dplyr::mutate(., obsDate = add_with_rollback(releaseDate, months(fcPeriods * 3))) %>%
-	            na.omit(.) %>%
-	            dplyr::inner_join(., vintageDf, by = 'releaseDate') %>%
-	            dplyr::transmute(., fcname = 'spf', varname = x$varname, freq = 'q', form = 'd1', vdate = vintageDate, date = obsDate, value)
-	            }) %>%
-	            dplyr::bind_rows(.) %>%
-	            return(.)
+	        paramsDf %>%
+	        	dplyr::filter(., method == m) %>%
+	        	purrr::transpose(.) %>%
+		        lapply(., function(x)
+		            readxl::read_excel(file, na = '#N/A', sheet = x$spfname) %>%
+			            dplyr::select(
+			            .,
+			            c('YEAR', 'QUARTER', {
+			              if (m == 'level') paste0(x$spfname, 2:6) else paste0('d', str_to_lower(x$spfname), 2:6)
+			              })
+			            ) %>%
+			            dplyr::mutate(., releasedate = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q')) %>%
+			            dplyr::select(., -YEAR, -QUARTER) %>%
+			            tidyr::pivot_longer(., -releasedate, names_to = 'fcPeriods') %>%
+			            dplyr::mutate(., fcPeriods = as.numeric(str_sub(fcPeriods, -1)) - 2) %>%
+			            dplyr::mutate(., date = add_with_rollback(releasedate, months(fcPeriods * 3))) %>%
+			            na.omit(.) %>%
+			            dplyr::inner_join(., vintageDf, by = 'releasedate') %>%
+			            dplyr::transmute(
+			            	.,
+			            	fcname = 'spf', varname = x$varname, freq = 'q', form = 'd1', vdate, date, value
+			            	)
+		            ) %>%
+		            dplyr::bind_rows(.) %>%
+		            return(.)
 
 	        }) %>%
 	        dplyr::bind_rows(.)
 
-	m$ext$sources$spf <<- df
+	ext$spf <<- df
 })
 
 
