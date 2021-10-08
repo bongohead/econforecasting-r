@@ -195,31 +195,35 @@ local({
 
 
 ## WSJ Economic Survey
-WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
-```{r}
+# WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
 
     orgsDf =
         tibble(
-          fcname = c('wsj', 'fnm', 'wfc', 'gsu', 'spg', 'ucl', 'gsc'),
-          fcfullname = c('WSJ Consensus', 'Fannie Mae', 'Wells Fargo & Co.', 'Georgia State University', 'S&P Global Ratings', 'UCLA Anderson Forecast', 'Goldman, Sachs & Co.')
+          fcname = c(
+          	'wsj', 'fnm', 'wfc', 'gsu',
+          	'spg', 'ucl', 'gsc', 'mgs'
+          	),
+          fcfullname = c(
+          	'WSJ Consensus', 'Fannie Mae', 'Wells Fargo & Co.', 'Georgia State University',
+          	'S&P Global Ratings', 'UCLA Anderson Forecast', 'Goldman, Sachs & Co.', 'Morgan Stanley'
+          	)
         )
 
     filePaths =
-        seq(as.Date('2021-01-01'), to = add_with_rollback(p$VINTAGE_DATE, months(0)), by = '3 months') %>%
-        purrr::map(., function(x)
-            list(
-                date = x,
-                file = paste0('wsjecon', str_sub(x, 6, 7), str_sub(x, 3, 4), '.xls')
-                )
-            )
+    	tribble(
+    		~ vdate, ~ file,
+    		'2021-04-11', 'wsjecon0421.xls',
+			'2021-07-11', 'wsjecon0721.xls'
+			# October 17th next
+    		) %>%
+    	purrr::transpose(.)
 
     df =
         lapply(filePaths, function(x) {
             message(x$date)
             dest = file.path(DL_DIR, 'wsj.xls')
 
-            httr::http_error('https://google.com')
             download.file(
                 paste0('https://online.wsj.com/public/resources/documents/', x$file),
                 destfile = dest,
@@ -316,7 +320,7 @@ local({
                             varname = unique(z$varname),
                             freq = 'q',
                             form = 'd1',
-                            vdate = as_date(x$date)
+                            vdate = as_date(x$vdate)
                             )
                     ) %>%
                 dplyr::right_join(., orgsDf, by = 'fcfullname') %>%
@@ -325,11 +329,15 @@ local({
         dplyr::bind_rows(.) %>%
     	na.omit(.)
 
-
-    m$ext$sources$wsj <<- df
+    ext$wsj <<- df
 })
-```
 
+## WSJ checking
+local({
+	ext$wsj %>% group_split(., varname) %>%
+		setNames(., map(., ~.$varname[[1]])) %>%
+		lapply(., function(x) tidyr::pivot_wider(x, id_cols = c('fcname', 'vdate'), names_from = 'date'))
+})
 
 ## CBO Forecasts
 ```{r}
