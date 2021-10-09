@@ -197,7 +197,7 @@ local({
 ## WSJ Economic Survey
 # WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
-
+	
     orgsDf =
         tibble(
           fcname = c(
@@ -339,8 +339,10 @@ local({
 		lapply(., function(x) tidyr::pivot_wider(x, id_cols = c('fcname', 'vdate'), names_from = 'date'))
 })
 
+
+
+
 ## CBO Forecasts
-```{r}
 local({
 
   urlDf =
@@ -362,7 +364,7 @@ local({
           url
       ) %>%
       dplyr::mutate(., date = as.Date(date)) %>%
-      dplyr::filter(., date >= as.Date('2018-01-01'))
+      dplyr::filter(., date >= as.Date('2020-01-01'))
 
 
   tempPath = file.path(DL_DIR, 'cbo.xlsx')
@@ -371,14 +373,23 @@ local({
     tribble(
       ~ varname, ~ cboCategory, ~ cboname, ~ cboUnits,
       'gdp', 'Output', 'Real GDP', 'Percentage change, annual rate',
-      'pcepi', 'Prices', 'Price Index, Personal Consumption Expenditures (PCE)', 'Percentage change, annual rate',
+      # 'pcepi', 'Prices', 'Price Index, Personal Consumption Expenditures (PCE)', 'Percentage change, annual rate',
       'inf', 'Prices', 'Consumer Price Index, All Urban Consumers (CPI-U)', 'Percentage change, annual rate',
       'oil', 'Prices', 'Price of Crude Oil, West Texas Intermediate (WTI)', 'Dollars per barrel',
       'ue', 'Labor', 'Unemployment Rate, Civilian, 16 Years or Older', 'Percent',
       'ffr', 'Interest Rates', 'Federal Funds Rate', 'Percent',
-      'pce', 'Components of GDP (Real)', 'Personal Consumption Expenditures', 'Percentage change, annual rate',
       't10y', 'Interest Rates', '10-Year Treasury Note', 'Percent',
-      't03m', 'Interest Rates', '3-Month Treasury Bill', 'Percent'
+      't03m', 'Interest Rates', '3-Month Treasury Bill', 'Percent',
+      'pce', 'Components of GDP (Real)', 'Personal Consumption Expenditures', 'Percentage change, annual rate',
+      'pdi', 'Components of GDP (Real)', 'Gross Private Domestic Investment', 'Percentage change, annual rate',
+      'pdin', 'Components of GDP (Real)', 'Nonresidential fixed investment', 'Percentage change, annual rate',
+      'pdir', 'Components of GDP (Real)', 'Residential fixed investment', 'Percentage change, annual rate',
+      'govt', 'Components of GDP (Real)', 'Government Consumption Expenditures and Gross Investment',
+    	'Percentage change, annual rate',
+      'govtf', 'Components of GDP (Real)', 'Federal', 'Percentage change, annual rate',
+      'govts', 'Components of GDP (Real)', 'State and local', 'Percentage change, annual rate',
+      'ex', 'Components of GDP (Real)', 'Exports', 'Percentage change, annual rate',
+      'im', 'Components of GDP (Real)', 'Imports', 'Percentage change, annual rate'
       )
 
 
@@ -394,7 +405,7 @@ local({
         suppressMessages(readxl::read_excel(
           tempPath,
           sheet = '1. Quarterly',
-          skip = {if (as.Date(x$date, origin = lubridate::origin) == '2019-01-01') 5 else 6}
+          skip = 6
           )) %>%
         dplyr::rename(., cboCategory = 1, cboname = 2, cboname2 = 3, cboUnits = 4) %>%
         dplyr::mutate(., cboname = ifelse(is.na(cboname), cboname2, cboname)) %>%
@@ -403,25 +414,26 @@ local({
         tidyr::fill(., cboname, .direction = 'down') %>%
         na.omit(.)
 
-
       xl %>%
         dplyr::inner_join(., paramsDf, by = c('cboCategory', 'cboname', 'cboUnits')) %>%
         dplyr::select(., -cboCategory, -cboname, -cboUnits) %>%
-        tidyr::pivot_longer(-varname, names_to = 'obsDate') %>%
-        dplyr::mutate(., obsDate = econforecasting::strdateToDate(obsDate)) %>%
-        dplyr::filter(., obsDate >= as.Date(x$date, origin = lubridate::origin)) %>%
-        dplyr::mutate(., vintageDate = as.Date(x$date, origin = lubridate::origin))
+        tidyr::pivot_longer(-varname, names_to = 'date') %>%
+        dplyr::mutate(., date = from_pretty_date(date, 'q')) %>%
+        dplyr::filter(., date >= as.Date(x$date, origin = lubridate::origin)) %>%
+        dplyr::mutate(., vdate = as.Date(x$date, origin = lubridate::origin))
       }) %>%
     dplyr::bind_rows(.) %>%
-    dplyr::transmute(., fcname = 'cbo', varname, form = 'd1', freq = 'q', date = obsDate, vdate = vintageDate, value)
+    dplyr::transmute(., fcname = 'cbo', varname, form = 'd1', freq = 'q', date, vdate, value)
 
   # Count number of forecasts per group
   # df %>% dplyr::group_by(vintageDate, varname) %>% dplyr::summarize(., n = n()) %>% View(.)
 
-
-  m$ext$sources$cbo <<- df
+  ext$cbo <<- df
 })
-```
+
+
+
+
 
 
 ## EINF Model - Cleveland Fed
