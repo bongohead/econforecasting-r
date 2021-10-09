@@ -432,38 +432,45 @@ local({
 })
 
 
-
-
-
-
 ## EINF Model - Cleveland Fed
-```{r}
 local({
 
   file = file.path(DL_DIR, paste0('inf.xls'))
 
-  download.file('https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls', file, mode = 'wb')
+  download.file(
+  	paste0(
+  		'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/',
+  		'indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
+  		),
+  	file,
+  	mode = 'wb'
+  	)
 
   df =
 	readxl::read_excel(file, sheet = 'Expected Inflation') %>%
-  	dplyr::rename(., vintageDate = 'Model Output Date') %>%
-  	tidyr::pivot_longer(., -vintageDate, names_to = 'ttm', values_to = 'yield') %>%
+  	dplyr::rename(., vdate = 'Model Output Date') %>%
+  	tidyr::pivot_longer(., -vdate, names_to = 'ttm', values_to = 'yield') %>%
   	dplyr::mutate(
   		.,
-  		vintageDate = as.Date(vintageDate), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
+  		vdate = as.Date(vdate), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
   		) %>%
-  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
-  	dplyr::right_join(., tibble(ttm = 1:360), by = 'ttm') %>%
-  	dplyr::arrange(., ttm) %>%
-  	dplyr::mutate(
-  		.,
-  		yield = zoo::na.spline(yield),
-  		vintageDate = unique(na.omit(vintageDate)),
-  		curDate = floor_date(p$VINTAGE_DATE, 'months'),
-  		cumReturn = (1 + yield)^(ttm/12),
-  		yttmAheadCumReturn = dplyr::lead(cumReturn, 1)/cumReturn,
-  		yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/1) - 1) * 100,
-  		obsDate = add_with_rollback(curDate, months(ttm - 1))
+  	# dplyr::filter(., vdate == max(vdate)) %>%
+  	dplyr::filter(., vdate >= as_date('2015-01-01')) %>%
+  	dplyr::group_split(., vdate) %>%
+  	purrr::map_dfr(., function(x)
+  		x %>%
+		  	dplyr::right_join(., tibble(ttm = 1:360), by = 'ttm') %>%
+		  	dplyr::arrange(., ttm) %>%
+		  	dplyr::mutate(
+		  		.,
+		  		yield = zoo::na.spline(yield),
+		  		vdate = unique(na.omit(vdate)),
+		  		curDate = floor_date(vdate, 'months'),
+		  		cumReturn = (1 + yield)^(ttm/12),
+		  		yttmAheadCumReturn = dplyr::lead(cumReturn, 1)/cumReturn,
+		  		yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/1) - 1) * 100,
+		  		date = add_with_rollback(curDate, months(ttm - 1))
+		  		)
   		) %>%
   	dplyr::transmute(
   		.,
@@ -471,18 +478,21 @@ local({
 		varname = 'inf',
         form = 'd1',
 		freq = 'm',
-		date = obsDate,
-  		vdate = vintageDate,
+		date,
+  		vdate,
   		value = yttmAheadAnnualizedYield,
   		) %>%
   	na.omit(.)
+  
+	df %>%
+		filter(., month(vdate) %in% c(1, 6)) %>%
+		ggplot(.) + geom_line(aes(x = date, y = value, color = as.factor(vdate)))
 
-    m$ext$sources$cle <<- df
+    ext$cle <<- df
 })
-```
+
 
 ## CME Model
-```{r}
 local({
 
 	# First get from Quandl
@@ -649,7 +659,7 @@ local({
 
 	m$ext$sources$cme <<- finalDf
 })
-```
+
 
 ## DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, and Spreads
 DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
