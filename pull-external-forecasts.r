@@ -1,8 +1,10 @@
 library(tidyverse)
 library(httr)
+library(DBI)
 library(econforecasting)
 DIR = 'D:/Onedrive/__Projects/econforecasting'
 DL_DIR = file.path(DIR, 'tmp')
+RESET_SQL = FALSE
 if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
 dir.create(DL_DIR, recursive = TRUE)
 
@@ -196,7 +198,7 @@ local({
 # 5. WSJ Economic Survey -----------------------------------------------------
 # WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
-	
+
     orgsDf =
         tibble(
           fcname = c(
@@ -484,7 +486,7 @@ local({
   		value = yttmAheadAnnualizedYield,
   		) %>%
   	na.omit(.)
-  
+
 	df %>%
 		filter(., month(vdate) %in% c(1, 6)) %>%
 		ggplot(.) + geom_line(aes(x = date, y = value, color = as.factor(vdate)))
@@ -665,18 +667,16 @@ local({
 
 
 # 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
-
-## DNS Coefficients -------------------------------------------------------------
 local({
-	
+
 	variablesDf = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'all-variables')
-	
+
 	fredRes =
 		variablesDf %>%
 		filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
 		purrr::transpose(.) %>%
 		purrr::map_dfr(., function(x) {
-			
+
 			message(x$sckey)
 			# Get series data
 			dataDf =
@@ -685,8 +685,8 @@ local({
 				dplyr::filter(., date >= as.Date('2010-01-01'))
 			dataDf
 		})
-	
-	# Monthly aggregation & append EOM with current val 
+
+	# Monthly aggregation & append EOM with current val
 	fredResCat =
 		fredRes %>%
 		group_split(., varname) %>%
@@ -698,18 +698,18 @@ local({
 				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
 				dplyr::mutate(., freq = 'm')
 			)
-	
+
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yieldCurveNamesMap =
-		variablesDf %>% 
+		variablesDf %>%
 		purrr::transpose(.) %>%
 		map_chr(., ~.$varname) %>%
 		unique(.) %>%
 		purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
 		tibble(varname = .) %>%
 		dplyr::mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
-	
-	
+
+
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	trainDf =
 		filter(fredResCat, varname %in% yieldCurveNamesMap$varname) %>%
@@ -719,14 +719,14 @@ local({
 		left_join(., transmute(filter(fredResCat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		dplyr::mutate(., value = value - ffr) %>%
 		dplyr::select(., -ffr)
-	
+
 	#' Calculate DNS fit
 	#'
 	#' @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
 	#' @param returnAll: (boolean) FALSE by default.
 	#' If FALSE, will return only the MAPE (useful for optimization).
 	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
-	#' 
+	#'
 	#' @export
 	getDnsFit = function(df, lambda, returnAll = FALSE) {
 		df %>%
@@ -751,7 +751,7 @@ local({
 			} %>%
 			return(.)
 	}
-	
+
 	# Find MSE-minimizing lambda value
 	optimLambda =
 		optimize(
@@ -769,7 +769,7 @@ local({
 		dplyr::select(., b1, b2, b3) %>%
 		head(., 1) %>%
 		as.list(.)
-	
+
 	dnsFitChart =
 		getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
 		dplyr::filter(., date == max(date)) %>%
@@ -777,35 +777,30 @@ local({
 		ggplot(.) +
 		geom_point(aes(x = ttm, y = value)) +
 		geom_line(aes(x = ttm, y = fitted))
-	
+
+
 	print(dnsFitChart)
-	
-})
 
 
-# DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
-# Calculated TDNS1: TYield_10y
-# Calculated TDNS2: -1 * (t10y - t03m)
-# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
-# Keep these treasury yield forecasts as the external forecasts ->
-# note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to
-local({
-
-    dnsCoefs = m$dnsCoefs
-    dnsLambda = m$dnsLambda
-    dnsYieldCurveNamesMap = m$dnsYieldCurveNamesMap
+	# DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
+	# Calculated TDNS1: TYield_10y
+	# Calculated TDNS2: -1 * (t10y - t03m)
+	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
+	# Keep these treasury yield forecasts as the external forecasts ->
+	# note that later these will be "regenerated" in the baseline calculation,
+	# may be off a bit due to calculation from TDNS, compare to
 
     # Monthly forecast up to 10 years
     # Get cumulative return starting from curDate
     fittedCurve =
         tibble(ttm = seq(1: 480)) %>%
-        dplyr::mutate(., curDate = floor_date(p$VINTAGE_DATE, 'months')) %>%
+        dplyr::mutate(., curDate = floor_date(Sys.Date(), 'months')) %>%
         dplyr::mutate(
           .,
           annualizedYield =
             dnsCoefs$b1 +
-            dnsCoefs$b2 * (1-exp(-1 * dnsLambda * ttm))/(dnsLambda * ttm) +
-            dnsCoefs$b3 * ((1-exp(-1 * dnsLambda * ttm))/(dnsLambda * ttm) - exp(-1 * dnsLambda * ttm)),
+            dnsCoefs$b2 * (1-exp(-1 * optimLambda * ttm))/(optimLambda * ttm) +
+            dnsCoefs$b3 * ((1-exp(-1 * optimLambda * ttm))/(optimLambda * ttm) - exp(-1 * optimLambda * ttm)),
           # Get cumulative yield
           cumReturn = (1 + annualizedYield/100)^(ttm/12)
           )
@@ -819,7 +814,7 @@ local({
     # and for each, iterate over the original "ttms" 1, 2, 3,
     # ..., 120 and for each forecast the cumulative return for the yttm period ahead.
     df0 =
-        dnsYieldCurveNamesMap$ttm %>%
+    	yieldCurveNamesMap$ttm %>%
         lapply(., function(yttm)
             fittedCurve %>%
                 dplyr::mutate(
@@ -829,7 +824,7 @@ local({
                     ) %>%
                 dplyr::filter(., ttm <= 120) %>%
                 dplyr::mutate(., yttm = yttm) %>%
-                dplyr::inner_join(., dnsYieldCurveNamesMap, c('yttm' = 'ttm'))
+                dplyr::inner_join(., yieldCurveNamesMap, c('yttm' = 'ttm'))
             ) %>%
         dplyr::bind_rows(.) %>%
         dplyr::mutate(
@@ -843,7 +838,7 @@ local({
             date,
             form = 'd1',
             freq = 'm',
-            vdate = p$VINTAGE_DATE,
+            vdate = Sys.Date(),
             value = yttmAheadAnnualizedYield
             )
 
@@ -853,7 +848,7 @@ local({
         dplyr::select(., varname, date, value) %>%
         dplyr::inner_join(
             .,
-            m$ext$sources$cme %>%
+        	ext$cme %>%
                 dplyr::filter(., vdate == max(vdate)) %>%
                 dplyr::filter(., varname == 'ffr') %>%
                 dplyr::transmute(., ffr = value, date),
@@ -867,12 +862,13 @@ local({
             date,
             form = 'd1',
             freq = 'm',
-            vdate = p$VINTAGE_DATE,
+            vdate = Sys.Date(),
             value
             )
 
     # Calculate TDNS yield forecasts
-    # Forecast vintage date should be bound to historical data vintage date since reliant purely on historical data
+    # Forecast vintage date should be bound to historical data vintage
+    # date since reliant purely on historical data
     df2 =
         df0 %>%
         dplyr::select(., varname, date, value) %>%
@@ -885,24 +881,160 @@ local({
             tdns3 = .3 * (2 * t02y - t03m - t10y)
             ) %>%
         tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-        dplyr::transmute(., fcname = 'dns', varname, date, form = 'd1', freq = 'm', vdate = p$VINTAGE_DATE, value)
+        dplyr::transmute(., fcname = 'dns', varname, date, form = 'd1', freq = 'm', vdate = Sys.Date(), value)
 
-    m$ext$sources$dns <<- dplyr::bind_rows(df1, df2)
+    ext$dns <<- dplyr::bind_rows(df1, df2)
 })
 
 
 
-## Get Combined Data
+# 10. Combine and Flatten -------------------------------------------------
 local({
 
 	predFlat =
-		m$ext$sources %>%
+		ext %>%
 		dplyr::bind_rows(.) %>%
 		dplyr::transmute(., fcname, vdate, freq, form, varname, date, value)
 
 	if (nrow(na.omit(predFlat)) != nrow(predFlat)) stop('Missing obs')
 
-	m$ext$predFlat <<- predFlat
+	flat <<- predFlat
 })
 
 
+# 11. Send Meta Info SQL DB -------------------------------------------------
+local({
+
+	db = dbConnect(
+		RPostgres::Postgres(),
+		dbname = CONST$DB_DATABASE,
+		host = CONST$DB_SERVER,
+		port = 5432,
+		user = CONST$DB_USERNAME,
+		password = CONST$DB_PASSWORD
+	)
+
+	if (RESET_SQL) {
+
+		DBI::dbExecute(db, 'DROP TABLE IF EXISTS ext_tstypes CASCADE')
+
+		# tstypes 'hist', 'forecast', 'nc'
+		DBI::dbExecute(db, '
+			CREATE TABLE ext_tstypes (
+				tskey VARCHAR(3) CONSTRAINT ext_tstypes_pk PRIMARY KEY,
+				fctype VARCHAR(255),
+				shortname VARCHAR(100) NOT NULL,
+				fullname VARCHAR(255) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+			);
+		')
+
+		DBI::dbExecute(db, 'CREATE INDEX ext_tstypes_ix_fctype ON ext_tstypes (fctype);')
+	}
+
+	tsTypes = tribble(
+		~ tskey, ~ fctype, ~ shortname, ~ fullname,
+		# 1
+		'atl', 'qual', 'Atlanta Fed', 'Atlanta Fed GDPNow Model',
+		# 2
+		'stl', 'qual', 'St. Louis Fed', 'St. Louis Fed Economic News Model',
+		# 3
+		'nyf', 'qual', 'NY Fed', 'New York Fed Staff Nowcast',
+		# 4
+		'spf', 'qual', 'Survey of Professional Forecasters', 'Survey of Professional Forecasters',
+		# 5
+		'wsj', 'qual', 'WSJ Consensus', 'Wall Street Journal Consensus Forecast',
+		'fnm', 'qual', 'Fannie Mae', 'Fannie Mae Forecast',
+		'wfc', 'qual', 'Wells Fargo', 'Wells Fargo Forecast',
+		'gsu', 'qual', 'GSU', 'Georgia State University Forecast',
+		'spg', 'qual', 'S&P', 'S&P Global Ratings',
+		'ucl', 'qual', 'UCLA Anderson', 'UCLA Anderson Forecast',
+		'gsc', 'qual', 'Goldman Sachs', 'Goldman Sachs Forecast',
+		'mgs', 'qual', 'Morgan Stanley', 'Morgan Stanley',
+		# 6
+		'cbo', 'qual', 'CBO', 'Congressional Budget Office Projections',
+		# 7
+		'cle', 'fut', 'Futures-Implied Inflation Rates', 'Futures-Implied Expected Inflation Model',
+		# 8
+		'cme', 'fut', 'Futures-Implied Interest Rates', 'Futures-Implied Expected Benchmark Rates Model',
+		# 9
+		'dns', 'fut', 'Futures-Implied Treasury Yield', 'Futures-Implied Expected Treasury Yields Model'
+	)
+
+	flat %>% group_by(., fcname) %>% summarize(., n = n())
+
+	create_insert_query(
+		tsTypes,
+		'ext_tstypes',
+		str_squish('ON CONFLICT ON CONSTRAINT ext_tstypes_pk DO UPDATE
+			    SET
+			    fctype=EXCLUDED.fctype,
+			    shortname=EXCLUDED.shortname,
+			    fullname=EXCLUDED.fullname
+			    ')
+		) %>%
+		DBI::dbSendQuery(db, .)
+
+})
+
+# 12. Send Forecast Data SQL DB -------------------------------------------------
+local({
+
+	db = dbConnect(
+		RPostgres::Postgres(),
+		dbname = CONST$DB_DATABASE,
+		host = CONST$DB_SERVER,
+		port = 5432,
+		user = CONST$DB_USERNAME,
+		password = CONST$DB_PASSWORD
+	)
+
+	if (RESET_SQL) {
+
+		DBI::dbExecute(db, 'DROP TABLE IF EXISTS ext_tsvalues CASCADE')
+		DBI::dbExecute(db, '
+			CREATE TABLE ext_tsvalues (
+				tskey CHAR(3) NOT NULL,
+				vdate DATE NOT NULL,
+				freq CHAR(1) NOT NULL,
+				form VARCHAR(5) NOT NULL,
+				varname VARCHAR(255) NOT NULL,
+				date DATE NOT NULL,
+				value NUMERIC(20, 4) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				CONSTRAINT ext_tsvalues_pk PRIMARY KEY (tskey, vdate, freq, form, varname, date),
+				CONSTRAINT ext_tsvalues_tskey_fk FOREIGN KEY (tskey) REFERENCES ext_tstypes (tskey)
+					ON DELETE CASCADE ON UPDATE CASCADE--,
+				--CONSTRAINT ext_tsvalues_varname_fk FOREIGN KEY (varname) REFERENCES csm_params (varname)
+				--	ON DELETE CASCADE ON UPDATE CASCADE
+				);
+			')
+	}
+
+
+	sqlRes =
+		flat %>%
+		transmute(., tskey = fcname, vdate, freq, form, varname, date, value) %>%
+		filter(., vdate >= as.Date('2010-01-01')) %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_by(., split) %>%
+		group_split(., .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'ext_tsvalues',
+				str_squish('ON CONFLICT ON CONSTRAINT ext_tsvalues_pk DO UPDATE
+			    	SET value=EXCLUDED.value')
+				) %>%
+				DBI::dbExecute(db, .)
+			) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+
+
+	if (any(is.null(unlist(sqlRes)))) stop('Error with one or more SQL queries')
+	sqlRes %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	print(sum(unlist(sqlRes)))
+
+	count = as_tibble(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM ext_tsvalues'))
+	print(count)
+})
