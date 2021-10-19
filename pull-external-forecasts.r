@@ -712,19 +712,22 @@ local({
 	
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	trainDf =
-		filter(fredResCat, varname %in% yieldCurveNamesMap$varname)
-			(yieldCurveNamesMap$varname, function(x) p$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
+		filter(fredResCat, varname %in% yieldCurveNamesMap$varname) %>%
 		dplyr::select(., -freq) %>%
-		dplyr::filter(., date >= add_with_rollback(p$VINTAGE_DATE, months(-3))) %>%
-		dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
-		dplyr::left_join(., dplyr::transmute(p$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
+		dplyr::filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
+		right_join(., yieldCurveNamesMap, by = 'varname') %>%
+		left_join(., transmute(filter(fredResCat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		dplyr::mutate(., value = value - ffr) %>%
 		dplyr::select(., -ffr)
 	
-	# @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
-	# @param returnAll: (boolean) FALSE by default.
-	# If FALSE, will return only the MAPE (useful for optimization).
-	# Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
+	#' Calculate DNS fit
+	#'
+	#' @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
+	#' @param returnAll: (boolean) FALSE by default.
+	#' If FALSE, will return only the MAPE (useful for optimization).
+	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
+	#' 
+	#' @export
 	getDnsFit = function(df, lambda, returnAll = FALSE) {
 		df %>%
 			dplyr::mutate(
