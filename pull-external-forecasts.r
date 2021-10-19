@@ -666,7 +666,7 @@ local({
 
 # 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
 
-## Data Import -------------------------------------------------------------
+## DNS Coefficients -------------------------------------------------------------
 local({
 	
 	variablesDf = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'all-variables')
@@ -761,23 +761,7 @@ local({
 			interval = c(-1, 1),
 			maximum = FALSE
 		)$minimum
-	
-	mDf =
-		purrr::map_dfr(yieldCurveNamesMap$varname, function(x) p$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
-		dplyr::select(., -freq) %>%
-		dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
-		dplyr::left_join(., dplyr::transmute(p$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
-		dplyr::mutate(., value = value - ffr) %>%
-		dplyr::select(., -ffr) %>%
-		getDnsFit(., lambda = optimLambda, returnAll = TRUE) %>%
-		dplyr::group_by(., date) %>%
-		dplyr::summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
-		tidyr::pivot_longer(., -date, names_to = 'varname')
-	
-	mDfs = mDf %>% split(., as.factor(.$varname)) %>% lapply(., function(x) x %>% dplyr::select(., -varname))
-	
-	qDfs = mDfs %>% lapply(., function(x) monthlyDfToQuarterlyDf(x))
-	
+
 	# Store DNS coefficients
 	dnsCoefs =
 		getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
@@ -794,17 +778,17 @@ local({
 		geom_point(aes(x = ttm, y = value)) +
 		geom_line(aes(x = ttm, y = fitted))
 	
+	print(dnsFitChart)
 	
 })
 
 
-DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
-Calculated TDNS1: TYield_10y
-Calculated TDNS2: -1 * (t10y - t03m)
-Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
-Keep these treasury yield forecasts as the external forecasts ->
-note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to
-```{r}
+# DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
+# Calculated TDNS1: TYield_10y
+# Calculated TDNS2: -1 * (t10y - t03m)
+# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
+# Keep these treasury yield forecasts as the external forecasts ->
+# note that later these will be "regenerated" in the baseline calculation, may be off a bit due to calculation from TDNS, compare to
 local({
 
     dnsCoefs = m$dnsCoefs
@@ -905,10 +889,10 @@ local({
 
     m$ext$sources$dns <<- dplyr::bind_rows(df1, df2)
 })
-```
+
+
 
 ## Get Combined Data
-```{r}
 local({
 
 	predFlat =
@@ -920,4 +904,5 @@ local({
 
 	m$ext$predFlat <<- predFlat
 })
-```
+
+
