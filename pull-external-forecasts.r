@@ -12,9 +12,10 @@ source(file.path(DIR, 'model-inputs', 'constants.r'))
 ext = list()
 
 
+
+# 1. Atlanta Fed ----------------------------------------------------------
 local({
 
-  ##### GDP #####
   paramsDf =
 	tribble(
       ~ varname, ~ fred_id,
@@ -50,7 +51,7 @@ local({
 })
 
 
-## St. Louis Fed
+# 2. St. Louis Fed --------------------------------------------------------
 local({
 
 	df =
@@ -71,7 +72,7 @@ local({
 })
 
 
-## New York Fed
+# 3. New York Fed ---------------------------------------------------------
 local({
 
     file = file.path(DL_DIR, 'nyf.xlsx')
@@ -93,7 +94,7 @@ local({
 })
 
 
-## Philadelphia Fed
+# 4. Philadelphia Fed -----------------------------------------------------
 local({
 
     # Scrape vintage dates
@@ -192,9 +193,7 @@ local({
 
 
 
-
-
-## WSJ Economic Survey
+# 5. WSJ Economic Survey -----------------------------------------------------
 # WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
 	
@@ -332,7 +331,7 @@ local({
     ext$wsj <<- df
 })
 
-## WSJ checking
+## Verify ------------------------------------------------------------------
 local({
 	ext$wsj %>% group_split(., varname) %>%
 		setNames(., map(., ~.$varname[[1]])) %>%
@@ -342,7 +341,9 @@ local({
 
 
 
-## CBO Forecasts
+
+
+# 6. CBO Forecasts --------------------------------------------------------
 local({
 
   urlDf =
@@ -432,7 +433,7 @@ local({
 })
 
 
-## EINF Model - Cleveland Fed
+# 7. Cleveland Fed (Expected Inf) -----------------------------------------
 local({
 
   file = file.path(DL_DIR, paste0('inf.xls'))
@@ -492,7 +493,7 @@ local({
 })
 
 
-## CME Model
+# 8. CME ---------------------------------------------------------------------
 local({
 
 	# First get from Quandl
@@ -507,17 +508,17 @@ local({
 					),
 				col_types = 'Ddddddddd'
 				) %>%
-				dplyr::transmute(., vintageDate = Date, settle = Settle, j = j) %>%
-				dplyr::filter(., vintageDate >= as.Date('2010-01-01'))
+				dplyr::transmute(., vdate = Date, settle = Settle, j = j) %>%
+				dplyr::filter(., vdate >= as.Date('2010-01-01'))
 			}) %>%
 		dplyr::bind_rows(.) %>%
 		dplyr::transmute(
 			.,
-			vintageDate,
-		# Consider the forecasted period the vintageDate + j
-			obsDate =
-				econforecasting::strdateToDate(paste0(year(vintageDate), 'M', month(vintageDate))) %>%
-				lubridate::add_with_rollback(., months(j - 1), roll_to_first = TRUE),
+			vdate,
+			# Consider the forecasted period the vdate + j
+			date =
+				from_pretty_date(paste0(year(vdate), 'M', month(vdate)), 'm') %>%
+				add_with_rollback(., months(j - 1), roll_to_first = TRUE),
 			value = 100 - settle,
 			varname = 'ffr',
 			fcname = 'cme'
@@ -593,21 +594,21 @@ local({
 				purrr::map_dfr(., function(x) {
 					if (x$priorSettle %in% c('0.00', '-')) return() # Whack bug in CME website
 					tibble(
-						obsDate = lubridate::ymd(x$expirationDate),
+						date = lubridate::ymd(x$expirationDate),
 						value = 100 - as.numeric(x$priorSettle),
 						varname = var$varname
 						)
 					}) %>%
 				return(.)
 			}) %>%
-		# Now average out so that there's only one value for each (varname, obsDate) combo
-		dplyr::group_by(varname, obsDate) %>%
+		# Now average out so that there's only one value for each (varname, date) combo
+		dplyr::group_by(varname, date) %>%
 		dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
-		dplyr::arrange(., obsDate) %>%
+		dplyr::arrange(., date) %>%
 		# Get rid of forecasts for old observations
-		dplyr::filter(., obsDate >= lubridate::floor_date(Sys.Date(), 'month')) %>%
+		dplyr::filter(., date >= lubridate::floor_date(Sys.Date(), 'month')) %>%
 		# Assume vintagedate is the same date as the last Quandl obs
-		dplyr::mutate(., vintageDate = lastTradeDate, fcname = 'cme') %>%
+		dplyr::mutate(., vdate = lastTradeDate, fcname = 'cme') %>%
 		dplyr::filter(., value != 100)
 
 
@@ -615,16 +616,16 @@ local({
 
 	# Now combine, replacing df2 with df1 if necessary
 	combinedDf =
-		dplyr::full_join(df, df2, by = c('fcname', 'vintageDate', 'obsDate', 'varname')) %>%
+		dplyr::full_join(df, df2, by = c('fcname', 'vdate', 'date', 'varname')) %>%
 		# Use quandl data if available, otherwise use other data
 		dplyr::mutate(., value = ifelse(!is.na(value.x), value.x, value.y)) %>%
 		dplyr::select(., -value.x, -value.y)
 
 	# Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
-# 	df %>%
-#   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
-#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
-# 		View(.)
+	# 	df %>%
+	#   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
+	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
+	# 		View(.)
 
 
 	## Add monthly interpolation
@@ -632,36 +633,168 @@ local({
 
 	finalDf =
 		combinedDf %>%
-		dplyr::group_by(vintageDate, varname) %>%
+		dplyr::group_by(vdate, varname) %>%
 		dplyr::group_split(.) %>%
 		lapply(., function(x) {
 			x %>%
 				# Join on missing obs dates
 				dplyr::right_join(
 					.,
-					tibble(obsDate = seq(from = .$obsDate[[1]], to = tail(.$obsDate, 1), by = '1 month')) %>%
+					tibble(date = seq(from = .$date[[1]], to = tail(.$date, 1), by = '1 month')) %>%
 						dplyr::mutate(n = 1:nrow(.)),
-					by = 'obsDate'
+					by = 'date'
 					) %>%
-				dplyr::arrange(obsDate) %>%
+				dplyr::arrange(date) %>%
 				dplyr::transmute(
 					.,
 					fcname = head(fcname, 1),
 					varname = head(varname, 1),
 					form = 'd1',
 					freq = 'm',
-					date = obsDate,
-					vdate = head(vintageDate, 1),
+					date = date,
+					vdate = head(vdate, 1),
 					value = zoo::na.spline(value)
 					)
 			}) %>%
 		dplyr::bind_rows(.)
 
-	m$ext$sources$cme <<- finalDf
+	ext$cme <<- finalDf
 })
 
 
-## DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, and Spreads
+
+
+# 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
+
+## Data Import -------------------------------------------------------------
+local({
+	
+	variablesDf = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'all-variables')
+	
+	fredRes =
+		variablesDf %>%
+		filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
+		purrr::transpose(.) %>%
+		purrr::map_dfr(., function(x) {
+			
+			message(x$sckey)
+			# Get series data
+			dataDf =
+				get_fred_data(x$sckey, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
+				dplyr::transmute(., varname = x$varname, date, vdate = vintage_date, value) %>%
+				dplyr::filter(., date >= as.Date('2010-01-01'))
+			dataDf
+		})
+	
+	# Monthly aggregation & append EOM with current val 
+	fredResCat =
+		fredRes %>%
+		group_split(., varname) %>%
+		# Add monthly values for current month
+		map_dfr(., function(x)
+			x %>%
+				dplyr::mutate(., date = as.Date(paste0(year(date), '-', month(date), '-01'))) %>%
+				dplyr::group_by(., varname, date) %>%
+				dplyr::summarize(., value = mean(value), .groups = 'drop') %>%
+				dplyr::mutate(., freq = 'm')
+			)
+	
+	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
+	yieldCurveNamesMap =
+		variablesDf %>% 
+		purrr::transpose(.) %>%
+		map_chr(., ~.$varname) %>%
+		unique(.) %>%
+		purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
+		tibble(varname = .) %>%
+		dplyr::mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
+	
+	
+	# Create training dataset from SPREAD from ffr - fitted on last 3 months
+	trainDf =
+		filter(fredResCat, varname %in% yieldCurveNamesMap$varname)
+			(yieldCurveNamesMap$varname, function(x) p$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
+		dplyr::select(., -freq) %>%
+		dplyr::filter(., date >= add_with_rollback(p$VINTAGE_DATE, months(-3))) %>%
+		dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
+		dplyr::left_join(., dplyr::transmute(p$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
+		dplyr::mutate(., value = value - ffr) %>%
+		dplyr::select(., -ffr)
+	
+	# @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
+	# @param returnAll: (boolean) FALSE by default.
+	# If FALSE, will return only the MAPE (useful for optimization).
+	# Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
+	getDnsFit = function(df, lambda, returnAll = FALSE) {
+		df %>%
+			dplyr::mutate(
+				.,
+				f1 = 1,
+				f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm),
+				f3 = f2 - exp(-1 * lambda * ttm)
+			) %>%
+			dplyr::group_by(date) %>%
+			dplyr::group_split(.) %>%
+			lapply(., function(x) {
+				reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
+				dplyr::bind_cols(x, fitted = fitted(reg)) %>%
+					dplyr::mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
+					dplyr::mutate(., resid = value - fitted)
+			}) %>%
+			dplyr::bind_rows(.) %>%
+			{
+				if (returnAll == FALSE) dplyr::summarise(., mse = mean(abs(resid))) %>% .$mse
+				else .
+			} %>%
+			return(.)
+	}
+	
+	# Find MSE-minimizing lambda value
+	optimLambda =
+		optimize(
+			getDnsFit,
+			df = trainDf,
+			returnAll = FALSE,
+			interval = c(-1, 1),
+			maximum = FALSE
+		)$minimum
+	
+	mDf =
+		purrr::map_dfr(yieldCurveNamesMap$varname, function(x) p$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
+		dplyr::select(., -freq) %>%
+		dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
+		dplyr::left_join(., dplyr::transmute(p$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
+		dplyr::mutate(., value = value - ffr) %>%
+		dplyr::select(., -ffr) %>%
+		getDnsFit(., lambda = optimLambda, returnAll = TRUE) %>%
+		dplyr::group_by(., date) %>%
+		dplyr::summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
+		tidyr::pivot_longer(., -date, names_to = 'varname')
+	
+	mDfs = mDf %>% split(., as.factor(.$varname)) %>% lapply(., function(x) x %>% dplyr::select(., -varname))
+	
+	qDfs = mDfs %>% lapply(., function(x) monthlyDfToQuarterlyDf(x))
+	
+	# Store DNS coefficients
+	dnsCoefs =
+		getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
+		dplyr::filter(., date == max(date)) %>%
+		dplyr::select(., b1, b2, b3) %>%
+		head(., 1) %>%
+		as.list(.)
+	
+	dnsFitChart =
+		getDnsFit(df = trainDf, optimLambda, returnAll = TRUE) %>%
+		dplyr::filter(., date == max(date)) %>%
+		dplyr::arrange(., ttm) %>%
+		ggplot(.) +
+		geom_point(aes(x = ttm, y = value)) +
+		geom_line(aes(x = ttm, y = fitted))
+	
+	
+})
+
+
 DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
 Calculated TDNS1: TYield_10y
 Calculated TDNS2: -1 * (t10y - t03m)
