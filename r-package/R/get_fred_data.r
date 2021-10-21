@@ -12,7 +12,7 @@
 #' @export
 get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FALSE, .vintage_date = NULL, .verbose = FALSE) {
 
-	today = Sys.Date()
+	today = as_date(with_tz(now(), tz = 'America/Chicago'))
 
 	url =
 		paste0(

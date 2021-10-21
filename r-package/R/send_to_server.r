@@ -33,8 +33,19 @@ send_to_server = function() {
 		' -c "',
 		'ssh -t charles@econforecasting.com',
 		' -i C:/Users/Charles/.ssh/id_rsa',
-		' \'R CMD INSTALL /home/charles/projects/econforecasting/r-package/*\'',
+		' \'R CMD INSTALL /home/charles/projects/econforecasting/r-package\'',
 		'"'
 		) %>%
 		system(.)
+
+	paste0(
+		'"C:\\Program Files\\Git\\bin\\bash.exe"',
+		' -c "',
+		'ssh -t charles@econforecasting.com',
+		' -i C:/Users/Charles/.ssh/id_rsa',
+		' \'chmod 600 /home/charles/projects/econforecasting/model-inputs/constants.r\'',
+		'"'
+		) %>%
+		system(.)
+
 }

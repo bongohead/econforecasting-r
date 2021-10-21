@@ -1,4 +1,4 @@
-DIR = 'D:/Onedrive/__Projects/econforecasting'
+DIR = Sys.getenv('EF_DIR')
 
 # Directory
 sinkFile = file(file.path(DIR, 'pull-external-forecasts-log.txt'), open = 'wt')
