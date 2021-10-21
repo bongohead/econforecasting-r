@@ -1025,6 +1025,8 @@ local({
 			')
 	}
 
+	initCount = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM ext_tsvalues')$count)
+	message('***** Initial Count: ', initCount)
 
 	sqlRes =
 		flat %>%
@@ -1047,8 +1049,12 @@ local({
 
 	if (any(is.null(unlist(sqlRes)))) stop('Error with one or more SQL queries')
 	sqlRes %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	message('***** Data Sent to SQL:')
 	print(sum(unlist(sqlRes)))
 
-	count = as_tibble(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM ext_tsvalues'))
-	print(count)
+	finalCount = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM ext_tsvalues')$count)
+	message('***** Initial Count: ', finalCount)
+	message('***** Rows Added: ', finalCount - initCount)
+
+
 })
