@@ -23,6 +23,7 @@ TBD: Split out sentiments model into separate Git repo w/Shiny WebApp &
 - Added code for sentiments analysis to SQL
 - Added advanced sales subcomponents, and disprank/disptabs for website display
 - Added new helper functions and prepared package for CRAN addition
+- Added new repository for vintage data
 - Fixed issue with inflation forecast spacing
 - Fixed issue with using SQL queries not returning modified rows
 

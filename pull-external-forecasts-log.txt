@@ -1,31 +1,45 @@
 ----------------------------------
-Run :2021-10-18
+Run :2021-10-19
 ----------------------------------
 
--/                                                                                     [1mindexing[0m [34mfilea8867bc49ff[0m [================================================] [32m?[0m, eta: [36m 0s[0m                                                                                                                          -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     
--/                                                                                     -/                                                                                     
--/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     -/                                                                                     trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
+-- Attaching packages ------------------------------------------------------------------------------- tidyverse 1.3.1 --
+v ggplot2 3.3.5     v purrr   0.3.4
+v tibble  3.1.5     v dplyr   1.0.7
+v tidyr   1.1.4     v stringr 1.4.0
+v readr   2.0.2     v forcats 0.5.1
+-- Conflicts ---------------------------------------------------------------------------------- tidyverse_conflicts() --
+x dplyr::filter() masks stats::filter()
+x dplyr::lag()    masks stats::lag()
+Loading required package: lubridate
+
+Attaching package: 'lubridate'
+
+The following objects are masked from 'package:base':
+
+    date, intersect, setdiff, union
+
+
+Attaching package: 'econforecasting'
+
+The following object is masked from 'package:base':
+
+    diff
+
+
+
+trying URL 'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
 Content type 'application/vnd.ms-excel' length 397824 bytes (388 KB)
+==================================================
 downloaded 388 KB
 
--/                                                                                     Starting Quandl data scrape...
-[1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m393.21kB[0m in [36m 0s[0m, [32m1.53MB/s[0m[1mindexed[0m [32m429.49kB[0m in [36m 0s[0m, [32m1.63MB/s[0m                                                                                     [1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     [1mindexed[0m [32m0B[0m in [36m 0s[0m, [32m?[0m[1mindexed[0m [32m2.15GB[0m in [36m 0s[0m, [32m2.15GB/s[0m                                                                                     Completed Quandl data scrape
+Starting Quandl data scrape...
+Completed Quandl data scrape
 Starting CME data scrape...
 Completed CME data scrape...
 Adding monthly interpolation ...
--/                                                                                     EFFR
-DGS10
-DGS30
-DGS5
-DGS2
-DGS1
-DGS6MO
-DGS3MO
-DGS1MO
-DGS20
-DGS7
-1: 108677[1] 108677
-# A tibble: 1 x 1
-    count
-  <int64>
-1  108677
+
+Warning messages:
+1: package 'tibble' was built under R version 4.1.1 
+2: package 'tidyr' was built under R version 4.1.1 
+3: package 'readr' was built under R version 4.1.1 
+4: package 'lubridate' was built under R version 4.1.1 
