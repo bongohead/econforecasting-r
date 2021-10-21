@@ -24,8 +24,11 @@ TBD: Split out sentiments model into separate Git repo w/Shiny WebApp &
 - Added advanced sales subcomponents, and disprank/disptabs for website display
 - Added new helper functions and prepared package for CRAN addition
 - Added new repository for vintage data
+- Added code to move package to prod site
+- Added code to move pull-external-forecasts invariant to dev server (set EF_DIR in .renviron)
 - Fixed issue with inflation forecast spacing
 - Fixed issue with using SQL queries not returning modified rows
+- Fixed issue with WSJ scraping not working on prod site (needed headers)
 
 
 ## 2021-09-03 [v0.16] (CSM Forecasting & Finalize Model Rewrite)

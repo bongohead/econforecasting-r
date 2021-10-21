@@ -2,7 +2,7 @@ library(tidyverse)
 library(httr)
 library(DBI)
 library(econforecasting)
-DIR = 'D:/Onedrive/__Projects/econforecasting'
+DIR = Sys.getenv('EF_DIR')
 DL_DIR = file.path(DIR, 'tmp')
 RESET_SQL = FALSE
 if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
@@ -17,37 +17,37 @@ ext = list()
 
 # 1. Atlanta Fed ----------------------------------------------------------
 local({
-
-  paramsDf =
-	tribble(
-      ~ varname, ~ fred_id,
-      'gdp', 'GDPNOW',
-      'pce', 'PCENOW',
-      'pdi', 'GDPINOW',
-      'govt', 'GOVNOW',
-      'ex', 'EXPORTSNOW',
-      'im', 'IMPORTSNOW'
-    )
+	message('***** 1')
+	paramsDf =
+		tribble(
+		  ~ varname, ~ fred_id,
+		  'gdp', 'GDPNOW',
+		  'pce', 'PCENOW',
+		  'pdi', 'GDPINOW',
+		  'govt', 'GOVNOW',
+		  'ex', 'EXPORTSNOW',
+		  'im', 'IMPORTSNOW'
+		)
 
   # GDPNow
-  df =
-  	paramsDf %>%
-  	purrr::transpose(.) %>%
-  	lapply(., function(x)
-      get_fred_data(x$fred_id, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
-        dplyr::filter(., date >= .$vintage_date - months(3)) %>%
-        dplyr::transmute(
-        	.,
-        	fcname = 'atl',
-        	varname = x$varname,
-        	form = 'd1',
-        	freq = 'q',
-        	date,
-        	vdate = vintage_date,
-        	value
-        	)
-      ) %>%
-    dplyr::bind_rows(.)
+	df =
+		paramsDf %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x)
+			get_fred_data(x$fred_id, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
+			dplyr::filter(., date >= .$vintage_date - months(3)) %>%
+			dplyr::transmute(
+				.,
+				fcname = 'atl',
+				varname = x$varname,
+				form = 'd1',
+				freq = 'q',
+				date,
+				vdate = vintage_date,
+				value
+				)
+			) %>%
+		dplyr::bind_rows(.)
 
 	ext$atl <<- df
 })
@@ -55,6 +55,7 @@ local({
 
 # 2. St. Louis Fed --------------------------------------------------------
 local({
+	message('***** 2')
 
 	df =
 		get_fred_data('STLENI', CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
@@ -76,8 +77,9 @@ local({
 
 # 3. New York Fed ---------------------------------------------------------
 local({
+	message('***** 3')
 
-    file = file.path(DL_DIR, 'nyf.xlsx')
+	file = file.path(DL_DIR, 'nyf.xlsx')
     httr::GET(
         'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx',
         httr::write_disk(file, overwrite = TRUE)
@@ -98,6 +100,7 @@ local({
 
 # 4. Philadelphia Fed -----------------------------------------------------
 local({
+	message('***** 4')
 
     # Scrape vintage dates
     vintageDf =
@@ -198,6 +201,7 @@ local({
 # 5. WSJ Economic Survey -----------------------------------------------------
 # WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
+	message('***** 5')
 
     orgsDf =
         tibble(
@@ -225,11 +229,14 @@ local({
             message(x$date)
             dest = file.path(DL_DIR, 'wsj.xls')
 
-            download.file(
+            # A user-agent is required or garbage is returned
+            httr::GET(
                 paste0('https://online.wsj.com/public/resources/documents/', x$file),
-                destfile = dest,
-                mode = 'wb',
-                quiet = TRUE
+                httr::write_disk(dest, overwrite = TRUE),
+                httr::add_headers(
+                	'Host' = 'online.wsj.com',
+                	'User-Agent' = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+                	)
                 )
 
             # Read first two lines to parse column names
@@ -347,6 +354,7 @@ local({
 
 # 6. CBO Forecasts --------------------------------------------------------
 local({
+	message('***** 6')
 
   urlDf =
       httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
@@ -437,6 +445,7 @@ local({
 
 # 7. Cleveland Fed (Expected Inf) -----------------------------------------
 local({
+	message('***** 7')
 
   file = file.path(DL_DIR, paste0('inf.xls'))
 
@@ -497,6 +506,7 @@ local({
 
 # 8. CME ---------------------------------------------------------------------
 local({
+	message('***** 8')
 
 	# First get from Quandl
 	message('Starting Quandl data scrape...')
@@ -668,6 +678,7 @@ local({
 
 # 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
 local({
+	message('***** 9')
 
 	variablesDf = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'all-variables')
 
@@ -890,6 +901,7 @@ local({
 
 # 10. Combine and Flatten -------------------------------------------------
 local({
+	message('***** 10')
 
 	predFlat =
 		ext %>%
@@ -904,6 +916,7 @@ local({
 
 # 11. Send Meta Info SQL DB -------------------------------------------------
 local({
+	message('***** 11')
 
 	db = dbConnect(
 		RPostgres::Postgres(),
@@ -979,6 +992,7 @@ local({
 
 # 12. Send Forecast Data SQL DB -------------------------------------------------
 local({
+	message('***** 11')
 
 	db = dbConnect(
 		RPostgres::Postgres(),
