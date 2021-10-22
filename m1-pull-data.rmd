@@ -1,11 +1,10 @@
 # Set Constants
 ```{r purl = FALSE}
-DIR = 'D:/Onedrive/__Projects/econforecasting'
-DL_DIR = 'D:/Onedrive/__Projects/econforecasting/tmp'
-PACKAGE_DIR = 'D:/Onedrive/__Projects/econforecasting/r-package' # Path to package with helper functions
-INPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-inputs' # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
-OUTPUT_DIR = 'D:/Onedrive/__Projects/econforecasting/model-outputs'
-VINTAGE_DATE = as.Date('2021-10-06')
+DIR = Sys.getenv('EF_DIR')
+DL_DIR = file.path(Sys.getenv('EF_DIR'), 'tmp')
+INPUT_DIR = file.path(Sys.getenv('EF_DIR'), 'model-inputs') # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
+OUTPUT_DIR = file.path(Sys.getenv('EF_DIR'), 'model-outputs')
+VINTAGE_DATE = Sys.Date()
 ```
 
 
@@ -19,8 +18,7 @@ library(lubridate)
 library(httr)
 library(rvest)
 library(DBI)
-devtools::load_all(path = PACKAGE_DIR)
-devtools::document(PACKAGE_DIR)
+library(econforecasting)
 
 # Set working directory
 setwd(DIR)
@@ -337,7 +335,9 @@ local({
             )$minimum
   
     mDf =
-        purrr::map_dfr(yieldCurveNamesMap$varname, function(x) p$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)) %>%
+        purrr::map_dfr(yieldCurveNamesMap$varname, function(x)
+        		p$variables[[x]]$h$base$m %>% dplyr::mutate(., varname = x)
+        	) %>%
         dplyr::select(., -freq) %>%
         dplyr::right_join(., yieldCurveNamesMap, by = 'varname') %>%
         dplyr::left_join(., dplyr::transmute(p$variables$ffr$h$base$m, date, ffr = value), by = 'date') %>%
@@ -838,7 +838,7 @@ local({
 local({
 
   urlDf =
-      httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
+	  httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
       httr::content(., type = 'parsed') %>%
       xml2::read_html(.) %>%
       rvest::html_nodes('div .view-content') %>%
@@ -1260,6 +1260,29 @@ local({
 
 
 # Finalize
+```{r}
+local({
+	
+	db = dbConnect(
+		RPostgres::Postgres(),
+		dbname = CONST$DB_DATABASE,
+		host = CONST$DB_SERVER,
+		port = 5432,
+		user = CONST$DB_USERNAME,
+		password = CONST$DB_PASSWORD
+		)
+	
+	# Get last vintage for each tskey/varname
+	extVals =
+		DBI::dbGetQuery(db, 'SELECT * FROM ext_tsvalues') %>%
+		as_tibble(.) %>%
+		group_by(., tskey, varname) %>%
+		mutate(., vdate_last = max(vdate)) %>%
+		filter(., vdate == vdate_last) %>%
+		ungroup(.)
+
+})
+```
 
 ## Export
 ```{r}
@@ -1272,4 +1295,3 @@ local({
 	
 })
 ```
-
