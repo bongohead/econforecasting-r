@@ -4,8 +4,7 @@ DIR = Sys.getenv('EF_DIR')
 DL_DIR = file.path(Sys.getenv('EF_DIR'), 'tmp')
 INPUT_DIR = file.path(Sys.getenv('EF_DIR'), 'model-inputs') # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = file.path(Sys.getenv('EF_DIR'), 'model-outputs')
-VINTAGE_DATE_START = as.Date('2021-10-20')
-VINTAGE_DATE_END = Sys.Date()
+VINTAGE_DATE = Sys.Date()
 ```
 
 
@@ -35,9 +34,7 @@ p = list(
 	variablesDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'all-variables'),
 	forecastsDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'ext-forecasts'),
 	releasesDf = readxl::read_excel(file.path(INPUT_DIR, 'inputs.xlsx'), sheet = 'releases'),
-	VINTAGE_DATE_START = VINTAGE_DATE_START,
-	VINTAGE_DATE_END = VINTAGE_DATE_END,
-	VINTAGE_DATES = seq(VINTAGE_DATE_START, VINTAGE_DATE_END, by = '1 day')
+	VINTAGE_DATE = VINTAGE_DATE
 	) %>%
 	c(., list(variables = purrr::transpose(.$variablesDf, .names = .$variablesDf$varname)))
 
@@ -121,7 +118,7 @@ local({
 
 			# Get series data
 			dataDf =
-				getDataFred(x$sckey, CONST$FRED_API_KEY, .freq = x$freq, .returnVintages = TRUE, .vintageDate = as_date(with_tz(now(), tz = 'America/Chicago')), .verbose = F) %>%
+				get_fred_data(x$sckey, CONST$FRED_API_KEY, .freq = x$freq, .returnVintages = TRUE, .vintageDate = as_date(with_tz(now(), tz = 'America/Chicago')), .verbose = F) %>%
 			  	dplyr::filter(., vintageDate <= VINTAGE_DATE) %>%
 			  	dplyr::filter(., vintageDate == max(vintageDate)) %>%
 			  	dplyr::select(., -vintageDate) %>%
