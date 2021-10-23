@@ -8,7 +8,7 @@ DIR = Sys.getenv('EF_DIR')
 DL_DIR = file.path(Sys.getenv('EF_DIR'), 'tmp')
 INPUT_DIR = file.path(Sys.getenv('EF_DIR'), 'model-inputs') # Path to directory with constants.r (SQL DB info, SFTP info, etc.)
 OUTPUT_DIR = file.path(Sys.getenv('EF_DIR'), 'model-outputs')
-VINTAGE_DATE_START = as.Date('2021-10-20')
+VINTAGE_DATE_START = as.Date('2010-01-01')
 VINTAGE_DATE_END = Sys.Date()
 
 ## Load Libs ---------------------------------------------------------
@@ -56,7 +56,7 @@ local({
 local({
 	
 	# Get last vintage for each (tskey, varname)
-	extVals =
+	external_forecasts =
 		DBI::dbGetQuery(db, 'SELECT * FROM ext_tsvalues') %>%
 		as_tibble(.) %>%
 		group_by(., tskey, varname) %>%
@@ -65,14 +65,21 @@ local({
 		ungroup(.)
 	
 	
-	extVals %>% group_by(., varname) %>% summarize(., max_vdate = max(vdate), min_vdate = min(vdate))
+	vdates_by_variable =
+		external_forecasts %>%
+		group_by(., varname) %>%
+		summarize(., max_vdate = max(vdate), min_vdate = min(vdate))
 	
-	m$extVals <<- extVals
+	m$external_forecasts <<- external_forecasts
 })
 
 
 
 ## Pull Historical Data --------------------------------------------------------------------
+#' 
+#' For any 
+#' 
+#' 
 local({
 	
 	fredRes =
