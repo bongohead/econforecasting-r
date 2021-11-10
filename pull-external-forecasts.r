@@ -219,8 +219,9 @@ local({
     	tribble(
     		~ vdate, ~ file,
     		'2021-04-11', 'wsjecon0421.xls',
-			'2021-07-11', 'wsjecon0721.xls'
-			# October 17th next
+				'2021-07-11', 'wsjecon0721.xls',
+				'2021-10-17', 'wsjecon1021.xls'
+				# October 17th next
     		) %>%
     	purrr::transpose(.)
 
