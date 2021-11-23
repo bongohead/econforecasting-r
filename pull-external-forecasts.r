@@ -1,20 +1,35 @@
 # 1. Initialize ----------------------------------------------------------
+
+## Set Constants ----------------------------------------------------------
 DIR = Sys.getenv('EF_DIR')
-DL_DIR = tempdir()
 RESET_SQL = FALSE
 
+## Cron Log ----------------------------------------------------------
+if (interactive() == FALSE) {
+	sinkfile = file(file.path(DIR, 'logs', 'pull-external-forecasts-log.txt'), open = 'wt')
+	sink(sinkfile, type = 'output')
+	sink(sinkfile, type = 'message')
+	message(
+	'----------------------------------
+	Run :', Sys.Date(), '
+	----------------------------------
+	')
+}
+
+## Load Libs ----------------------------------------------------------
 library(tidyverse)
 library(httr)
 library(DBI)
 library(econforecasting)
 
+## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
-
 ext = list()
 
 
+# Load Data ----------------------------------------------------------
 
-# 1. Atlanta Fed ----------------------------------------------------------
+## 1. Atlanta Fed ----------------------------------------------------------
 local({
 	message('***** 1')
 	paramsDf =
@@ -52,7 +67,7 @@ local({
 })
 
 
-# 2. St. Louis Fed --------------------------------------------------------
+## 2. St. Louis Fed --------------------------------------------------------
 local({
 	message('***** 2')
 
@@ -74,11 +89,11 @@ local({
 })
 
 
-# 3. New York Fed ---------------------------------------------------------
+## 3. New York Fed ---------------------------------------------------------
 local({
 	message('***** 3')
 
-	file = file.path(DL_DIR, 'nyf.xlsx')
+	file = file.path(tempdir(), 'nyf.xlsx')
     httr::GET(
         'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx',
         httr::write_disk(file, overwrite = TRUE)
@@ -97,7 +112,7 @@ local({
 })
 
 
-# 4. Philadelphia Fed -----------------------------------------------------
+## 4. Philadelphia Fed -----------------------------------------------------
 local({
 	message('***** 4')
 
@@ -154,7 +169,7 @@ local({
 	df =
 		lapply(c('level', 'growth'), function(m) {
 
-			file = file.path(DL_DIR, paste0('spf-', m, '.xlsx'))
+			file = file.path(tempdir(), paste0('spf-', m, '.xlsx'))
 	        httr::GET(
 	            paste0(
 	                'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
@@ -197,7 +212,7 @@ local({
 
 
 
-# 5. WSJ Economic Survey -----------------------------------------------------
+## 5. WSJ Economic Survey -----------------------------------------------------
 # WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
 	message('***** 5')
@@ -226,7 +241,7 @@ local({
     df =
         lapply(filePaths, function(x) {
             message(x$date)
-            dest = file.path(DL_DIR, 'wsj.xls')
+            dest = file.path(tempdir(), 'wsj.xls')
 
             # A user-agent is required or garbage is returned
             httr::GET(
@@ -348,10 +363,7 @@ local({
 
 
 
-
-
-
-# 6. CBO Forecasts --------------------------------------------------------
+## 6. CBO Forecasts --------------------------------------------------------
 local({
 	message('***** 6')
 
@@ -377,7 +389,7 @@ local({
       dplyr::filter(., date >= as.Date('2020-01-01'))
 
 
-  tempPath = file.path(DL_DIR, 'cbo.xlsx')
+  tempPath = file.path(tempdir(), 'cbo.xlsx')
 
   paramsDf =
     tribble(
@@ -442,11 +454,11 @@ local({
 })
 
 
-# 7. Cleveland Fed (Expected Inf) -----------------------------------------
+## 7. Cleveland Fed (Expected Inf) -----------------------------------------
 local({
 	message('***** 7')
 
-  file = file.path(DL_DIR, paste0('inf.xls'))
+  file = file.path(tempdir(), paste0('inf.xls'))
 
   download.file(
   	paste0(
@@ -503,7 +515,7 @@ local({
 })
 
 
-# 8. CME ---------------------------------------------------------------------
+## 8. CME ---------------------------------------------------------------------
 local({
 	message('***** 8')
 
@@ -675,7 +687,7 @@ local({
 
 
 
-# 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
+## 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
 local({
 	message('***** 9')
 
@@ -897,8 +909,9 @@ local({
 })
 
 
+# Finalize  -------------------------------------------------
 
-# 10. Combine and Flatten -------------------------------------------------
+## Combine and Flatten -------------------------------------------------
 local({
 	message('***** 10')
 
@@ -913,7 +926,7 @@ local({
 })
 
 
-# 11. Send Meta Info SQL DB -------------------------------------------------
+## Send Meta Info SQL DB -------------------------------------------------
 local({
 	message('***** 11')
 
@@ -989,7 +1002,7 @@ local({
 
 })
 
-# 12. Send Forecast Data SQL DB -------------------------------------------------
+## Send Forecast Data SQL DB -------------------------------------------------
 local({
 	message('***** 11')
 
@@ -1054,6 +1067,5 @@ local({
 	finalCount = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM ext_tsvalues')$count)
 	message('***** Initial Count: ', finalCount)
 	message('***** Rows Added: ', finalCount - initCount)
-
 
 })
