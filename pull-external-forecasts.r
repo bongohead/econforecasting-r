@@ -1,15 +1,14 @@
+# 1. Initialize ----------------------------------------------------------
+DIR = Sys.getenv('EF_DIR')
+DL_DIR = tempdir()
+RESET_SQL = FALSE
+
 library(tidyverse)
 library(httr)
 library(DBI)
 library(econforecasting)
-DIR = Sys.getenv('EF_DIR')
-DL_DIR = file.path(DIR, 'tmp')
-RESET_SQL = FALSE
-if (dir.exists(DL_DIR)) unlink(DL_DIR, recursive = TRUE)
-dir.create(DL_DIR, recursive = TRUE)
 
 source(file.path(DIR, 'model-inputs', 'constants.r'))
-
 
 ext = list()
 
