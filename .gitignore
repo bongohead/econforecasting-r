@@ -1,4 +1,5 @@
-constants.r
+.Rproj
 .Rproj.user
-/tmp
-*.rds
+model-outputs/
+logs/
+constants.r

@@ -1,0 +1,70 @@
+\documentclass[11pt, letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage[parfill]{parskip}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{fancyhdr}
+\usepackage{appendix}
+\newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
+\definecolor{econgreen}{RGB}{55, 91, 1}
+
+\geometry{left=2.6cm, right = 2.6cm, top = 3cm, bottom = 3cm}
+
+\fancypagestyle{plain}{
+	\let\oldheadrule\headrule% Copy \headrule into \oldheadrule
+	\renewcommand{\headrule}{\color{econgreen}\oldheadrule}
+	\lhead{\small{\textcolor{black}{\leftmark}}}
+	%\chead{}
+	\rhead{\small{\textcolor{black}{\thepage}}}
+	\lfoot{}
+	\cfoot{}
+	\rfoot{\textit{charles@cmefi.com}}
+	\renewcommand{\headrulewidth}{0.5pt}
+	%\renewcommand{\footrulewidth}{0.5pt}
+}\pagestyle{plain}
+\begin{document}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{titlepage}
+\thispagestyle{empty}
+\newgeometry{left=5cm, top=5cm} %defines the geometry for the titlepage
+\pagecolor{econgreen}
+\noindent
+\includegraphics[width=2cm]{D:/OneDrive/__Projects/econforecasting/documentation-templates/images/cmefi_short.png} \\[-1em]
+\color{white}
+\makebox[0pt][l]{\rule{1.3\textwidth}{1pt}}
+\par
+\noindent
+%\textbf{\textsf{A Macroeconomic Nowcasting Model}} 
+%\vskip5cm
+{\Huge \textsf{A Nowcasting Model for Time Series with Ragged-Edge Data}}
+\vskip\baselineskip
+\noindent
+\textsf{Model Run Date: \Sexpr{format(Sys.Date(), '%B %d, %Y')}}\\
+\textsf{charles@cmefi.com}
+\restoregeometry % restores the geometry
+\nopagecolor% Use this to restore the color pages to white
+\end{titlepage}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\tableofcontents
+\newpage
+\listoftables
+\listoffigures
+\newpage
+\section{Motivation}
+\textbf{Nowcasting} is the prediction of the present, the near future, and the near past. Nowcasting is important in economics because many important macroeconomic statistics are released with a lengthy delay. For example, the Bureau of Economic Analysis releases quarterly GDP data typically two months after the quarter has already ended - a significant delay for any companies or individuals who need the data for planning and forecast models.
+
+
+<<>>=
+	data(economics)
+	economics %>%
+		head(., 10) %>%
+		xtable::xtable(.) %>%
+		print(.)
+@
+
+
+\end{document}
