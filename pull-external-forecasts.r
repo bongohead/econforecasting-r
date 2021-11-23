@@ -41,7 +41,8 @@ ext = list()
 local({
 
 	fred_data =
-		readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'all-variables') %>%
+		readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables') %>%
+		.[50:nrow(.),] %>%
 		purrr::transpose(.)	%>%
 		purrr::keep(., ~ .$source == 'fred') %>%
 		purrr::map_dfr(., function(x) {
