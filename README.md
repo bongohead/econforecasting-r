@@ -17,7 +17,10 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # CHANGELOG
 TBD: Split out sentiments model into separate Git repo w/Shiny WebApp & 
 
-## [v0.17] (New Model Fixes for Web Launch)
+## [v0.18] (Model Backtesting and Vintage Analysis)
+- Removed all old/junk files
+
+## [v0.17] (Model Productionalization)
 - Added task scheduling abilities for updated models
 - Added splitting of SQL inserts due to memory issues
 - Added code for sentiments analysis to SQL
