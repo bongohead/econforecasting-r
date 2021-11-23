@@ -24,7 +24,50 @@ library(econforecasting)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
+db = dbConnect(
+	RPostgres::Postgres(),
+	dbname = CONST$DB_DATABASE,
+	host = CONST$DB_SERVER,
+	port = 5432,
+	user = CONST$DB_USERNAME,
+	password = CONST$DB_PASSWORD
+	)
+hist = list()
 ext = list()
+
+# Load Historical Data ----------------------------------------------------------
+
+## 1. External Data ----------------------------------------------------------
+local({
+
+	fred_data =
+		readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'all-variables') %>%
+		purrr::transpose(.)	%>%
+		purrr::keep(., ~ .$source == 'fred') %>%
+		purrr::map_dfr(., function(x) {
+			message('Getting data ... ', x$varname)
+			get_fred_data(
+					x$sckey,
+					CONST$FRED_API_KEY,
+					.freq = x$freq,
+					.return_vintages = TRUE,
+					.verbose = F
+					) %>%
+				transmute(
+					.,
+					sourcename = 'stl',
+					varname = x$varname,
+					form = 'base',
+					freq = x$freq,
+					date,
+					vdate = vintage_date,
+					value
+					) %>%
+				filter(., vdate >= as_date('2000-01-01'))
+			})
+})
+
+
 
 
 # Load Data ----------------------------------------------------------
@@ -925,28 +968,18 @@ local({
 	flat <<- predFlat
 })
 
-
 ## Send Meta Info SQL DB -------------------------------------------------
 local({
 	message('***** 11')
 
-	db = dbConnect(
-		RPostgres::Postgres(),
-		dbname = CONST$DB_DATABASE,
-		host = CONST$DB_SERVER,
-		port = 5432,
-		user = CONST$DB_USERNAME,
-		password = CONST$DB_PASSWORD
-	)
-
 	if (RESET_SQL) {
 
-		DBI::dbExecute(db, 'DROP TABLE IF EXISTS ext_tstypes CASCADE')
+		DBI::dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_names CASCADE')
 
 		# tstypes 'hist', 'forecast', 'nc'
 		DBI::dbExecute(db, '
-			CREATE TABLE ext_tstypes (
-				tskey VARCHAR(3) CONSTRAINT ext_tstypes_pk PRIMARY KEY,
+			CREATE TABLE external_forecast_names (
+				tskey VARCHAR(3) CONSTRAINT external_forecast_names_pk PRIMARY KEY,
 				fctype VARCHAR(255),
 				shortname VARCHAR(100) NOT NULL,
 				fullname VARCHAR(255) NOT NULL,
@@ -954,10 +987,10 @@ local({
 			);
 		')
 
-		DBI::dbExecute(db, 'CREATE INDEX ext_tstypes_ix_fctype ON ext_tstypes (fctype);')
+		DBI::dbExecute(db, 'CREATE INDEX external_forecast_names_ix_fctype ON external_forecast_names (fctype);')
 	}
 
-	tsTypes = tribble(
+	external_forecast_names = tribble(
 		~ tskey, ~ fctype, ~ shortname, ~ fullname,
 		# 1
 		'atl', 'qual', 'Atlanta Fed', 'Atlanta Fed GDPNow Model',
@@ -990,8 +1023,8 @@ local({
 
 	create_insert_query(
 		tsTypes,
-		'ext_tstypes',
-		str_squish('ON CONFLICT ON CONSTRAINT ext_tstypes_pk DO UPDATE
+		'external_forecast_names',
+		str_squish('ON CONFLICT ON CONSTRAINT external_forecast_names_pk DO UPDATE
 			    SET
 			    fctype=EXCLUDED.fctype,
 			    shortname=EXCLUDED.shortname,
@@ -1006,20 +1039,11 @@ local({
 local({
 	message('***** 11')
 
-	db = dbConnect(
-		RPostgres::Postgres(),
-		dbname = CONST$DB_DATABASE,
-		host = CONST$DB_SERVER,
-		port = 5432,
-		user = CONST$DB_USERNAME,
-		password = CONST$DB_PASSWORD
-	)
-
 	if (RESET_SQL) {
 
-		DBI::dbExecute(db, 'DROP TABLE IF EXISTS ext_tsvalues CASCADE')
+		DBI::dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_values CASCADE')
 		DBI::dbExecute(db, '
-			CREATE TABLE ext_tsvalues (
+			CREATE TABLE external_forecast_values (
 				tskey CHAR(3) NOT NULL,
 				vdate DATE NOT NULL,
 				freq CHAR(1) NOT NULL,
@@ -1028,30 +1052,37 @@ local({
 				date DATE NOT NULL,
 				value NUMERIC(20, 4) NOT NULL,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				CONSTRAINT ext_tsvalues_pk PRIMARY KEY (tskey, vdate, freq, form, varname, date),
-				CONSTRAINT ext_tsvalues_tskey_fk FOREIGN KEY (tskey) REFERENCES ext_tstypes (tskey)
-					ON DELETE CASCADE ON UPDATE CASCADE--,
+				CONSTRAINT external_forecast_values_pk PRIMARY KEY (tskey, vdate, freq, form, varname, date),
+				CONSTRAINT external_forecast_values_fk FOREIGN KEY (tskey) REFERENCES external_forecast_names (tskey)
+					ON DELETE CASCADE ON UPDATE CASCADE
 				--CONSTRAINT ext_tsvalues_varname_fk FOREIGN KEY (varname) REFERENCES csm_params (varname)
 				--	ON DELETE CASCADE ON UPDATE CASCADE
 				);
 			')
+
+		DBI::dbExecute(db, '
+			SELECT create_hypertable(
+				relation => \'external_forecast_values\',
+				time_column_name => \'vdate\'
+				);
+			')
 	}
 
-	initCount = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM ext_tsvalues')$count)
-	message('***** Initial Count: ', initCount)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_forecast_values')$count)
+	message('***** Initial Count: ', initial_count)
 
-	sqlRes =
+	sql_result =
 		flat %>%
 		transmute(., tskey = fcname, vdate, freq, form, varname, date, value) %>%
-		filter(., vdate >= as.Date('2010-01-01')) %>%
+		filter(., vdate >= as_date('2010-01-01')) %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_by(., split) %>%
 		group_split(., .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'ext_tsvalues',
-				str_squish('ON CONFLICT ON CONSTRAINT ext_tsvalues_pk DO UPDATE
+				'external_forecast_values',
+				str_squish('ON CONFLICT (tskey, vdate, freq, form, varname, date) DO UPDATE
 			    	SET value=EXCLUDED.value')
 				) %>%
 				DBI::dbExecute(db, .)
@@ -1059,13 +1090,13 @@ local({
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
 
-	if (any(is.null(unlist(sqlRes)))) stop('Error with one or more SQL queries')
-	sqlRes %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
 	message('***** Data Sent to SQL:')
-	print(sum(unlist(sqlRes)))
+	print(sum(unlist(sql_result)))
 
-	finalCount = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM ext_tsvalues')$count)
-	message('***** Initial Count: ', finalCount)
-	message('***** Rows Added: ', finalCount - initCount)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_forecast_values')$count)
+	message('***** Initial Count: ', final_count)
+	message('***** Rows Added: ', final_count - initial_count)
 
 })
