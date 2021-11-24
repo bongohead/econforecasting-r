@@ -1,3 +1,7 @@
+#' @description Run this script on scheduler after close of business each day
+#'
+#'
+
 # 1. Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
@@ -42,11 +46,10 @@ local({
 
 	fred_data =
 		readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables') %>%
-		.[50:nrow(.),] %>%
 		purrr::transpose(.)	%>%
 		purrr::keep(., ~ .$source == 'fred') %>%
-		purrr::map_dfr(., function(x) {
-			message('Getting data ... ', x$varname)
+		purrr::imap_dfr(., function(x, i) {
+			message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_data(
 					x$sckey,
 					CONST$FRED_API_KEY,
@@ -970,7 +973,32 @@ local({
 	flat <<- predFlat
 })
 
-## Send Meta Info SQL DB -------------------------------------------------
+
+## SQL: Variable Definitions -------------------------------------------------
+local({
+	
+	if (RESET_SQL) {
+		
+		DBI::dbExecute(db, 'DROP TABLE IF EXISTS variable_definitions CASCADE')
+		
+		DBI::dbExecute(db, '
+			CREATE TABLE variable_definitions (
+				rundate DATE NOT NULL,
+				varname VARCHAR(100) NOT NULL,
+				fullname VARCHAR(100) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+			);
+		')
+		
+		DBI::dbExecute(db, 'CREATE INDEX external_forecast_names_ix_fctype ON external_forecast_names (fctype);')
+
+	}
+	
+	
+})
+
+
+## Send External Forecast Meta Info SQL DB -------------------------------------------------
 local({
 	message('***** 11')
 
