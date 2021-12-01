@@ -38,7 +38,7 @@ ext = list()
 
 ## Load Variable Defs ----------------------------------------------------------'
 variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables')
-release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'releases')
+release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'data-releases')
 
 # Load Release Data ----------------------------------------------------------
 
@@ -1164,14 +1164,67 @@ local({
 
 # Send to SQL  -------------------------------------------------
 
-## Variable Defs/Params
+## Releases  -------------------------------------------------
 local({
 	
-	if (RESET_SQL) DBI::dbExecute(db, 'DROP TABLE IF EXISTS variable_params CASCADE')
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS variable_releases CASCADE')
+	
+	if (!'variable_releases' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE variable_releases (
+				relkey VARCHAR(255) CONSTRAINT relkey_pk PRIMARY KEY,
+				relname VARCHAR(255) CONSTRAINT relname_uk UNIQUE NOT NULL,
+				relsc VARCHAR(255) NOT NULL,
+				relsckey VARCHAR(255) ,
+				relurl VARCHAR(255),
+				relnotes TEXT,
+				n_varnames INTEGER,
+				varnames JSON,
+				n_dfm_varnames INTEGER,
+				dfm_varnames JSON,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+				)'
+			)
+	}
+	
+	releases_final %>%
+		transmute(
+			.,
+			relkey, relname, relsc, relsckey , relurl, relnotes,
+			n_varnames = ifelse(is.na(n_varnames), 0, n_varnames), varnames,
+			n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames
+			) %>%
+		create_insert_query(
+			.,
+			'variable_releases',
+			str_squish(
+				'ON CONFLICT ON CONSTRAINT relkey_pk DO UPDATE
+		    SET
+		    relname=EXCLUDED.relname,
+		    relsc=EXCLUDED.relsc,
+		    relsckey=EXCLUDED.relsckey,
+		    relurl=EXCLUDED.relurl,
+		    relnotes=EXCLUDED.relnotes,
+		    n_varnames=EXCLUDED.n_varnames,
+		    varnames=EXCLUDED.varnames,
+		    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
+		    dfm_varnames=EXCLUDED.dfm_varnames'
+				)
+			) %>%
+		dbSendQuery(db, .)
+	
+})
+
+## Variables  -------------------------------------------------
+local({
+	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS variable_params CASCADE')
 	
 	if (!'variable_params' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		DBI::dbExecute(db, '
-			CREATE TABLE variable_params (
+		dbExecute(
+			db,
+			'CREATE TABLE variable_params (
 				varname VARCHAR(255) CONSTRAINT varname_pk PRIMARY KEY,
 				fullname VARCHAR(255) CONSTRAINT fullname_uk UNIQUE NOT NULL,
 				category VARCHAR(255) NOT NULL,
@@ -1195,10 +1248,10 @@ local({
 				core_structural VARCHAR(50) NOT NULL,
 				core_endog_type VARCHAR(50),
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				CONSTRAINT relkey_fk FOREIGN KEY (relkey) REFERENCES csm_releases (relkey)
+				CONSTRAINT relkey_fk FOREIGN KEY (relkey) REFERENCES variable_releases (relkey)
 					ON DELETE CASCADE ON UPDATE CASCADE
+				)'
 			)
-		')
 	}
 	
 	variable_params %>%
@@ -1212,165 +1265,131 @@ local({
 		create_insert_query(
 			.,
 			'variable_params',
-			str_squish('ON CONFLICT ON CONSTRAINT relkey_pk DO UPDATE
+			str_squish(
+				'ON CONFLICT ON CONSTRAINT varname_pk DO UPDATE
 		    SET
-		    relname=EXCLUDED.relname,
-		    relsc=EXCLUDED.relsc,
-		    relsckey=EXCLUDED.relsckey,
-		    relurl=EXCLUDED.relurl,
-		    relnotes=EXCLUDED.relnotes,
-		    n_varnames=EXCLUDED.n_varnames,
-		    varnames=EXCLUDED.varnames,
-		    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
-		    dfm_varnames=EXCLUDED.dfm_varnames
-	    	')
+		    fullname=EXCLUDED.fullname,
+		    category=EXCLUDED.category,
+		    dispgroup=EXCLUDED.dispgroup,
+		    disprank=EXCLUDED.disprank,
+		    disptabs=EXCLUDED.disptabs,
+		    disporder=EXCLUDED.disporder,
+		    source=EXCLUDED.source,
+		    sckey=EXCLUDED.sckey,
+		    relkey=EXCLUDED.relkey,
+		    units=EXCLUDED.units,
+		    freq=EXCLUDED.freq,
+		    sa=EXCLUDED.sa,
+		    st=EXCLUDED.st,
+		    st2=EXCLUDED.st2,
+		    d1=EXCLUDED.d1,
+		    d2=EXCLUDED.d2,
+		    nc_dfm_input=EXCLUDED.nc_dfm_input,
+		    nc_method=EXCLUDED.nc_method,
+		    initial_forecast=EXCLUDED.initial_forecast,
+		    core_structural=EXCLUDED.core_structural,
+		    core_endog_type=EXCLUDED.core_endog_type'
+				)
 			) %>%
 		dbSendQuery(db, .)
 	
-	
 }
 
-## SQL: RELEASES -------------------------------------------------
+
+## External Forecast Names -------------------------------------------------
 local({
-	
-	if (RESET_SQL) DBI::dbExecute(db, 'DROP TABLE IF EXISTS variable_params CASCADE')
-		DBI::dbExecute(db, '
-			CREATE TABLE csm_releases (
-				relkey VARCHAR(255) CONSTRAINT relkey_pk PRIMARY KEY,
-				relname VARCHAR(255) CONSTRAINT relname_uk UNIQUE NOT NULL,
-				relsc VARCHAR(255) NOT NULL,
-				relsckey VARCHAR(255) ,
-				relurl VARCHAR(255),
-				relnotes TEXT,
-				n_varnames INTEGER,
-				varnames JSON,
-				n_dfm_varnames INTEGER,
-				dfm_varnames JSON,
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-			)
-		')
-		
-		econforecasting::createInsertQuery(
-			p$releasesDf %>%
-				transmute(
-					.,
-					relkey, relname, relsc, relsckey , relurl, relnotes,
-					n_varnames = ifelse(is.na(n_varnames), 0, n_varnames), varnames,
-					n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames
-				),
-			'csm_releases',
-			str_squish('ON CONFLICT ON CONSTRAINT relkey_pk DO UPDATE
-	    SET
-	    relname=EXCLUDED.relname,
-	    relsc=EXCLUDED.relsc,
-	    relsckey=EXCLUDED.relsckey,
-	    relurl=EXCLUDED.relurl,
-	    relnotes=EXCLUDED.relnotes,
-	    n_varnames=EXCLUDED.n_varnames,
-	    varnames=EXCLUDED.varnames,
-	    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
-	    dfm_varnames=EXCLUDED.dfm_varnames
-	    ')) %>%
-			DBI::dbSendQuery(db, .)
-		
 
-	}
-})
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_names CASCADE')
 
-
-## Send External Forecast Meta Info SQL DB -------------------------------------------------
-local({
-	message('***** 11')
-
-	if (RESET_SQL) {
-
-		DBI::dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_names CASCADE')
-
-		# tstypes 'hist', 'forecast', 'nc'
-		DBI::dbExecute(db, '
-			CREATE TABLE external_forecast_names (
-				tskey VARCHAR(3) CONSTRAINT external_forecast_names_pk PRIMARY KEY,
-				fctype VARCHAR(255),
+	if (!'external_forecast_names' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE external_forecast_names (
+				tskey VARCHAR(10) CONSTRAINT external_forecast_names_pk PRIMARY KEY, 
+				forecast_type VARCHAR(255),
 				shortname VARCHAR(100) NOT NULL,
 				fullname VARCHAR(255) NOT NULL,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-			);
-		')
-
-		DBI::dbExecute(db, 'CREATE INDEX external_forecast_names_ix_fctype ON external_forecast_names (fctype);')
+				)'
+			)
+		dbExecute(db, 'CREATE INDEX external_forecast_names_ix_fctype ON external_forecast_names (forecast_type)')
 	}
 
-	external_forecast_names = tribble(
-		~ tskey, ~ fctype, ~ shortname, ~ fullname,
-		# 1
-		'atl', 'qual', 'Atlanta Fed', 'Atlanta Fed GDPNow Model',
-		# 2
-		'stl', 'qual', 'St. Louis Fed', 'St. Louis Fed Economic News Model',
-		# 3
-		'nyf', 'qual', 'NY Fed', 'New York Fed Staff Nowcast',
-		# 4
-		'spf', 'qual', 'Survey of Professional Forecasters', 'Survey of Professional Forecasters',
-		# 5
-		'wsj', 'qual', 'WSJ Consensus', 'Wall Street Journal Consensus Forecast',
-		'fnm', 'qual', 'Fannie Mae', 'Fannie Mae Forecast',
-		'wfc', 'qual', 'Wells Fargo', 'Wells Fargo Forecast',
-		'gsu', 'qual', 'GSU', 'Georgia State University Forecast',
-		'spg', 'qual', 'S&P', 'S&P Global Ratings',
-		'ucl', 'qual', 'UCLA Anderson', 'UCLA Anderson Forecast',
-		'gsc', 'qual', 'Goldman Sachs', 'Goldman Sachs Forecast',
-		'mgs', 'qual', 'Morgan Stanley', 'Morgan Stanley',
-		# 6
-		'cbo', 'qual', 'CBO', 'Congressional Budget Office Projections',
-		# 7
-		'cle', 'fut', 'Futures-Implied Inflation Rates', 'Futures-Implied Expected Inflation Model',
-		# 8
-		'cme', 'fut', 'Futures-Implied Interest Rates', 'Futures-Implied Expected Benchmark Rates Model',
-		# 9
-		'dns', 'fut', 'Futures-Implied Treasury Yield', 'Futures-Implied Expected Treasury Yields Model'
-	)
+	external_forecast_names = 
+		tribble(
+			~ tskey, ~ forecast_type, ~ shortname, ~ fullname,
+			# 1
+			'atl', 'quant', 'Atlanta Fed', 'Atlanta Fed GDPNow Model',
+			# 2
+			'stl', 'qual', 'St. Louis Fed', 'St. Louis Fed Economic News Model',
+			# 3
+			'nyf', 'qual', 'NY Fed', 'New York Fed Staff Nowcast',
+			# 4
+			'spf', 'qual', 'Survey of Professional Forecasters', 'Survey of Professional Forecasters',
+			# 5
+			'wsj', 'qual', 'WSJ Consensus', 'Wall Street Journal Consensus Forecast',
+			'fnm', 'qual', 'Fannie Mae', 'Fannie Mae Forecast',
+			'wfc', 'qual', 'Wells Fargo', 'Wells Fargo Forecast',
+			'gsu', 'qual', 'GSU', 'Georgia State University Forecast',
+			'sp', 'qual', 'S&P', 'S&P Global Ratings',
+			'ucla', 'qual', 'UCLA Anderson', 'UCLA Anderson Forecast',
+			'gs', 'qual', 'Goldman Sachs', 'Goldman Sachs Forecast',
+			'ms', 'qual', 'Morgan Stanley', 'Morgan Stanley',
+			# 6
+			'cbo', 'quant', 'CBO', 'Congressional Budget Office Projections',
+			# 7
+			'cle', 'fut', 'Futures-Implied Inflation Rates', 'Futures-Implied Expected Inflation Model',
+			# 8
+			'cme', 'fut', 'Futures-Implied Interest Rates', 'Futures-Implied Expected Benchmark Rates Model',
+			# 9
+			'dns', 'fut', 'Futures-Implied Treasury Yield', 'Futures-Implied Expected Treasury Yields Model'
+			)
 
-	flat %>% group_by(., fcname) %>% summarize(., n = n())
+	ext_final %>% group_by(., fcname) %>% summarize(., n = n())
 
-	create_insert_query(
-		tsTypes,
-		'external_forecast_names',
-		str_squish('ON CONFLICT ON CONSTRAINT external_forecast_names_pk DO UPDATE
-			    SET
-			    fctype=EXCLUDED.fctype,
-			    shortname=EXCLUDED.shortname,
-			    fullname=EXCLUDED.fullname
-			    ')
-		) %>%
-		DBI::dbSendQuery(db, .)
-
+	external_forecast_names %>%
+		create_insert_query(
+			.,
+			'external_forecast_names',
+			str_squish(
+				'ON CONFLICT ON CONSTRAINT external_forecast_names_pk DO UPDATE
+		    SET
+		    forecast_type=EXCLUDED.forecast_type,
+		    shortname=EXCLUDED.shortname,
+		    fullname=EXCLUDED.fullname'
+				)
+			) %>%
+		dbSendQuery(db, .)
 })
 
-## Send Forecast Data SQL DB -------------------------------------------------
+
+## Forecast Values ------------------------------------------------
 local({
-	message('***** 11')
 
-	if (RESET_SQL) {
-
-		DBI::dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_values CASCADE')
-		DBI::dbExecute(db, '
-			CREATE TABLE external_forecast_values (
-				tskey CHAR(3) NOT NULL,
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_values CASCADE')
+	
+	if (!'external_forecast_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+	
+		dbExecute(
+			db,
+			'CREATE TABLE external_forecast_values (
+				tskey VARCHAR(10) NOT NULL,
 				vdate DATE NOT NULL,
 				freq CHAR(1) NOT NULL,
-				form VARCHAR(5) NOT NULL,
+				transform VARCHAR(255) NOT NULL,
 				varname VARCHAR(255) NOT NULL,
 				date DATE NOT NULL,
 				value NUMERIC(20, 4) NOT NULL,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				CONSTRAINT external_forecast_values_pk PRIMARY KEY (tskey, vdate, freq, form, varname, date),
+				CONSTRAINT external_forecast_values_pk PRIMARY KEY (tskey, vdate, freq, transform, varname, date),
 				CONSTRAINT external_forecast_values_fk FOREIGN KEY (tskey) REFERENCES external_forecast_names (tskey)
+					ON DELETE CASCADE ON UPDATE CASCADE,
+				CONSTRAINT ext_tsvalues_varname_fk FOREIGN KEY (varname) REFERENCES variable_params (varname)
 					ON DELETE CASCADE ON UPDATE CASCADE
-				--CONSTRAINT ext_tsvalues_varname_fk FOREIGN KEY (varname) REFERENCES csm_params (varname)
-				--	ON DELETE CASCADE ON UPDATE CASCADE
-				);
-			')
+				)'
+			)
 
-		DBI::dbExecute(db, '
+		dbExecute(db, '
 			SELECT create_hypertable(
 				relation => \'external_forecast_values\',
 				time_column_name => \'vdate\'
@@ -1382,9 +1401,8 @@ local({
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
-		flat %>%
-		transmute(., tskey = fcname, vdate, freq, form, varname, date, value) %>%
-		filter(., vdate >= as_date('2010-01-01')) %>%
+		ext_final %>%
+		transmute(., tskey = fcname, vdate, freq, transform, varname, date, value) %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_by(., split) %>%
 		group_split(., .keep = FALSE) %>%
@@ -1392,8 +1410,10 @@ local({
 			create_insert_query(
 				x,
 				'external_forecast_values',
-				str_squish('ON CONFLICT (tskey, vdate, freq, form, varname, date) DO UPDATE
-			    	SET value=EXCLUDED.value')
+				str_squish(
+					'ON CONFLICT (tskey, vdate, freq, transform, varname, date) DO UPDATE
+			    SET value=EXCLUDED.value'
+					)
 				) %>%
 				DBI::dbExecute(db, .)
 			) %>%
@@ -1409,4 +1429,69 @@ local({
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 
+})
+
+## Historical Values ------------------------------------------------
+local({
+	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS historical_values CASCADE')
+	
+	if (!'historical_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		
+		dbExecute(
+			db,
+			'CREATE TABLE historical_values (
+				varname VARCHAR(255) NOT NULL,
+				transform VARCHAR(255) NOT NULL,
+				freq CHAR(1) NOT NULL,
+				date DATE NOT NULL,
+				vdate DATE NOT NULL,
+				value NUMERIC(20, 4) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				CONSTRAINT historical_values_pk PRIMARY KEY (varname, transform, freq, date, vdate),
+				CONSTRAINT historical_values_varname_fk FOREIGN KEY (varname) REFERENCES variable_params (varname)
+					ON DELETE CASCADE ON UPDATE CASCADE
+				)'
+			)
+		
+		dbExecute(db, '
+			SELECT create_hypertable(
+				relation => \'historical_values\',
+				time_column_name => \'vdate\'
+				);
+			')
+	}
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM historical_values')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		ext_final %>%
+		transmute(., tskey = fcname, vdate, freq, transform, varname, date, value) %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_by(., split) %>%
+		group_split(., .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'external_forecast_values',
+				str_squish(
+					'ON CONFLICT (tskey, vdate, freq, transform, varname, date) DO UPDATE
+			    SET value=EXCLUDED.value'
+				)
+			) %>%
+				DBI::dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	
+	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	message('***** Data Sent to SQL:')
+	print(sum(unlist(sql_result)))
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_forecast_values')$count)
+	message('***** Initial Count: ', final_count)
+	message('***** Rows Added: ', final_count - initial_count)
+	
 })
