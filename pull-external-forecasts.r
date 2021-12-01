@@ -1,4 +1,4 @@
-#' @description Run this script on scheduler after close of business each day
+#'  Run this script on scheduler after close of business each day
 #'
 #'
 
@@ -13,14 +13,10 @@ if (interactive() == FALSE) {
 	sinkfile = file(file.path(DIR, 'logs', 'pull-external-forecasts-log.txt'), open = 'wt')
 	sink(sinkfile, type = 'output')
 	sink(sinkfile, type = 'message')
-	message(
-	'----------------------------------
-	Run :', Sys.Date(), '
-	----------------------------------
-	')
+	cli::cli_h1(paste0('Run ', Sys.Date()))
 }
 
-## Load Libs ----------------------------------------------------------
+## Load Libs ----------------------------------------------------------'
 library(tidyverse)
 library(httr)
 library(DBI)
@@ -43,13 +39,21 @@ ext = list()
 
 ## 1. External Data ----------------------------------------------------------
 local({
-
-	fred_data =
+	
+	cli::cli_h2('Importing External Data')
+	
+	fred_variables =
 		readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables') %>%
+		filter(., source == 'fred')
+	
+	pb = txtProgressBar(min = 0, max = nrow(fred_variables), style = 3)
+	
+	fred_data =
+		fred_variables %>%
 		purrr::transpose(.)	%>%
-		purrr::keep(., ~ .$source == 'fred') %>%
 		purrr::imap_dfr(., function(x, i) {
-			message(str_glue('Pull {i}: {x$varname}'))
+			setTxtProgressBar(pb, i)
+			# message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_data(
 					x$sckey,
 					CONST$FRED_API_KEY,
@@ -61,7 +65,7 @@ local({
 					.,
 					sourcename = 'stl',
 					varname = x$varname,
-					form = 'base',
+					transform = 'base',
 					freq = x$freq,
 					date,
 					vdate = vintage_date,
@@ -69,6 +73,8 @@ local({
 					) %>%
 				filter(., vdate >= as_date('2000-01-01'))
 			})
+	
+	
 })
 
 
