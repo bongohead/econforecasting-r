@@ -32,28 +32,77 @@ db = dbConnect(
 	user = CONST$DB_USERNAME,
 	password = CONST$DB_PASSWORD
 	)
+releases = list()
 hist = list()
 ext = list()
 
-# Load Historical Data ----------------------------------------------------------
+## Load Variable Defs ----------------------------------------------------------'
+variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables')
+release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'releases')
 
-## 1. External Data ----------------------------------------------------------
+# Load Release Data ----------------------------------------------------------
+
+## 1. FRED Releases ----------------------------------------------------------
 local({
 	
-	cli::cli_h2('Importing External Data')
+	cli::cli_h2('Getting Releases History')
 	
-	fred_variables =
-		readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables') %>%
-		filter(., source == 'fred')
+	fred_releases =
+		variable_params %>%
+		group_by(., relkey) %>%
+		summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
+		left_join(
+			.,
+			variable_params  %>%
+				filter(., nc_dfm_input == 1) %>%
+				group_by(., relkey) %>%
+				summarize(., n_dfm_varnames = n(), dfm_varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
+			variable_params %>%
+				group_by(., relkey) %>%
+				summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
+			by = 'relkey'
+		) %>%
+		left_join(., release_params, by = 'relkey') %>%
+		# Now create a column of included releaseDates
+		left_join(
+			.,
+			purrr::map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
+				
+				httr::RETRY(
+					'GET', 
+					str_glue(
+						'https://api.stlouisfed.org/fred/release/dates?',
+						'release_id={x$relsckey}&realtime_start=2020-01-01',
+						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
+					),
+					times = 10
+					) %>%
+					httr::content(., as = 'parsed') %>%
+					.$release_dates %>%
+					sapply(., function(y) y$date) %>%
+					tibble(relkey = x$relkey, reldates = .)
+				}) %>%
+				group_by(., relkey) %>%
+				summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop'),
+			by = 'relkey'
+			)
 	
-	pb = txtProgressBar(min = 0, max = nrow(fred_variables), style = 3)
+	releases$fred <<- fred_releases
+})
+
+# Load Historical Data ----------------------------------------------------------
+
+## 1. FRED ----------------------------------------------------------
+local({
+	
+	cli::cli_h2('Importing FRED Data')
 	
 	fred_data =
-		fred_variables %>%
+		variable_params %>%
 		purrr::transpose(.)	%>%
+		purrr::keep(., ~ .$source == 'fred') %>%
 		purrr::imap_dfr(., function(x, i) {
-			setTxtProgressBar(pb, i)
-			# message(str_glue('Pull {i}: {x$varname}'))
+			message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_data(
 					x$sckey,
 					CONST$FRED_API_KEY,
@@ -63,7 +112,7 @@ local({
 					) %>%
 				transmute(
 					.,
-					sourcename = 'stl',
+					sourcename = 'fred',
 					varname = x$varname,
 					transform = 'base',
 					freq = x$freq,
@@ -71,21 +120,100 @@ local({
 					vdate = vintage_date,
 					value
 					) %>%
-				filter(., vdate >= as_date('2000-01-01'))
+				filter(
+					.,
+					date >= as_date('2010-01-01'),
+					vdate >= as_date('2010-01-01')
+					)
 			})
 	
-	
+
+	hist$fred <<- fred_data
 })
 
+## 2. Yahoo Finance ----------------------------------------------------------
+local({
+	
+	cli::cli_h2('Importing Yahoo Finance Data')
+	
+	yahoo_data =
+		variable_params %>%
+		purrr::transpose(.) %>%
+		purrr::keep(., ~ .$source == 'yahoo') %>%
+		purrr::map_dfr(., function(x) {
+			url =
+				paste0(
+					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
+					'?period1=', '1262304000', # 12/30/1999
+					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+					'&interval=1d',
+					'&events=history&includeAdjustedClose=true'
+				)
+			data.table::fread(url, showProgress = FALSE) %>%
+				.[, c('Date', 'Adj Close')]	%>%
+				set_names(., c('date', 'value')) %>%
+				as_tibble(.) %>%
+				filter(., value != 'null') %>% # Bug with yahoo finance returning null for date 7/22/21 as of 7/23
+				mutate(
+					.,
+					sourcename = 'yahoo',
+					varname = x$varname,
+					transform = 'base',
+					freq = x$freq,
+					date,
+					vdate = date,
+					value = as.numeric(value)
+					) %>%
+				return(.)
+		})
+	
+	hist$yahoo <<- yahoo_data
+})
 
+## 3. Aggregate Frequencies ----------------------------------------------------------
+local({
+	
+	hist_agg = bind_rows(hist)
+	
+	monthly_agg =
+		# Get all daily/weekly varnames with pre-existing data
+		hist_agg %>%
+		filter(., freq %in% c('d', 'w')) %>%
+		# Add monthly values for current month
+		mutate(
+			.,
+			freq = 'm',
+			date = lubridate::floor_date(date, 'month')
+			) %>%
+		group_by(., sourcename, varname, transform, freq, date, vdate) %>%
+		summarize(., value = mean(value), .groups = 'drop')
+		
+	quarterly_agg =
+		hist_agg %>%
+		filter(., freq %in% c('d', 'w', 'm')) %>%
+		mutate(
+			.,
+			freq = 'q',
+			date = lubridate::floor_date(date, 'quarter')
+			) %>%
+		group_by(., sourcename, varname, transform, freq, date, vdate) %>%
+		summarize(., value = mean(value), count = n(), .groups = 'drop') %>%
+		filter(., count == 3) %>%
+		select(., -count)
+	
+	hist_final = bind_rows(hist_agg, monthly_agg, quarterly_agg)
+	
+	hist_final <<- hist_final
+})
 
-
-# Load Data ----------------------------------------------------------
+# External Forecasts ----------------------------------------------------------
 
 ## 1. Atlanta Fed ----------------------------------------------------------
 local({
-	message('***** 1')
-	paramsDf =
+	
+	cli::cli_h2('1. Atlanta Fed')
+	
+	atl_params =
 		tribble(
 		  ~ varname, ~ fred_id,
 		  'gdp', 'GDPNOW',
@@ -96,25 +224,24 @@ local({
 		  'im', 'IMPORTSNOW'
 		)
 
-  # GDPNow
 	df =
-		paramsDf %>%
+		atl_params %>%
 		purrr::transpose(.) %>%
 		lapply(., function(x)
 			get_fred_data(x$fred_id, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
-			dplyr::filter(., date >= .$vintage_date - months(3)) %>%
-			dplyr::transmute(
+			filter(., date >= .$vintage_date - months(3)) %>%
+			transmute(
 				.,
 				fcname = 'atl',
 				varname = x$varname,
-				form = 'd1',
+				transform = 'apchg',
 				freq = 'q',
 				date,
 				vdate = vintage_date,
 				value
 				)
 			) %>%
-		dplyr::bind_rows(.)
+		bind_rows(.)
 
 	ext$atl <<- df
 })
@@ -122,8 +249,9 @@ local({
 
 ## 2. St. Louis Fed --------------------------------------------------------
 local({
-	message('***** 2')
-
+	
+	cli::cli_h2('2. St. Louis Fed')
+	
 	df =
 		get_fred_data('STLENI', CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
 		dplyr::filter(., date >= .$vintage_date - months(3)) %>%
