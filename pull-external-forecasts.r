@@ -1466,22 +1466,22 @@ local({
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
-		ext_final %>%
-		transmute(., tskey = fcname, vdate, freq, transform, varname, date, value) %>%
+		hist_final %>%
+		transmute(., varname, transform, freq, date, vdate, value) %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_by(., split) %>%
 		group_split(., .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'external_forecast_values',
+				'historical_values',
 				str_squish(
-					'ON CONFLICT (tskey, vdate, freq, transform, varname, date) DO UPDATE
+					'ON CONFLICT (varname, transform, freq, date, vdate) DO UPDATE
 			    SET value=EXCLUDED.value'
-				)
-			) %>%
+					)
+				) %>%
 				DBI::dbExecute(db, .)
-		) %>%
+			) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
 	
@@ -1490,7 +1490,7 @@ local({
 	message('***** Data Sent to SQL:')
 	print(sum(unlist(sql_result)))
 	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_forecast_values')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM historical_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
