@@ -10,7 +10,7 @@ RESET_SQL = FALSE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
-	sinkfile = file(file.path(DIR, 'logs', 'pull-external-forecasts-log.txt'), open = 'wt')
+	sinkfile = file(file.path(DIR, 'logs', 'pull-data.log'), open = 'wt')
 	sink(sinkfile, type = 'output')
 	sink(sinkfile, type = 'message')
 	message(paste0('Run ', Sys.Date()))
@@ -40,7 +40,7 @@ ext = list()
 variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables')
 release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'data-releases')
 
-# Load Release Data ----------------------------------------------------------
+# Release Data ----------------------------------------------------------
 
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
@@ -96,7 +96,7 @@ local({
 	releases_final <<- bind_rows(releases)
 })
 
-# Load Historical Data ----------------------------------------------------------
+# Historical Data ----------------------------------------------------------
 
 ## 1. FRED ----------------------------------------------------------
 local({
@@ -175,7 +175,126 @@ local({
 	hist$yahoo <<- yahoo_data
 })
 
-## 3. Aggregate Frequencies ----------------------------------------------------------
+## 3. Calculated Variables ----------------------------------------------------------
+local({
+	
+	fred_data =
+		variable_params %>%
+		filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
+		purrr::transpose(.) %>%
+		purrr::map_dfr(., function(x) {
+			get_fred_data(x$sckey, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
+				transmute(., varname = x$varname, date, vdate = vintage_date, value) %>%
+				filter(., date >= as_date('2010-01-01'))
+		})
+	
+	# Monthly aggregation & append EOM with current val
+	fred_data_cat =
+		fred_data %>%
+		group_split(., varname) %>%
+		# Add monthly values for current month
+		map_dfr(., function(x)
+			x %>%
+				mutate(., date = as.Date(paste0(year(date), '-', month(date), '-01'))) %>%
+				group_by(., varname, date) %>%
+				summarize(., value = mean(value), .groups = 'drop') %>%
+				mutate(., freq = 'm')
+		)
+	
+	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
+	yield_curve_names_map =
+		variable_params %>%
+		purrr::transpose(.) %>%
+		map_chr(., ~.$varname) %>%
+		unique(.) %>%
+		purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
+		tibble(varname = .) %>%
+		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
+	
+	# Create training dataset from SPREAD from ffr - fitted on last 3 months
+	train_df =
+		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
+		select(., -freq) %>%
+		filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
+		right_join(., yield_curve_names_map, by = 'varname') %>%
+		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
+		mutate(., value = value - ffr) %>%
+		select(., -ffr)
+	
+	#' Calculate DNS fit
+	#'
+	#' @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
+	#' @param return_all: (boolean) FALSE by default.
+	#' If FALSE, will return only the MAPE (useful for optimization).
+	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
+	#'
+	#' @export
+	get_dns_fit = function(df, lambda, return_all = FALSE) {
+		df %>%
+			mutate(
+				.,
+				f1 = 1,
+				f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm),
+				f3 = f2 - exp(-1 * lambda * ttm)
+			) %>%
+			group_by(date) %>%
+			group_split(.) %>%
+			lapply(., function(x) {
+				reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
+				bind_cols(x, fitted = fitted(reg)) %>%
+					mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
+					mutate(., resid = value - fitted)
+			}) %>%
+			bind_rows(.) %>%
+			{
+				if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse
+				else .
+			} %>%
+			return(.)
+	}
+	
+	# Find MSE-minimizing lambda value
+	optim_lambda =
+		optimize(
+			get_dns_fit,
+			df = train_df,
+			return_all = FALSE,
+			interval = c(-1, 1),
+			maximum = FALSE
+		)$minimum
+	
+	hist_df =
+		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
+		select(., -freq) %>%
+		filter(., date >= add_with_rollback(Sys.Date(), months(-120))) %>%
+		right_join(., yield_curve_names_map, by = 'varname') %>%
+		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
+		mutate(., value = value - ffr) %>%
+		select(., -ffr)
+	
+	# Store DNS coefficients
+	dns_coefs =
+		get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE) %>%
+		group_by(., date) %>%
+		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
+		pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
+		transmute(
+			.,
+			sourcename = 'calc',
+			varname,
+			transform = 'base',
+			freq = 'm',
+			date,
+			vdate =
+				# Avoid storing too much old DNS data - assign vdate as newesty possible value of edit for
+				# previous months
+				as_date(ifelse(ceiling_date(date, 'months') <= today(), ceiling_date(date, 'months'), today())),
+			value = as.numeric(value)
+		)
+	
+})
+
+## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
 	
 	hist_agg = bind_rows(hist)
@@ -210,6 +329,13 @@ local({
 	
 	hist_final <<- hist_final
 })
+
+
+## 5. Add Stationary Transformations ----------------------------------------------------------
+
+
+
+
 
 # External Forecasts ----------------------------------------------------------
 
@@ -941,9 +1067,6 @@ local({
 	ext$cme <<- final_df
 })
 
-
-
-
 ## 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
 local({
 	
@@ -1062,7 +1185,7 @@ local({
 	# Keep these treasury yield forecasts as the external forecasts ->
 	# note that later these will be "regenerated" in the baseline calculation,
 	# may be off a bit due to calculation from TDNS, compare to
-
+	
   # Monthly forecast up to 10 years
   # Get cumulative return starting from cur_date
   fitted_curve =
@@ -1185,10 +1308,23 @@ local({
 
 # Send to SQL  -------------------------------------------------
 
-## Releases  -------------------------------------------------
+## 1. Reset   -------------------------------------------------
 local({
 	
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS variable_releases CASCADE')
+	if (RESET_SQL) {
+		
+		dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_values CASCADE')
+		dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_names CASCADE')
+		dbExecute(db, 'DROP TABLE IF EXISTS historical_values CASCADE')
+		dbExecute(db, 'DROP TABLE IF EXISTS variable_params CASCADE')
+		dbExecute(db, 'DROP TABLE IF EXISTS variable_releases CASCADE')
+	}
+	
+})
+
+
+## 1. Releases  -------------------------------------------------
+local({
 	
 	if (!'variable_releases' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
@@ -1234,13 +1370,10 @@ local({
 				)
 			) %>%
 		dbSendQuery(db, .)
-	
 })
 
-## Variables  -------------------------------------------------
+## 2. Variables  -------------------------------------------------
 local({
-	
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS variable_params CASCADE')
 	
 	if (!'variable_params' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
@@ -1314,13 +1447,11 @@ local({
 			) %>%
 		dbSendQuery(db, .)
 	
-}
+})
 
 
-## External Forecast Names -------------------------------------------------
+## 3. External Forecast Names -------------------------------------------------
 local({
-
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_names CASCADE')
 
 	if (!'external_forecast_names' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
@@ -1384,11 +1515,9 @@ local({
 })
 
 
-## Forecast Values ------------------------------------------------
+## 4. Forecast Values ------------------------------------------------
 local({
 
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_values CASCADE')
-	
 	if (!'external_forecast_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 	
 		dbExecute(
@@ -1452,10 +1581,8 @@ local({
 
 })
 
-## Historical Values ------------------------------------------------
+## 5. Historical Values ------------------------------------------------
 local({
-	
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS historical_values CASCADE')
 	
 	if (!'historical_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		
