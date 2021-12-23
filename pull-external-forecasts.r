@@ -2,7 +2,7 @@
 #'
 #'
 
-# 1. Initialize ----------------------------------------------------------
+# Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
 DIR = Sys.getenv('EF_DIR')
@@ -13,7 +13,7 @@ if (interactive() == FALSE) {
 	sinkfile = file(file.path(DIR, 'logs', 'pull-external-forecasts-log.txt'), open = 'wt')
 	sink(sinkfile, type = 'output')
 	sink(sinkfile, type = 'message')
-	cli::cli_h1(paste0('Run ', Sys.Date()))
+	message(paste0('Run ', Sys.Date()))
 }
 
 ## Load Libs ----------------------------------------------------------'
@@ -45,7 +45,7 @@ release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
 	
-	cli::cli_h2('Getting Releases History')
+	message('Getting Releases History')
 	
 	fred_releases =
 		variable_params %>%
@@ -101,7 +101,7 @@ local({
 ## 1. FRED ----------------------------------------------------------
 local({
 	
-	cli::cli_h2('Importing FRED Data')
+	message('Importing FRED Data')
 	
 	fred_data =
 		variable_params %>%
@@ -133,14 +133,13 @@ local({
 					)
 			})
 	
-
 	hist$fred <<- fred_data
 })
 
 ## 2. Yahoo Finance ----------------------------------------------------------
 local({
 	
-	cli::cli_h2('Importing Yahoo Finance Data')
+	message('Importing Yahoo Finance Data')
 	
 	yahoo_data =
 		variable_params %>%
@@ -217,7 +216,7 @@ local({
 ## 1. Atlanta Fed ----------------------------------------------------------
 local({
 	
-	cli::cli_h2('1. Atlanta Fed')
+	message('1. Atlanta Fed')
 	
 	atl_params =
 		tribble(
@@ -256,7 +255,7 @@ local({
 ## 2. St. Louis Fed --------------------------------------------------------
 local({
 	
-	cli::cli_h2('2. St. Louis Fed')
+	message('2. St. Louis Fed')
 	
 	df =
 		get_fred_data('STLENI', CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
@@ -279,7 +278,7 @@ local({
 ## 3. New York Fed ---------------------------------------------------------
 local({
 	
-	cli::cli_h2('3. New York Fed')
+	message('3. New York Fed')
 	
 	file = file.path(tempdir(), 'nyf.xlsx')
 	
@@ -313,7 +312,7 @@ local({
 ## 4. Philadelphia Fed -----------------------------------------------------
 local({
 	
-	cli::cli_h2('4. Philadelphia Fed')
+	message('4. Philadelphia Fed')
 	
   # Scrape vintage dates
   vintage_dates =
@@ -417,7 +416,7 @@ local({
 # WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
 	
-	cli::cli_h2('5. WSJ Survey')
+	message('5. WSJ Survey')
 	
   wsj_params =
   	tribble(
@@ -575,7 +574,7 @@ local({
 ## 6. CBO Forecasts --------------------------------------------------------
 local({
 	
-	cli::cli_h2('6. CBO')
+	message('6. CBO')
 	
   url_params =
     httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
@@ -687,10 +686,34 @@ local({
 ## 7. Cleveland Fed (Expected Inf) -----------------------------------------
 local({
 	
-	cli::cli_h2('7. Cleveland Fed')
+	message('7. Cleveland Fed')
+
+	data_sources = tibble(
+		years_forward = 1:20,
+		fred_id = paste0('EXPINF', 1:20, 'YR')
+		)
+
+	data_import = purrr::imap_dfr(purrr::transpose(data_sources), function(x, i) {
+		message(str_glue('Pull {i}: {x$fred_id}'))
+		get_fred_data(
+			x$fred_id,
+			CONST$FRED_API_KEY,
+			.freq = 'm',
+			.return_vintages = TRUE,
+			.verbose = F
+			) %>%
+			transmute(
+				.,
+				date,
+				vdate = vintage_date,
+				ttm = x$years_forward * 12,
+				value
+				)
+	})
+	
 	
   file = file.path(tempdir(), paste0('inf.xls'))
-
+  
   download.file(
   	paste0(
   		'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/',
@@ -699,32 +722,30 @@ local({
   	file,
   	mode = 'wb'
   	)
-
-  df =
-		readxl::read_excel(file, sheet = 'Expected Inflation') %>%
+  
+  einf_final =
+  	readxl::read_excel(file, sheet = 'Expected Inflation') %>%
   	rename(., vdate = 'Model Output Date') %>%
   	pivot_longer(., -vdate, names_to = 'ttm', values_to = 'yield') %>%
   	mutate(
   		.,
-  		vdate = as.Date(vdate), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
-  		) %>%
-  	# dplyr::filter(., vdate == max(vdate)) %>%
+  		vdate = as_date(vdate), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
+  	) %>%
   	filter(., vdate >= as_date('2015-01-01')) %>%
   	group_split(., vdate) %>%
-  	purrr::map_dfr(., function(x)
-  		x %>%
-		  	right_join(., tibble(ttm = 1:360), by = 'ttm') %>%
-		  	arrange(., ttm) %>%
-		  	mutate(
-		  		.,
-		  		yield = zoo::na.spline(yield),
-		  		vdate = unique(na.omit(vdate)),
-		  		curDate = floor_date(vdate, 'months'),
-		  		cumReturn = (1 + yield)^(ttm/12),
-		  		yttmAheadCumReturn = dplyr::lead(cumReturn, 1)/cumReturn,
-		  		yttmAheadAnnualizedYield = (yttmAheadCumReturn^(12/1) - 1) * 100,
-		  		date = add_with_rollback(curDate, months(ttm - 1))
-		  		)
+  	map_dfr(., function(x)
+  		right_join(x, tibble(ttm = 1:360), by = 'ttm') %>%
+  			arrange(., ttm) %>%
+  			mutate(
+  				.,
+  				yield = zoo::na.spline(yield),
+  				vdate = unique(na.omit(vdate)),
+  				cur_date = floor_date(vdate, 'months'),
+  				cum_return = (1 + yield)^(ttm/12),
+  				yttm_ahead_cum_return = dplyr::lead(cum_return, 1)/cum_return,
+  				yttm_ahead_annualized_yield = (yttm_ahead_cum_return ^ 12 - 1) * 100,
+  				date = add_with_rollback(cur_date, months(ttm - 1))
+  				)
   		) %>%
   	transmute(
   		.,
@@ -734,11 +755,11 @@ local({
 			freq = 'm',
 			date,
   		vdate,
-  		value = yttmAheadAnnualizedYield,
+  		value = yttm_ahead_annualized_yield,
   		) %>%
   	na.omit(.)
 
-	df %>%
+  einf_final %>%
 		filter(., month(vdate) %in% c(1, 6)) %>%
 		ggplot(.) + geom_line(aes(x = date, y = value, color = as.factor(vdate)))
 
@@ -749,7 +770,7 @@ local({
 ## 8. CME ---------------------------------------------------------------------
 local({
 	
-	cli::cli_h2('8. CME Forecasts')
+	message('8. CME Forecasts')
 	
 	# First get from Quandl
 	message('Starting Quandl data scrape...')
@@ -926,7 +947,7 @@ local({
 ## 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
 local({
 	
-	cli::cli_h2('9. DNS Forecasts')
+	message('9. DNS Forecasts')
 	
 	fred_data =
 		variable_params %>%
@@ -1141,7 +1162,7 @@ local({
 ## 10. Combine and Flatten -------------------------------------------------
 local({
 	
-	cli::cli_h2('10. Combine and Flatten')
+	message('10. Combine and Flatten')
 	
 	flat =
 		ext %>%

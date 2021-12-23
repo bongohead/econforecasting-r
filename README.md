@@ -2,22 +2,14 @@
 This project contains the code for data scraping, data cleaning, and modeling used to generate forecasts shown on [econforecasting.com](https://econforecasting.com).
 
 ---
-
-# RUN NOTES
-- [x] Toggle purl = FALSE to run model-nowcasts-backtest.rmd and purl = TRUE to run windows task scheduler
-- [x] Run model-asset-contagion.rmd, model-baseling-forecasts.rmd, model-nowcasts-backtest.rmd daily until cron server set up
-- [x] Import Data -> Generate Nowcasts (Using History + EOM Forecasts as "Data") -> Generate Forecasts (Use Nowcasts as "Data")
-
-# Dev Notes
-- [ ] Add: Survey of Consumer Expectations (Has expected inflation at well updated intervals, plus home price change expectations @ one year, 3 year ahead point predictions)
-- [ ] Consider: Instead of forecasting ahead TDNS1 to TDNS3, forecast ahead individual yields (use tdns only to generate external forecast -> use to forecast intiial baseline, weak, strong) - try later, for now use standard and see if tdns estimates are too off from actual construction
-- [ ] Add: DFM package
-
-
 # CHANGELOG
-TBD: Split out sentiments model into separate Git repo w/Shiny WebApp & 
 
-## [v0.18] (Model Backtesting and Vintage Analysis)
+## [v0.19] (Model Backtesting and Vintage Analysis)
+- Removed Cleveland Fed FRED pull (inconsistent data)
+- Removed old junk in README
+
+## [v0.18] (Model Rewrite Prep)
+- Added new TimescaleDB compatible data pulls
 - Removed all old/junk files
 
 ## [v0.17] (Model Productionalization)
