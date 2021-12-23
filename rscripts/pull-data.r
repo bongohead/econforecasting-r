@@ -1239,47 +1239,47 @@ local({
         )
 
     # Add ffr to forecasts
-    df1 =
-      df0 %>%
-      select(., varname, date, value) %>%
-      inner_join(
+  df1 =
+    df0 %>%
+    select(., varname, date, value) %>%
+    inner_join(
+      .,
+    	ext$cme %>%
+        filter(., vdate == max(vdate)) %>%
+        filter(., varname == 'ffr') %>%
+        transmute(., ffr = value, date),
+      by = 'date'
+    	) %>%
+    mutate(., value = value + ffr) %>%
+    transmute(
+      .,
+      fcname = 'dns',
+      varname,
+      date,
+      transform = 'base',
+      freq = 'm',
+      vdate = today(),
+      value
+      )
+
+  # Calculate TDNS yield forecasts
+  # Forecast vintage date should be bound to historical data vintage
+  # date since reliant purely on historical data
+  df2 =
+    df0 %>%
+    select(., varname, date, value) %>%
+    tidyr::pivot_wider(., names_from = 'varname') %>%
+    transmute(
         .,
-      	ext$cme %>%
-	        filter(., vdate == max(vdate)) %>%
-	        filter(., varname == 'ffr') %>%
-	        transmute(., ffr = value, date),
-        by = 'date'
-      	) %>%
-      mutate(., value = value + ffr) %>%
-      transmute(
-        .,
-        fcname = 'dns',
-        varname,
         date,
-        transform = 'base',
-        freq = 'm',
-        vdate = today(),
-        value
-        )
+        tdns1 = t10y,
+        tdns2 = -1 * (t10y - t03m),
+        tdns3 = .3 * (2 * t02y - t03m - t10y)
+        ) %>%
+    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
+    transmute(., fcname = 'dns', varname, date, transform = 'base', freq = 'm', vdate = today(), value)
 
-    # Calculate TDNS yield forecasts
-    # Forecast vintage date should be bound to historical data vintage
-    # date since reliant purely on historical data
-    df2 =
-      df0 %>%
-      select(., varname, date, value) %>%
-      tidyr::pivot_wider(., names_from = 'varname') %>%
-      transmute(
-          .,
-          date,
-          tdns1 = t10y,
-          tdns2 = -1 * (t10y - t03m),
-          tdns3 = .3 * (2 * t02y - t03m - t10y)
-          ) %>%
-      tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-      transmute(., fcname = 'dns', varname, date, transform = 'base', freq = 'm', vdate = today(), value)
-
-    ext$dns <<- bind_rows(df1, df2)
+  ext$dns <<- bind_rows(df1, df2)
 })
 
 ## 10. Combine and Flatten -------------------------------------------------
