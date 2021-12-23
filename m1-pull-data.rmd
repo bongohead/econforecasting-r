@@ -574,10 +574,10 @@ local({
 ```{r}
 local({
   
-    saveRDS(
-    	list(p = p, h = h, m = m),
-    	str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m1.rds')
-    	)
+	saveRDS(
+		list(p = p, h = h, m = m),
+		str_glue(OUTPUT_DIR, '/[{p$VINTAGE_DATE}] m1.rds')
+		)
 	
 })
 ```

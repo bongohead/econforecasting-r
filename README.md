@@ -5,6 +5,8 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # CHANGELOG
 
 ## [v0.19] (Model Backtesting and Vintage Analysis)
+- Added calculated variables to historical data load
+- Added stationary transformations to historical data load
 - Removed Cleveland Fed FRED pull (inconsistent data)
 - Removed old junk in README
 
