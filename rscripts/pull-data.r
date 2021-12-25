@@ -1,6 +1,4 @@
 #'  Run this script on scheduler after close of business each day
-#'
-#'
 
 # Initialize ----------------------------------------------------------
 
@@ -44,9 +42,9 @@ release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'
 
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
-	
-	message('Getting Releases History')
-	
+
+	message('***** Getting Releases History')
+
 	fred_releases =
 		variable_params %>%
 		group_by(., relkey) %>%
@@ -67,9 +65,9 @@ local({
 		left_join(
 			.,
 			purrr::map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
-				
+
 				httr::RETRY(
-					'GET', 
+					'GET',
 					str_glue(
 						'https://api.stlouisfed.org/fred/release/dates?',
 						'release_id={x$relsckey}&realtime_start=2020-01-01',
@@ -86,13 +84,13 @@ local({
 				summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop'),
 			by = 'relkey'
 			)
-	
+
 	releases$fred <<- fred_releases
 })
 
 ## 2. Combine ----------------------------------------------------------
 local({
-	
+
 	releases_final <<- bind_rows(releases)
 })
 
@@ -100,9 +98,9 @@ local({
 
 ## 1. FRED ----------------------------------------------------------
 local({
-	
-	message('Importing FRED Data')
-	
+
+	message('***** Importing FRED Data')
+
 	fred_data =
 		variable_params %>%
 		purrr::transpose(.)	%>%
@@ -132,15 +130,15 @@ local({
 					vdate >= as_date('2010-01-01')
 					)
 			})
-	
+
 	hist$fred <<- fred_data
 })
 
 ## 2. Yahoo Finance ----------------------------------------------------------
 local({
-	
-	message('Importing Yahoo Finance Data')
-	
+
+	message('***** Importing Yahoo Finance Data')
+
 	yahoo_data =
 		variable_params %>%
 		purrr::transpose(.) %>%
@@ -158,7 +156,8 @@ local({
 				.[, c('Date', 'Adj Close')]	%>%
 				set_names(., c('date', 'value')) %>%
 				as_tibble(.) %>%
-				filter(., value != 'null') %>% # Bug with yahoo finance returning null for date 7/22/21 as of 7/23
+				# Bug with yahoo finance returning null for date 7/22/21 as of 7/23
+				filter(., value != 'null') %>%
 				mutate(
 					.,
 					sourcename = 'yahoo',
@@ -171,13 +170,15 @@ local({
 					) %>%
 				return(.)
 		})
-	
+
 	hist$yahoo <<- yahoo_data
 })
 
-## 3. Calculated Variables ----------------------------------------------------------
+## 3. TDNS ----------------------------------------------------------
 local({
-	
+
+	message('***** Adding Calculated Variables')
+
 	fred_data =
 		variable_params %>%
 		filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
@@ -187,7 +188,7 @@ local({
 				transmute(., varname = x$varname, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date('2010-01-01'))
 		})
-	
+
 	# Monthly aggregation & append EOM with current val
 	fred_data_cat =
 		fred_data %>%
@@ -200,7 +201,7 @@ local({
 				summarize(., value = mean(value), .groups = 'drop') %>%
 				mutate(., freq = 'm')
 		)
-	
+
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yield_curve_names_map =
 		variable_params %>%
@@ -210,7 +211,7 @@ local({
 		purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
 		tibble(varname = .) %>%
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
-	
+
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	train_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
@@ -220,7 +221,7 @@ local({
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
-	
+
 	#' Calculate DNS fit
 	#'
 	#' @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
@@ -252,7 +253,7 @@ local({
 			} %>%
 			return(.)
 	}
-	
+
 	# Find MSE-minimizing lambda value
 	optim_lambda =
 		optimize(
@@ -262,7 +263,7 @@ local({
 			interval = c(-1, 1),
 			maximum = FALSE
 		)$minimum
-	
+
 	hist_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
 		select(., -freq) %>%
@@ -271,9 +272,9 @@ local({
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
-	
+
 	# Store DNS coefficients
-	dns_coefs =
+	dns_data =
 		get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE) %>%
 		group_by(., date) %>%
 		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
@@ -291,14 +292,48 @@ local({
 				as_date(ifelse(ceiling_date(date, 'months') <= today(), ceiling_date(date, 'months'), today())),
 			value = as.numeric(value)
 		)
-	
+
+
+	# For each vintage date, pull all CPI values from the latest available vintage for each date
+	# This intelligently handles revisions and prevents
+	# duplications of CPI values by vintage dates/obs date
+	cpi_df =
+		hist$fred %>%
+		filter(., varname == 'cpi' & transform == 'base' & freq == 'm') %>%
+		select(., date, vdate, value)
+
+	inf_data =
+		cpi_df %>%
+		group_split(., vdate) %>%
+		purrr::map_dfr(., function(x)
+			filter(cpi_df, vdate <= x$vdate[[1]]) %>%
+				group_by(., date) %>%
+				filter(., vdate == max(vdate)) %>%
+				ungroup(.) %>%
+				arrange(., date) %>%
+				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
+			) %>%
+		na.omit(.) %>%
+		distinct(., date, vdate, value)
+
+
+## 4. Inflation ------------------------------------------------------------
+local({
+
+
+})
+
+## 5. Inflation ------------------------------------------------------------
+local({
+
+
 })
 
 ## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
-	
+
 	hist_agg = bind_rows(hist)
-	
+
 	monthly_agg =
 		# Get all daily/weekly varnames with pre-existing data
 		hist_agg %>%
@@ -311,7 +346,7 @@ local({
 			) %>%
 		group_by(., sourcename, varname, transform, freq, date, vdate) %>%
 		summarize(., value = mean(value), .groups = 'drop')
-		
+
 	quarterly_agg =
 		hist_agg %>%
 		filter(., freq %in% c('d', 'w', 'm')) %>%
@@ -324,9 +359,9 @@ local({
 		summarize(., value = mean(value), count = n(), .groups = 'drop') %>%
 		filter(., count == 3) %>%
 		select(., -count)
-	
+
 	hist_final = bind_rows(hist_agg, monthly_agg, quarterly_agg)
-	
+
 	hist_final <<- hist_final
 })
 
@@ -341,9 +376,9 @@ local({
 
 ## 1. Atlanta Fed ----------------------------------------------------------
 local({
-	
+
 	message('1. Atlanta Fed')
-	
+
 	atl_params =
 		tribble(
 		  ~ varname, ~ fred_id,
@@ -380,9 +415,9 @@ local({
 
 ## 2. St. Louis Fed --------------------------------------------------------
 local({
-	
+
 	message('2. St. Louis Fed')
-	
+
 	df =
 		get_fred_data('STLENI', CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
 		dplyr::filter(., date >= .$vintage_date - months(3)) %>%
@@ -403,13 +438,16 @@ local({
 
 ## 3. New York Fed ---------------------------------------------------------
 local({
-	
+
 	message('3. New York Fed')
-	
+
 	file = file.path(tempdir(), 'nyf.xlsx')
-	
+
   httr::GET(
-      'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx',
+      paste0(
+      	'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/',
+      	'new-york-fed-staff-nowcast_data_2002-present.xlsx'
+      	),
       httr::write_disk(file, overwrite = TRUE)
       )
 
@@ -421,7 +459,7 @@ local({
       na.omit(.) %>%
       dplyr::mutate(., date = from_pretty_date(date, 'q')) %>%
       dplyr::transmute(
-      	., 
+      	.,
       	fcname = 'nyf',
       	varname = 'gdp',
       	transform = 'apchg',
@@ -437,9 +475,9 @@ local({
 
 ## 4. Philadelphia Fed -----------------------------------------------------
 local({
-	
+
 	message('4. Philadelphia Fed')
-	
+
   # Scrape vintage dates
   vintage_dates =
   	httr::GET(paste0('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
@@ -541,22 +579,22 @@ local({
 ## 5. WSJ Economic Survey -----------------------------------------------------
 # WSJ Survey Updated to Quarterly - see https://www.wsj.com/amp/articles/economic-forecasting-survey-archive-11617814998
 local({
-	
+
 	message('5. WSJ Survey')
-	
+
   wsj_params =
   	tribble(
   		~ fcname, ~ full_fcname,
   		'wsj', 'WSJ Consensus',
-  		'fnm', 'Fannie Mae', 
+  		'fnm', 'Fannie Mae',
   		'wfc', 'Wells Fargo & Co.',
-  		'gsu', 'Georgia State University', 
+  		'gsu', 'Georgia State University',
   		'sp', 'S&P Global Ratings',
   		'ucla', 'UCLA Anderson Forecast',
   		'gs', 'Goldman, Sachs & Co.',
   		'ms', 'Morgan Stanley'
   	)
-  
+
   file_paths =
   	tribble(
   		~ vdate, ~ file,
@@ -682,16 +720,16 @@ local({
       select(., -full_fcname)
     }) %>%
     bind_rows(.) %>%
-  	na.omit(.) 
+  	na.omit(.)
 
-  
+
   	# Verify
 	  df %>%
 	  	group_split(., varname) %>%
 	  	setNames(., map(., ~.$varname[[1]])) %>%
 	  	lapply(., function(x) pivot_wider(x, id_cols = c('fcname', 'vdate'), names_from = 'date'))
-  
-  
+
+
     ext$wsj <<- df
 })
 
@@ -699,9 +737,9 @@ local({
 
 ## 6. CBO Forecasts --------------------------------------------------------
 local({
-	
+
 	message('6. CBO')
-	
+
   url_params =
     httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
     httr::content(., type = 'parsed') %>%
@@ -729,43 +767,43 @@ local({
   cbo_params =
     tribble(
       ~ varname, ~ cbo_category, ~ cbo_name, ~ cbo_units, ~ transform,
-      
+
       'gdp', 'Output', 'Real GDP', 'Percentage change, annual rate', 'apchg',
-      
+
       'inf', 'Prices', 'Consumer Price Index, All Urban Consumers (CPI-U)', 'Percentage change, annual rate',
       'base',
-      
+
       'oil', 'Prices', 'Price of Crude Oil, West Texas Intermediate (WTI)', 'Dollars per barrel', 'base',
-      
+
       'ue', 'Labor', 'Unemployment Rate, Civilian, 16 Years or Older', 'Percent', 'base',
-      
+
       'ffr', 'Interest Rates', 'Federal Funds Rate', 'Percent', 'base',
-      
+
       't10y', 'Interest Rates', '10-Year Treasury Note', 'Percent', 'base',
-      
+
       't03m', 'Interest Rates', '3-Month Treasury Bill', 'Percent', 'base',
-      
+
       'pce', 'Components of GDP (Real)', 'Personal Consumption Expenditures',
       'Percentage change, annual rate', 'apchg',
-      
+
       'pdi', 'Components of GDP (Real)', 'Gross Private Domestic Investment',
       'Percentage change, annual rate', 'apchg',
-      
+
       'pdin', 'Components of GDP (Real)', 'Nonresidential fixed investment',
       'Percentage change, annual rate', 'apchg',
-      
+
       'pdir', 'Components of GDP (Real)', 'Residential fixed investment',
       'Percentage change, annual rate', 'apchg',
-      
+
       'govt', 'Components of GDP (Real)', 'Government Consumption Expenditures and Gross Investment',
     	'Percentage change, annual rate', 'apchg',
-      
+
       'govtf', 'Components of GDP (Real)', 'Federal', 'Percentage change, annual rate', 'apchg',
-      
+
       'govts', 'Components of GDP (Real)', 'State and local', 'Percentage change, annual rate', 'apchg',
-      
+
       'ex', 'Components of GDP (Real)', 'Exports', 'Percentage change, annual rate', 'apchg',
-      
+
       'im', 'Components of GDP (Real)', 'Imports', 'Percentage change, annual rate', 'apchg'
       )
 
@@ -811,7 +849,7 @@ local({
 
 ## 7. Cleveland Fed (Expected Inf) -----------------------------------------
 local({
-	
+
 	message('7. Cleveland Fed')
 
 	data_sources = tibble(
@@ -836,10 +874,10 @@ local({
 				value
 				)
 	})
-	
-	
+
+
   file = file.path(tempdir(), paste0('inf.xls'))
-  
+
   download.file(
   	paste0(
   		'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/',
@@ -848,7 +886,7 @@ local({
   	file,
   	mode = 'wb'
   	)
-  
+
   einf_final =
   	readxl::read_excel(file, sheet = 'Expected Inflation') %>%
   	rename(., vdate = 'Model Output Date') %>%
@@ -895,9 +933,9 @@ local({
 
 ## 8. CME ---------------------------------------------------------------------
 local({
-	
+
 	message('8. CME Forecasts')
-	
+
 	# First get from Quandl
 	message('Starting Quandl data scrape...')
 	df =
@@ -929,7 +967,7 @@ local({
 	message('Completed Quandl data scrape')
 
 	message('Starting CME data scrape...')
-	
+
 	cookie =
     httr::GET(
 	    'https://www.cmegroup.com/',
@@ -1069,9 +1107,9 @@ local({
 
 ## 9. DNS - TDNS1, TDNS2, TDNS3, Treasury Yields, Spreads ---------------------
 local({
-	
+
 	message('9. DNS Forecasts')
-	
+
 	fred_data =
 		variable_params %>%
 		filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
@@ -1185,7 +1223,7 @@ local({
 	# Keep these treasury yield forecasts as the external forecasts ->
 	# note that later these will be "regenerated" in the baseline calculation,
 	# may be off a bit due to calculation from TDNS, compare to
-	
+
   # Monthly forecast up to 10 years
   # Get cumulative return starting from cur_date
   fitted_curve =
@@ -1201,10 +1239,6 @@ local({
         cum_return = (1 + annualized_yield/100)^(ttm/12)
         )
 
-  # Test for 20 year forecast
-  # fittedCurve %>% dplyr::mutate(., futNetYield = dplyr::lead(annualized_yield, 240)/cum_return, futYield = (futNetYield^(12/240) - 1) * 100) %>% dplyr::filter(., ttm < 120) %>% ggplot(.) + geom_line(aes(x = ttm, y = futYield))
-
-  # fittedCurve %>% dplyr::mutate(., futYield = (dplyr::lead(cumYield, 3)/cumYield - 1) * 100)
 
   # Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
   # and for each, iterate over the original "ttms" 1, 2, 3,
@@ -1284,9 +1318,9 @@ local({
 
 ## 10. Combine and Flatten -------------------------------------------------
 local({
-	
+
 	message('10. Combine and Flatten')
-	
+
 	flat =
 		ext %>%
 		bind_rows(.) %>%
@@ -1300,9 +1334,9 @@ local({
 			date,
 			value
 			)
-	
+
 	if (nrow(na.omit(flat)) != nrow(flat)) stop('Missing obs')
-	
+
 	ext_final <<- flat
 })
 
@@ -1310,22 +1344,22 @@ local({
 
 ## 1. Reset   -------------------------------------------------
 local({
-	
+
 	if (RESET_SQL) {
-		
+
 		dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_values CASCADE')
 		dbExecute(db, 'DROP TABLE IF EXISTS external_forecast_names CASCADE')
 		dbExecute(db, 'DROP TABLE IF EXISTS historical_values CASCADE')
 		dbExecute(db, 'DROP TABLE IF EXISTS variable_params CASCADE')
 		dbExecute(db, 'DROP TABLE IF EXISTS variable_releases CASCADE')
 	}
-	
+
 })
 
 
 ## 1. Releases  -------------------------------------------------
 local({
-	
+
 	if (!'variable_releases' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
 			db,
@@ -1344,7 +1378,7 @@ local({
 				)'
 			)
 	}
-	
+
 	releases_final %>%
 		transmute(
 			.,
@@ -1374,7 +1408,7 @@ local({
 
 ## 2. Variables  -------------------------------------------------
 local({
-	
+
 	if (!'variable_params' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
 			db,
@@ -1407,7 +1441,7 @@ local({
 				)'
 			)
 	}
-	
+
 	variable_params %>%
 		transmute(
 			.,
@@ -1446,7 +1480,7 @@ local({
 				)
 			) %>%
 		dbSendQuery(db, .)
-	
+
 })
 
 
@@ -1457,7 +1491,7 @@ local({
 		dbExecute(
 			db,
 			'CREATE TABLE external_forecast_names (
-				tskey VARCHAR(10) CONSTRAINT external_forecast_names_pk PRIMARY KEY, 
+				tskey VARCHAR(10) CONSTRAINT external_forecast_names_pk PRIMARY KEY,
 				forecast_type VARCHAR(255),
 				shortname VARCHAR(100) NOT NULL,
 				fullname VARCHAR(255) NOT NULL,
@@ -1467,7 +1501,7 @@ local({
 		dbExecute(db, 'CREATE INDEX external_forecast_names_ix_fctype ON external_forecast_names (forecast_type)')
 	}
 
-	external_forecast_names = 
+	external_forecast_names =
 		tribble(
 			~ tskey, ~ forecast_type, ~ shortname, ~ fullname,
 			# 1
@@ -1519,7 +1553,7 @@ local({
 local({
 
 	if (!'external_forecast_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-	
+
 		dbExecute(
 			db,
 			'CREATE TABLE external_forecast_values (
@@ -1583,9 +1617,9 @@ local({
 
 ## 5. Historical Values ------------------------------------------------
 local({
-	
+
 	if (!'historical_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		
+
 		dbExecute(
 			db,
 			'CREATE TABLE historical_values (
@@ -1601,7 +1635,7 @@ local({
 					ON DELETE CASCADE ON UPDATE CASCADE
 				)'
 			)
-		
+
 		dbExecute(db, '
 			SELECT create_hypertable(
 				relation => \'historical_values\',
@@ -1609,10 +1643,10 @@ local({
 				);
 			')
 	}
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM historical_values')$count)
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		hist_final %>%
 		transmute(., varname, transform, freq, date, vdate, value) %>%
@@ -1631,15 +1665,15 @@ local({
 				DBI::dbExecute(db, .)
 			) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	
+
+
 	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
 	message('***** Data Sent to SQL:')
 	print(sum(unlist(sql_result)))
-	
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM historical_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
-	
+
 })
