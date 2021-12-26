@@ -40,11 +40,16 @@ input_sources = tribble(
 	'ffr', 'hist', 'FRED', 'EFFR',
 	'sofr', 'hist', 'FRED',  'SOFR',
 	'bsby', 'hist', 'BLOOM',  'BSBYON',
-	'bsby1m', 'hist', 'BLOOM', 'BSBY1M',
-	'bsby3m', 'hist', 'BLOOM', 'BSBY3M',
-	'bsby6m', 'hist', 'BLOOM', 'BSBY6M',
-	'bsby1y', 'hist', 'BLOOM', 'BSBY12M',
-	'ameribor', 'hist', 'AFX', 'Ameribor Rate', 
+	'bsby01m', 'hist', 'BLOOM', 'BSBY1M',
+	'bsby03m', 'hist', 'BLOOM', 'BSBY3M',
+	'bsby06m', 'hist', 'BLOOM', 'BSBY6M',
+	'bsby01y', 'hist', 'BLOOM', 'BSBY12M',
+	'ameribor', 'hist', 'AFX', 'ON', 
+	'ameribor01m', 'hist', 'AFX', '1M', 
+	'ameribor03m', 'hist', 'AFX', '3M', 
+	'ameribor06m', 'hist', 'AFX', '6M', 
+	'ameribor01y', 'hist', 'AFX', '1Y', 
+	'ameribor02y', 'hist', 'AFX', '2Y', 
 	't01m', 'hist', 'FRED', 'DGS1MO',
 	't03m', 'hist', 'FRED', 'DGS3MO',
 	't06m', 'hist', 'FRED', 'DGS6MO',
@@ -79,7 +84,7 @@ local({
 	hist$fred <<- fred_data
 })
 
-## Bloomberg  ----------------------------------------------------------
+## BLOOM  ----------------------------------------------------------
 local({
 	
 	bloom_data =
@@ -112,6 +117,30 @@ local({
 				transmute(., varname = x$varname, date = as_date(dateTime), vdate = date + days(1), value) %>%
 				na.omit(.)
 		})
+	
+	hist$bloom <<- bloom_data
+})
+
+## AFX  ----------------------------------------------------------
+local({
+	
+	ameribor_data =
+		httr::GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
+		httr::content(., 'parsed') %>%
+		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
+		map_dfr(., function(x) 
+			as_tibble(x) %>%
+				select(., all_of(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y'))) %>%
+				mutate(., across(-date, function(x) as.numeric(x)))
+			) %>%
+		mutate(., date = ymd(date), vdate = date + days(1)) %>%
+		pivot_longer(., -c('date', 'vdate'), names_to = 'varname_scrape', values_to = 'value') %>%
+		inner_join(
+			.,
+			select(filter(input_sources, source == 'AFX'), varname, source_key),
+			by = c('varname_scrape' = 'source_key')
+			) %>%
+		transmute(., varname, date, vdate, value)
 	
 })
 
