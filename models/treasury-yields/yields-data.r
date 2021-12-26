@@ -154,6 +154,14 @@ local({
 
 # Models  ----------------------------------------------------------
 
+## FFR & SOFR   ----------------------------------------------------------
+local({
+	
+	
+	
+	
+})
+
 ## TDNS ----------------------------------------------------------
 local({
 
@@ -178,19 +186,21 @@ local({
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
 
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
-	train_df =
+	hist_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		filter(., date >= add_with_rollback(today(), months(-3))) %>%
+		filter(., date >= add_with_rollback(today(), months(-120))) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
+	
+	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
 
 	#' Calculate DNS fit
 	#'
 	#' @param df: A tibble continuing columns date, value, and ttm
 	#' @param return_all: FALSE by default.
-	#' If FALSE, will return only the MAPE (useful for optimization).
+	#' If FALSE, will return only the MSE (useful for optimization).
 	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
 	#'
 	#' @export
@@ -206,7 +216,7 @@ local({
 				}) %>%
 			{if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse else .}
 	}
-
+	
 	# Find MSE-minimizing lambda value
 	optim_lambda = optimize(
 		get_dns_fit,
@@ -216,130 +226,53 @@ local({
 		maximum = FALSE
 		)$minimum
 
-	hist_df =
-		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		select(., -freq) %>%
-		filter(., date >= add_with_rollback(Sys.Date(), months(-120))) %>%
-		right_join(., yield_curve_names_map, by = 'varname') %>%
-		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
-		mutate(., value = value - ffr) %>%
-		select(., -ffr)
+	# Get historical DNS coefficients
+	dns_fit_hist = get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE)
 
-	# Store DNS coefficients
-	dns_data =
-		get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE) %>%
+	dns_coefs_hist =
+		dns_fit_hist %>%
 		group_by(., date) %>%
-		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
-		pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
-		transmute(
+		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3))
+
+	# Get last DNS coefs
+	dns_coefs_now = as.list(select(filter(dns_data, date == max(date)), tdns1, tdns2, tdns3))
+	
+	# Check fit on current data
+	dns_fit =
+		dns_fit_hist %>%
+		filter(., date == max(date)) %>%
+		arrange(., ttm) %>%
+		ggplot(.) +
+		geom_point(aes(x = ttm, y = value)) +
+		geom_line(aes(x = ttm, y = fitted))
+	
+	print(dns_fit)
+
+	# Print forecasts
+	# Requires FFR Forecasts
+	# DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
+	# Calculated TDNS1: TYield_10y
+	# Calculated TDNS2: -1 * (t10y - t03m)
+	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
+	# Keep these treasury yield forecasts as the external forecasts ->
+	# note that later these will be "regenerated" in the baseline calculation,
+	# may be off a bit due to calculation from TDNS, compare to
+	
+	# Monthly forecast up to 10 years
+	# Get cumulative return starting from cur_date
+	fitted_curve =
+		tibble(ttm = seq(1: 480)) %>%
+		dplyr::mutate(., cur_date = floor_date(today(), 'months')) %>%
+		dplyr::mutate(
 			.,
-			sourcename = 'calc',
-			varname,
-			transform = 'base',
-			freq = 'm',
-			date,
-			vdate =
-				# Avoid storing too much old DNS data - assign vdate as newesty possible value of edit for
-				# previous months
-				as_date(ifelse(ceiling_date(date, 'months') <= today(), ceiling_date(date, 'months'), today())),
-			value = as.numeric(value)
+			annualized_yield =
+				dns_coefs$b1 +
+				dns_coefs$b2 * (1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) +
+				dns_coefs$b3 * ((1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) - exp(-1 * optim_lambda * ttm)),
+			# Get dns_coefs yield
+			cum_return = (1 + annualized_yield/100)^(ttm/12)
 		)
-
-
-	# For each vintage date, pull all CPI values from the latest available vintage for each date
-	# This intelligently handles revisions and prevents
-	# duplications of CPI values by vintage dates/obs date
-	cpi_df =
-		hist$fred %>%
-		filter(., varname == 'cpi' & transform == 'base' & freq == 'm') %>%
-		select(., date, vdate, value)
-
-	inf_data =
-		cpi_df %>%
-		group_split(., vdate) %>%
-		purrr::map_dfr(., function(x)
-			filter(cpi_df, vdate <= x$vdate[[1]]) %>%
-				group_by(., date) %>%
-				filter(., vdate == max(vdate)) %>%
-				ungroup(.) %>%
-				arrange(., date) %>%
-				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
-			) %>%
-		na.omit(.) %>%
-		distinct(., date, vdate, value) %>%
-		transmute(
-			.,
-			sourcename = 'calc',
-			varname = 'inf',
-			transform = 'base',
-			freq = 'm',
-			date,
-			vdate,
-			value
-		)
-
-
-	# Calculate misc interest rate spreads from cross-weekly/daily rates
-	# Assumes no revisions for this data
-	rates_wd_data = tribble(
-		~ varname, ~ var_w, ~ var_d,
-		'mort30yt30yspread', 'mort30y', 't30y',
-		'mort15yt10yspread', 'mort15y', 't10y'
-		) %>%
-		purrr::transpose(., .names = .$varname) %>%
-		purrr::map_dfr(., function(x) {
-
-			# Use weekly data as mortgage pulls are weekly
-			var_w_df =
-				filter(hist$fred, varname == x$var_w & transform == 'base' & freq == 'w') %>%
-				select(., varname, date, vdate, value)
-
-			var_d_df =
-				filter(hist$fred, varname == x$var_d & transform == 'base' & freq == 'd') %>%
-				select(., varname, date, vdate, value)
-
-			# Get week-end days
-			w_obs_dates =
-				filter(hist$fred, varname == x$var_w & transform == 'base' & freq == 'w') %>%
-				.$date %>%
-				unique(.)
-
-			# Iterate through the week-end days
-			purrr::map_dfr(w_obs_dates, function(w_obs_date) {
-
-				var_d_df_x =
-					var_d_df %>%
-					filter(., date %in% seq(w_obs_date - days(6), to = w_obs_date, by = '1 day')) %>%
-					summarize(., d_vdate = max(vdate), d_value = mean(value))
-
-				var_w_df_x =
-					var_w_df %>%
-					filter(., date == w_obs_date) %>%
-					transmute(., w_vdate = vdate, w_value = value)
-
-				if (nrow(var_d_df_x) == 0 | nrow(var_w_df_x) == 0) return(NA)
-
-				bind_cols(var_w_df_x, var_d_df_x) %>%
-					transmute(
-						.,
-						sourcename = 'calc',
-						varname = x$varname,
-						transform = 'base',
-						freq = 'w',
-						date = w_obs_date,
-						vdate = max(w_vdate, d_vdate),
-						value = w_value - d_value
-						) %>%
-					return(.)
-
-				}) %>%
-				distinct(.)
-			})
-
-
-	hist_calc = bind_rows(dns_data, inf_data, rates_wd_data)
-
-	hist$calc <<- hist_calc
+	
 })
 
 
