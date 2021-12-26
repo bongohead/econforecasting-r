@@ -1,4 +1,5 @@
 #'  Run this script on scheduler after close of business each day
+#'  We can assume this data is not subject to revisions
 
 # Initialize ----------------------------------------------------------
 
@@ -22,7 +23,7 @@ library(DBI)
 library(econforecasting)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(DIR, 'model-inputs', 'constants.r'))
+source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
 db = dbConnect(
 	RPostgres::Postgres(),
 	dbname = CONST$DB_DATABASE,
@@ -31,151 +32,92 @@ db = dbConnect(
 	user = CONST$DB_USERNAME,
 	password = CONST$DB_PASSWORD
 	)
-releases = list()
 hist = list()
-ext = list()
 
 ## Load Variable Defs ----------------------------------------------------------'
-variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables')
-release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'data-releases')
+input_sources = tribble(
+	~ varname, ~ input_type, ~ source, ~ source_key,
+	'ffr', 'hist', 'FRED', 'EFFR',
+	'sofr', 'hist', 'FRED',  'SOFR',
+	'bsby', 'hist', 'BLOOM',  'BSBYON',
+	'bsby1m', 'hist', 'BLOOM', 'BSBY1M',
+	'bsby3m', 'hist', 'BLOOM', 'BSBY3M',
+	'bsby6m', 'hist', 'BLOOM', 'BSBY6M',
+	'bsby1y', 'hist', 'BLOOM', 'BSBY12M',
+	'ameribor', 'hist', 'AFX', 'Ameribor Rate', 
+	't01m', 'hist', 'FRED', 'DGS1MO',
+	't03m', 'hist', 'FRED', 'DGS3MO',
+	't06m', 'hist', 'FRED', 'DGS6MO',
+	't01y', 'hist', 'FRED', 'DGS1',
+	't02y', 'hist', 'FRED', 'DGS2',
+	't05y', 'hist', 'FRED', 'DGS5',
+	't07y', 'hist', 'FRED', 'DGS7',
+	't10y', 'hist', 'FRED', 'DGS10',
+	't20y', 'hist', 'FRED', 'DGS20',
+	't30y', 'hist', 'FRED', 'DGS30'
+	)
 
-# Release Data ----------------------------------------------------------
-
-## 1. Get Data Releases ----------------------------------------------------------
-local({
-
-	message('***** Getting Releases History')
-
-	fred_releases =
-		variable_params %>%
-		group_by(., relkey) %>%
-		summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
-		left_join(
-			.,
-			variable_params  %>%
-				filter(., nc_dfm_input == 1) %>%
-				group_by(., relkey) %>%
-				summarize(., n_dfm_varnames = n(), dfm_varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
-			variable_params %>%
-				group_by(., relkey) %>%
-				summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
-			by = 'relkey'
-		) %>%
-		left_join(., release_params, by = 'relkey') %>%
-		# Now create a column of included releaseDates
-		left_join(
-			.,
-			purrr::map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
-
-				httr::RETRY(
-					'GET',
-					str_glue(
-						'https://api.stlouisfed.org/fred/release/dates?',
-						'release_id={x$relsckey}&realtime_start=2020-01-01',
-						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
-					),
-					times = 10
-					) %>%
-					httr::content(., as = 'parsed') %>%
-					.$release_dates %>%
-					sapply(., function(y) y$date) %>%
-					tibble(relkey = x$relkey, reldates = .)
-				}) %>%
-				group_by(., relkey) %>%
-				summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop'),
-			by = 'relkey'
-			)
-
-	releases$fred <<- fred_releases
-})
-
-## 2. Combine ----------------------------------------------------------
-local({
-
-	releases_final <<- bind_rows(releases)
-})
 
 # Historical Data ----------------------------------------------------------
 
-## 1. FRED ----------------------------------------------------------
+## FRED ----------------------------------------------------------
 local({
 
 	message('***** Importing FRED Data')
 
 	fred_data =
-		variable_params %>%
+		input_sources %>%
 		purrr::transpose(.)	%>%
-		purrr::keep(., ~ .$source == 'fred') %>%
+		purrr::keep(., ~ .$source == 'FRED') %>%
 		purrr::imap_dfr(., function(x, i) {
 			message(str_glue('Pull {i}: {x$varname}'))
-			get_fred_data(
-					x$sckey,
-					CONST$FRED_API_KEY,
-					.freq = x$freq,
-					.return_vintages = TRUE,
-					.verbose = F
-					) %>%
-				transmute(
-					.,
-					sourcename = 'fred',
-					varname = x$varname,
-					transform = 'base',
-					freq = x$freq,
-					date,
-					vdate = vintage_date,
-					value
-					) %>%
-				filter(
-					.,
-					date >= as_date('2010-01-01'),
-					vdate >= as_date('2010-01-01')
-					)
+			get_fred_data(x$source_key, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = T, .verbose = F) %>%
+				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
+				filter(., date >= as_date('2010-01-01') & vdate >= as_date('2010-01-01'))
 			})
 
 	hist$fred <<- fred_data
 })
 
-## 2. Yahoo Finance ----------------------------------------------------------
+## Bloomberg  ----------------------------------------------------------
 local({
-
-	message('***** Importing Yahoo Finance Data')
-
-	yahoo_data =
-		variable_params %>%
+	
+	bloom_data =
+		input_sources %>%
 		purrr::transpose(.) %>%
-		purrr::keep(., ~ .$source == 'yahoo') %>%
-		purrr::map_dfr(., function(x) {
-			url =
+		keep(., ~ .$source == 'BLOOM') %>%
+		map_dfr(., function(x) {
+			
+			httr::GET(
 				paste0(
-					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
-					'?period1=', '1262304000', # 12/30/1999
-					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
-					'&interval=1d',
-					'&events=history&includeAdjustedClose=true'
-				)
-			data.table::fread(url, showProgress = FALSE) %>%
-				.[, c('Date', 'Adj Close')]	%>%
-				set_names(., c('date', 'value')) %>%
-				as_tibble(.) %>%
-				# Bug with yahoo finance returning null for date 7/22/21 as of 7/23
-				filter(., value != 'null') %>%
-				mutate(
-					.,
-					sourcename = 'yahoo',
-					varname = x$varname,
-					transform = 'base',
-					freq = x$freq,
-					date,
-					vdate = date,
-					value = as.numeric(value)
-					) %>%
-				return(.)
+					'https://www.bloomberg.com/markets2/api/history/', x$source_key, '%3AIND/PX_LAST?',
+					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
+					),
+				add_headers(c(
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0',
+					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+					'Accept-Encoding' = 'gzip, deflate, br',
+					'Accept-Language' ='en-US,en;q=0.5',
+					'Cache-Control'='no-cache',
+					'Connection'='keep-alive',
+					'DNT' = '1',
+					'Host' = 'www.bloomberg.com',
+					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
+					))
+				) %>%
+				httr::content(., 'parsed') %>%
+				.[[1]] %>%
+				.$price %>%
+				map_dfr(., ~ as_tibble(.)) %>%
+				transmute(., varname = x$varname, date = as_date(dateTime), vdate = date + days(1), value) %>%
+				na.omit(.)
 		})
-
-	hist$yahoo <<- yahoo_data
+	
 })
 
-## 3. Calculated Variables ----------------------------------------------------------
+
+
+## Bloomberg ----------------------------------------------------------
 local({
 
 	message('***** Adding Calculated Variables')

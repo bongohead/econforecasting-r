@@ -8,31 +8,53 @@ library(DBI)
 library(econforecasting)
 
 # Define Params ----------------------------------------------------------
-rates_fcast_inputs = tribble(
-	~ varname, ~ fullname, ~ source, ~ source_key,
-	'ffr', 'Effective Federal Funds Rate', 'FRED', 'EFFR',
-	'sofr', 'Secured Overnight Financing Rate', 'FRED', 'SOFR',
-	'bsby', 'Bloomberg Short Term Bank Yield (Overnight Rate)', 'BLOOM', NA,
-	't01m', 'Treasury Yield 1 Month', 'FRED', 'DGS1MO',
-	't03m', 'Treasury Yield 3 Months', 'FRED', 'DGS3MO',
-	't06m', 'Treasury Yield 6 Months', 'FRED', 'DGS6MO',
-	't01y', 'Treasury Yield 1 Year', 'FRED', 'DGS1',
-	't02y', 'Treasury Yield 2 Year', 'FRED', 'DGS2',
-	't05y', 'Treasury Yield 5 Year', 'FRED', 'DGS5',
-	't07y', 'Treasury Yield 7 Year', 'FRED', 'DGS7',
-	't10y', 'Treasury Yield 10 Year', 'FRED', 'DGS10',
-	't20y', 'Treasury Yield 20 Year', 'FRED', 'DGS20',
-	't30y', 'Treasury Yield 30 Year', 'FRED', 'DGS30'
+rates_forecast_inputs = tribble(
+	~ varname, ~ input_type, ~ source, ~ source_key,
+	'ffr', 'hist', 'FRED', 'EFFR',
+	'sofr', 'hist', 'FRED',  'SOFR',
+	'bsby', 'hist', 'BLOOM',  NA,
+	'ameribor', 'hist', 'AFX', 'Ameribor Rate', 
+	't01m', 'hist', 'FRED', 'DGS1MO',
+	't03m', 'hist', 'FRED', 'DGS3MO',
+	't06m', 'hist', 'FRED', 'DGS6MO',
+	't01y', 'hist', 'FRED', 'DGS1',
+	't02y', 'hist', 'FRED', 'DGS2',
+	't05y', 'hist', 'FRED', 'DGS5',
+	't07y', 'hist', 'FRED', 'DGS7',
+	't10y', 'hist', 'FRED', 'DGS10',
+	't20y', 'hist', 'FRED', 'DGS20',
+	't30y', 'hist', 'FRED', 'DGS30',
 )
 
 
-rates_fcast_outputs = tribble(
+rates_forecast_outputs = tribble(
+	~ varname, ~ fullname,
 	't01m', 'Treasury Yield 1 Month',
-	't03m', 'Treasury Yield 3 Month',
+	't03m', 'Treasury Yield 3 Months',
+	't06m', 'Treasury Yield 6 Months',
+	't01y', 'Treasury Yield 1 Year',
+	't02y', 'Treasury Yield 2 Year',
+	't05y', 'Treasury Yield 5 Year',
+	't07y', 'Treasury Yield 7 Year',
+	't10y', 'Treasury Yield 10 Year',
+	't20y', 'Treasury Yield 20 Year',
+	't30y', 'Treasury Yield 30 Year',
 	'r01m', 'Real Treasury Yield 1 Month',
-	'r03m', 'Real Treasury Yield 3 Month',
+	'r03m', 'Real Treasury Yield 3 Months',
+	'r06m', 'Real Treasury Yield 6 Months',
+	'r01y', 'Real Treasury Yield 1 Year',
+	'r02y', 'Real Treasury Yield 2 Year',
+	'r05y', 'Real Treasury Yield 5 Year',
+	'r07y', 'Real Treasury Yield 7 Year',
+	'r10y', 'Real Treasury Yield 10 Year',
+	'r20y', 'Real Treasury Yield 20 Year',
+	'r30y', 'Real Treasury Yield 30 Year',
+	'inf', '1-Year Trailing Inflation',
+	'inf_1y', '1-Year Forward Inflation',
+	'inf_5y', '5-Year Forward Inflation',
+	'inf_10y', '10-Year Forward Inflation',
 	
-	)
+)
 
 # Send to SQL  -------------------------------------------------
 
