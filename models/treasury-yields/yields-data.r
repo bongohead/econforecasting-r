@@ -36,30 +36,30 @@ hist = list()
 
 ## Load Variable Defs ----------------------------------------------------------'
 input_sources = tribble(
-	~ varname, ~ input_type, ~ source, ~ source_key,
-	'ffr', 'hist', 'FRED', 'EFFR',
-	'sofr', 'hist', 'FRED',  'SOFR',
-	'bsby', 'hist', 'BLOOM',  'BSBYON',
-	'bsby01m', 'hist', 'BLOOM', 'BSBY1M',
-	'bsby03m', 'hist', 'BLOOM', 'BSBY3M',
-	'bsby06m', 'hist', 'BLOOM', 'BSBY6M',
-	'bsby01y', 'hist', 'BLOOM', 'BSBY12M',
-	'ameribor', 'hist', 'AFX', 'ON', 
-	'ameribor01m', 'hist', 'AFX', '1M', 
-	'ameribor03m', 'hist', 'AFX', '3M', 
-	'ameribor06m', 'hist', 'AFX', '6M', 
-	'ameribor01y', 'hist', 'AFX', '1Y', 
-	'ameribor02y', 'hist', 'AFX', '2Y', 
-	't01m', 'hist', 'FRED', 'DGS1MO',
-	't03m', 'hist', 'FRED', 'DGS3MO',
-	't06m', 'hist', 'FRED', 'DGS6MO',
-	't01y', 'hist', 'FRED', 'DGS1',
-	't02y', 'hist', 'FRED', 'DGS2',
-	't05y', 'hist', 'FRED', 'DGS5',
-	't07y', 'hist', 'FRED', 'DGS7',
-	't10y', 'hist', 'FRED', 'DGS10',
-	't20y', 'hist', 'FRED', 'DGS20',
-	't30y', 'hist', 'FRED', 'DGS30'
+	~ varname, ~ input_type, ~ source, ~ source_key, ~ freq,
+	'ffr', 'hist', 'FRED', 'EFFR', 'd',
+	'sofr', 'hist', 'FRED',  'SOFR', 'd',
+	'bsby', 'hist', 'BLOOM',  'BSBYON', 'd',
+	'bsby01m', 'hist', 'BLOOM', 'BSBY1M', 'd',
+	'bsby03m', 'hist', 'BLOOM', 'BSBY3M', 'd',
+	'bsby06m', 'hist', 'BLOOM', 'BSBY6M', 'd',
+	'bsby01y', 'hist', 'BLOOM', 'BSBY12M', 'd',
+	'ameribor', 'hist', 'AFX', 'ON', 'd',
+	'ameribor01m', 'hist', 'AFX', '1M', 'd',
+	'ameribor03m', 'hist', 'AFX', '3M', 'd',
+	'ameribor06m', 'hist', 'AFX', '6M', 'd',
+	'ameribor01y', 'hist', 'AFX', '1Y', 'd',
+	'ameribor02y', 'hist', 'AFX', '2Y', 'd',
+	't01m', 'hist', 'FRED', 'DGS1MO', 'd',
+	't03m', 'hist', 'FRED', 'DGS3MO', 'd',
+	't06m', 'hist', 'FRED', 'DGS6MO', 'd',
+	't01y', 'hist', 'FRED', 'DGS1', 'd',
+	't02y', 'hist', 'FRED', 'DGS2', 'd',
+	't05y', 'hist', 'FRED', 'DGS5', 'd',
+	't07y', 'hist', 'FRED', 'DGS7', 'd',
+	't10y', 'hist', 'FRED', 'DGS10', 'd',
+	't20y', 'hist', 'FRED', 'DGS20', 'd',
+	't30y', 'hist', 'FRED', 'DGS30', 'd'
 	)
 
 
@@ -114,7 +114,11 @@ local({
 				.[[1]] %>%
 				.$price %>%
 				map_dfr(., ~ as_tibble(.)) %>%
-				transmute(., varname = x$varname, date = as_date(dateTime), vdate = date + days(1), value) %>%
+				transmute(
+					.,
+					varname = x$varname, freq = 'd', date = as_date(dateTime), vdate = date + days(1),
+					value
+					) %>%
 				na.omit(.)
 		})
 	
@@ -124,7 +128,7 @@ local({
 ## AFX  ----------------------------------------------------------
 local({
 	
-	ameribor_data =
+	afx_data =
 		httr::GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
 		httr::content(., 'parsed') %>%
 		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
@@ -140,55 +144,43 @@ local({
 			select(filter(input_sources, source == 'AFX'), varname, source_key),
 			by = c('varname_scrape' = 'source_key')
 			) %>%
-		transmute(., varname, date, vdate, value)
+		transmute(., varname, freq = 'd', date, vdate, value)
 	
+	hist$afx <<- afx_data
 })
 
 
 
-## Bloomberg ----------------------------------------------------------
+
+# Models  ----------------------------------------------------------
+
+## TDNS ----------------------------------------------------------
 local({
 
 	message('***** Adding Calculated Variables')
 
 	fred_data =
-		variable_params %>%
-		filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
-		purrr::transpose(.) %>%
-		purrr::map_dfr(., function(x) {
-			get_fred_data(x$sckey, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
-				transmute(., varname = x$varname, date, vdate = vintage_date, value) %>%
-				filter(., date >= as_date('2010-01-01'))
-		})
+		hist$fred %>%
+		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]') | varname == 'ffr'))
 
 	# Monthly aggregation & append EOM with current val
 	fred_data_cat =
 		fred_data %>%
-		group_split(., varname) %>%
-		# Add monthly values for current month
-		map_dfr(., function(x)
-			x %>%
-				mutate(., date = as.Date(paste0(year(date), '-', month(date), '-01'))) %>%
-				group_by(., varname, date) %>%
-				summarize(., value = mean(value), .groups = 'drop') %>%
-				mutate(., freq = 'm')
-		)
+		mutate(., date = floor_date(date, 'months')) %>%
+		group_by(., varname, date) %>%
+		summarize(., value = mean(value), .groups = 'drop')
 
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yield_curve_names_map =
-		variable_params %>%
-		purrr::transpose(.) %>%
-		map_chr(., ~.$varname) %>%
-		unique(.) %>%
-		purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
-		tibble(varname = .) %>%
+		input_sources %>%
+		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]'))) %>%
+		select(., varname) %>%
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
 
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	train_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		select(., -freq) %>%
-		filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
+		filter(., date >= add_with_rollback(today(), months(-3))) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
@@ -196,44 +188,32 @@ local({
 
 	#' Calculate DNS fit
 	#'
-	#' @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
-	#' @param return_all: (boolean) FALSE by default.
+	#' @param df: A tibble continuing columns date, value, and ttm
+	#' @param return_all: FALSE by default.
 	#' If FALSE, will return only the MAPE (useful for optimization).
 	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
 	#'
 	#' @export
 	get_dns_fit = function(df, lambda, return_all = FALSE) {
 		df %>%
-			mutate(
-				.,
-				f1 = 1,
-				f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm),
-				f3 = f2 - exp(-1 * lambda * ttm)
-			) %>%
-			group_by(date) %>%
-			group_split(.) %>%
-			lapply(., function(x) {
+			mutate(f1 = 1, f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm), f3 = f2 - exp(-1 * lambda * ttm)) %>%
+			group_split(., date) %>%
+			map_dfr(., function(x) {
 				reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
 				bind_cols(x, fitted = fitted(reg)) %>%
 					mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
 					mutate(., resid = value - fitted)
-			}) %>%
-			bind_rows(.) %>%
-			{
-				if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse
-				else .
-			} %>%
-			return(.)
+				}) %>%
+			{if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse else .}
 	}
 
 	# Find MSE-minimizing lambda value
-	optim_lambda =
-		optimize(
-			get_dns_fit,
-			df = train_df,
-			return_all = FALSE,
-			interval = c(-1, 1),
-			maximum = FALSE
+	optim_lambda = optimize(
+		get_dns_fit,
+		df = train_df,
+		return_all = FALSE,
+		interval = c(-1, 1),
+		maximum = FALSE
 		)$minimum
 
 	hist_df =
