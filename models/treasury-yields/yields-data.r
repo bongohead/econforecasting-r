@@ -3,12 +3,13 @@
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-DIR = Sys.getenv('EF_DIR')
+JOB_NAME = 'PULL_YIELDS'
+EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
-	sinkfile = file(file.path(DIR, 'logs', 'pull-data.log'), open = 'wt')
+	sinkfile = file(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log')), open = 'wt')
 	sink(sinkfile, type = 'output')
 	sink(sinkfile, type = 'message')
 	message(paste0('Run ', Sys.Date()))
@@ -174,7 +175,7 @@ local({
 	hist$yahoo <<- yahoo_data
 })
 
-## 3. TDNS ----------------------------------------------------------
+## 3. Calculated Variables ----------------------------------------------------------
 local({
 
 	message('***** Adding Calculated Variables')
@@ -314,29 +315,91 @@ local({
 				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
 			) %>%
 		na.omit(.) %>%
-		distinct(., date, vdate, value)
+		distinct(., date, vdate, value) %>%
+		transmute(
+			.,
+			sourcename = 'calc',
+			varname = 'inf',
+			transform = 'base',
+			freq = 'm',
+			date,
+			vdate,
+			value
+		)
 
 
-## 4. Inflation ------------------------------------------------------------
-local({
+	# Calculate misc interest rate spreads from cross-weekly/daily rates
+	# Assumes no revisions for this data
+	rates_wd_data = tribble(
+		~ varname, ~ var_w, ~ var_d,
+		'mort30yt30yspread', 'mort30y', 't30y',
+		'mort15yt10yspread', 'mort15y', 't10y'
+		) %>%
+		purrr::transpose(., .names = .$varname) %>%
+		purrr::map_dfr(., function(x) {
+
+			# Use weekly data as mortgage pulls are weekly
+			var_w_df =
+				filter(hist$fred, varname == x$var_w & transform == 'base' & freq == 'w') %>%
+				select(., varname, date, vdate, value)
+
+			var_d_df =
+				filter(hist$fred, varname == x$var_d & transform == 'base' & freq == 'd') %>%
+				select(., varname, date, vdate, value)
+
+			# Get week-end days
+			w_obs_dates =
+				filter(hist$fred, varname == x$var_w & transform == 'base' & freq == 'w') %>%
+				.$date %>%
+				unique(.)
+
+			# Iterate through the week-end days
+			purrr::map_dfr(w_obs_dates, function(w_obs_date) {
+
+				var_d_df_x =
+					var_d_df %>%
+					filter(., date %in% seq(w_obs_date - days(6), to = w_obs_date, by = '1 day')) %>%
+					summarize(., d_vdate = max(vdate), d_value = mean(value))
+
+				var_w_df_x =
+					var_w_df %>%
+					filter(., date == w_obs_date) %>%
+					transmute(., w_vdate = vdate, w_value = value)
+
+				if (nrow(var_d_df_x) == 0 | nrow(var_w_df_x) == 0) return(NA)
+
+				bind_cols(var_w_df_x, var_d_df_x) %>%
+					transmute(
+						.,
+						sourcename = 'calc',
+						varname = x$varname,
+						transform = 'base',
+						freq = 'w',
+						date = w_obs_date,
+						vdate = max(w_vdate, d_vdate),
+						value = w_value - d_value
+						) %>%
+					return(.)
+
+				}) %>%
+				distinct(.)
+			})
 
 
+	hist_calc = bind_rows(dns_data, inf_data, rates_wd_data)
+
+	hist$calc <<- hist_calc
 })
 
-## 5. Inflation ------------------------------------------------------------
-local({
-
-
-})
 
 ## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
 
-	hist_agg = bind_rows(hist)
+	hist_agg_0 = bind_rows(hist)
 
 	monthly_agg =
 		# Get all daily/weekly varnames with pre-existing data
-		hist_agg %>%
+		hist_agg_0 %>%
 		filter(., freq %in% c('d', 'w')) %>%
 		# Add monthly values for current month
 		mutate(
@@ -348,7 +411,7 @@ local({
 		summarize(., value = mean(value), .groups = 'drop')
 
 	quarterly_agg =
-		hist_agg %>%
+		hist_agg_0 %>%
 		filter(., freq %in% c('d', 'w', 'm')) %>%
 		mutate(
 			.,
@@ -360,14 +423,64 @@ local({
 		filter(., count == 3) %>%
 		select(., -count)
 
-	hist_final = bind_rows(hist_agg, monthly_agg, quarterly_agg)
+	hist_agg =
+		bind_rows(hist_agg_0, monthly_agg, quarterly_agg) %>%
+		filter(., freq %in% c('m', 'q'))
 
-	hist_final <<- hist_final
+	hist_agg <<- hist_agg
 })
 
 
 ## 5. Add Stationary Transformations ----------------------------------------------------------
+local({
 
+	hist_full =
+		hist_agg %>%
+		group_split(., sourcename, varname, transform, freq) %>%
+		lapply(., function(df_by_var_freq) {
+
+			# Get all available vintage dates for this variable
+			vdates = unique(df_by_var_freq$vdate)
+
+			# Get latest obs date for each vintage date
+			lapply(vdates, function(this_vdate) {
+				prep =
+					filter(df_by_var_freq, vdate <= this_vdate) %>%
+					group_by(., date) %>%
+					filter(., vdate == max(vdate)) %>%
+					ungroup(.) %>%
+					arrange(., date)
+				})
+
+
+			message(x$varname)
+
+			lapply(c('st', 'd1', 'd2') %>% set_names(., .), function(form) {
+
+				if (x[[form]] == 'none') return(NULL)
+				# Now iterate through sub-frequencies
+				lapply(x$h$base, function(df)
+					df %>%
+						dplyr::arrange(., date) %>%
+						dplyr::mutate(
+							.,
+							value = {
+								if (x[[form]] == 'base') value
+								else if (x[[form]] == 'dlog') dlog(value)
+								else if (x[[form]] == 'diff1') diff1(value)
+								else if (x[[form]] == 'pchg') pchg(value)
+								else if (x[[form]] == 'apchg') apchg(value, {if (x$freq == 'q') 4 else 12})
+								else stop ('Error')
+							}
+						) %>%
+						na.omit(.)
+				)
+			}) %>%
+				purrr::compact(.)
+		})
+
+
+})
 
 
 
