@@ -33,6 +33,7 @@ db = dbConnect(
 	password = CONST$DB_PASSWORD
 	)
 hist = list()
+forecasts = list()
 
 ## Load Variable Defs ----------------------------------------------------------'
 input_sources = tribble(
@@ -341,8 +342,7 @@ local({
 		mutate(., value = ifelse(!is.na(quandl), quandl, cme)) %>%
 		select(., -quandl, -cme) %>%
 		group_split(., vdate, varname) %>%
-		imap_dfr(., function(x, i) {
-			message(i)
+		map_dfr(., function(x) {
 			x %>%
 				# Join on missing obs dates
 				right_join(
@@ -364,9 +364,9 @@ local({
 				)
 			})
 	
+	forecasts$sofr <<- filter(final_df, varname == 'sofr')
+	forecasts$ffr <<- filter(final_df, varname == 'ffr')
 })
-
-## CME Data Storage  ----------------------------------------------------------
 
 ## TDNS ----------------------------------------------------------
 local({
