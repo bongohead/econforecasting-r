@@ -157,24 +157,46 @@ local({
 	
 	# Quandl Data
 	message('Starting Quandl data scrape')
-	quandl_data = purrr::map_dfr(1:24, function(j)
-		read_csv(
-			str_glue('https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF{j}.csv?api_key={CONST$QUANDL_API_KEY}'),
-			col_types = 'Ddddddddd'
+	quandl_data =
+		purrr::map_dfr(1:24, function(j)
+			read_csv(
+				str_glue('https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF{j}.csv?api_key={CONST$QUANDL_API_KEY}'),
+				col_types = 'Ddddddddd'
+				) %>%
+				transmute(., vdate = Date, settle = Settle, j = j) %>%
+				filter(., vdate >= as_date('2010-01-01'))
 			) %>%
-			transmute(., vdate = Date, settle = Settle, j = j) %>%
-			filter(., vdate >= as.Date('2010-01-01'))
-		) %>%
-		bind_rows(.) %>%
 		transmute(
 			.,
+			varname = 'ffr',
 			vdate,
-			# Consider the forecasted period the vdate + j
-			date =
+			date = # Consider the forecasted period the vdate + j
 				from_pretty_date(paste0(year(vdate), 'M', month(vdate)), 'm') %>%
 				add_with_rollback(., months(j - 1), roll_to_first = TRUE),
 			value = 100 - settle
 		)
+	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_quandl')
+	if (!'rates_model_quandl' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(db,
+			'CREATE TABLE rates_model_quandl (
+				varname VARCHAR(255),
+				vdate DATE,
+				date DATE,
+				value NUMERIC (20, 4),
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				CONSTRAINT rates_model_quandl_pk PRIMARY KEY (varname, vdate, date)
+				)'
+			)
+		dbExecute(db, 'SELECT create_hypertable(relation => \'rates_model_quandl\', time_column_name => \'vdate\')')
+	}
+	dbExecute(db, create_insert_query(
+		quandl_data,
+		'rates_model_quandl',
+		'ON CONFLICT (varname, vdate, date) DO UPDATE SET value=EXCLUDED.value'
+		))
+	
+	
 
 	# CME Group Data
 	message('Starting CME data scrape...')
@@ -246,62 +268,101 @@ local({
 						date = lubridate::ymd(x$expirationDate),
 						value = 100 - as.numeric(x$priorSettle),
 						varname = var$varname,
+						cme_id = var$cme_id
 					)
-				}) %>%
-				return(.)
+				})
+			)
+	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme_raw')
+	if (!'rates_model_cme_raw' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(db,
+			'CREATE TABLE rates_model_cme_raw (
+			varname VARCHAR(255),
+			cme_id VARCHAR(255),
+			vdate DATE,
+			date DATE,
+			value NUMERIC (20, 4),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT rates_model_cme_raw_pk PRIMARY KEY (varname, cme_id, vdate, date)
+			)'
 		)
+		dbExecute(db,  'SELECT create_hypertable(relation => \'rates_model_cme_raw\', time_column_name => \'vdate\')')
+	}
+	dbExecute(db, create_insert_query(
+		cme_raw_data,
+		'rates_model_cme_raw',
+		'ON CONFLICT (varname, cme_id, vdate, date) DO UPDATE SET value=EXCLUDED.value'
+		))
 	
-	## Store raw data into SQL
-	
-	
-	%>%
+	cme_data =
+		cme_raw_data %>%
 		# Now average out so that there's only one value for each (varname, date) combo
 		group_by(varname, date) %>%
 		summarize(., value = mean(value), .groups = 'drop') %>%
 		arrange(., date) %>%
 		# Get rid of forecasts for old observations
-		filter(., date >= lubridate::floor_date(last_trade_date, 'month')) %>%
-		# Assume vintagedate is the same date as the last Quandl obs
-		mutate(., vdate = last_trade_date, fcname = 'cme') %>%
-		filter(., value != 100)
-	message('Completed CME data scrape...')
-	
+		filter(., date >= lubridate::floor_date(last_trade_date, 'month') & value != 100) %>%
+		transmute(., varname, vdate = last_trade_date, date, value)
+
 	# Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
 	# 	df %>%
 	#   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
 	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 	# 		View(.)
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme')
+	if (!'rates_model_cme' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(db,
+			'CREATE TABLE rates_model_cme (
+			varname VARCHAR(255),
+			vdate DATE,
+			date DATE,
+			value NUMERIC (20, 4),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT rates_model_cme_pk PRIMARY KEY (varname, vdate, date)
+			)'
+		)
+		dbExecute(db,  'SELECT create_hypertable(relation => \'rates_model_cme\', time_column_name => \'vdate\')')
+	}
+	dbExecute(db, create_insert_query(
+		cme_data,
+		'rates_model_cme',
+		'ON CONFLICT (varname, vdate, date) DO UPDATE SET value=EXCLUDED.value'
+	))
 	
 	
-	## Add monthly interpolation
+	## Combine datasets and add monthly interpolation
 	message('Adding monthly interpolation ...')
-	
 	final_df =
-		combined_df %>%
-		group_by(vdate, varname) %>%
-		group_split(.) %>%
-		lapply(., function(x) {
+		full_join(
+			rename(quandl_data, quandl = value),
+			rename(cme_data, cme = value),
+			by = c('varname', 'vdate', 'date')
+			) %>%
+		mutate(., value = ifelse(!is.na(quandl), quandl, cme)) %>%
+		select(., -quandl, -cme) %>%
+		group_split(., vdate, varname) %>%
+		imap_dfr(., function(x, i) {
+			message(i)
 			x %>%
 				# Join on missing obs dates
 				right_join(
 					.,
-					tibble(date = seq(from = .$date[[1]], to = tail(.$date, 1), by = '1 month')) %>%
-						mutate(n = 1:nrow(.)),
-					by = 'date'
-				) %>%
+					tibble(
+						varname = unique(x$varname),
+						vdate = unique(x$vdate),
+						date = seq(from = min(x$date), to = max(x$date), by = '1 month')
+						),
+					by = c('varname', 'vdate', 'date')
+					) %>%
 				arrange(date) %>%
 				transmute(
 					.,
-					fcname = head(fcname, 1),
-					varname = head(varname, 1),
-					transform = 'base',
-					freq = 'm',
-					date = date,
-					vdate = head(vdate, 1),
+					varname = unique(varname),
+					vdate = unique(vdate),
+					date,
 					value = zoo::na.spline(value)
 				)
-		}) %>%
-		dplyr::bind_rows(.)
+			})
 	
 })
 
