@@ -150,17 +150,162 @@ local({
 })
 
 
-
-
 # Models  ----------------------------------------------------------
 
 ## FFR & SOFR   ----------------------------------------------------------
 local({
 	
+	# Quandl Data
+	message('Starting Quandl data scrape')
+	quandl_data = purrr::map_dfr(1:24, function(j)
+		read_csv(
+			str_glue('https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF{j}.csv?api_key={CONST$QUANDL_API_KEY}'),
+			col_types = 'Ddddddddd'
+			) %>%
+			transmute(., vdate = Date, settle = Settle, j = j) %>%
+			filter(., vdate >= as.Date('2010-01-01'))
+		) %>%
+		bind_rows(.) %>%
+		transmute(
+			.,
+			vdate,
+			# Consider the forecasted period the vdate + j
+			date =
+				from_pretty_date(paste0(year(vdate), 'M', month(vdate)), 'm') %>%
+				add_with_rollback(., months(j - 1), roll_to_first = TRUE),
+			value = 100 - settle
+		)
+
+	# CME Group Data
+	message('Starting CME data scrape...')
+	cme_cookie =
+		httr::GET(
+			'https://www.cmegroup.com/',
+			add_headers(c(
+				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+				'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+				'Accept-Encoding' = 'gzip, deflate, br',
+				'Accept-Language' ='en-US,en;q=0.5',
+				'Cache-Control'='no-cache',
+				'Connection'='keep-alive',
+				'DNT' = '1'
+				))
+			) %>%
+		httr::cookies(.) %>%
+		as_tibble(.) %>%
+		filter(., name == 'ak_bmsc') %>%
+		.$value
+	
+	# Get CME Vintage Date
+	last_trade_date =
+		httr::GET(
+			paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/305/G?quoteCodes=null&_='),
+			add_headers(c(
+				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+				'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+				'Accept-Encoding' = 'gzip, deflate, br',
+				'Accept-Language' ='en-US,en;q=0.5',
+				'Cache-Control'='no-cache',
+				'Connection'='keep-alive',
+				'Cookie'= cme_cookie,
+				'DNT' = '1',
+				'Host' = 'www.cmegroup.com'
+			))
+		) %>% content(., 'parsed') %>% .$tradeDate %>% lubridate::parse_date_time(., 'd-b-Y') %>% as_date(.)
+	
+	# See https://www.federalreserve.gov/econres/feds/files/2019014pap.pdf for CME futures model
+	cme_raw_data =
+		tribble(
+			~ varname, ~ cme_id,
+			'ffr', '305',
+			'sofr', '8462',
+			'sofr', '8463'
+		) %>%
+		purrr::transpose(.) %>%
+		purrr::map_dfr(., function(var)
+			httr::GET(
+				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cme_id, '/G?quoteCodes=null&_='),
+				add_headers(c(
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+					'Accept-Encoding' = 'gzip, deflate, br',
+					'Accept-Language' ='en-US,en;q=0.5',
+					'Cache-Control'='no-cache',
+					'Connection'='keep-alive',
+					'Cookie'= cookie,
+					'DNT' = '1',
+					'Host' = 'www.cmegroup.com'
+					))
+				) %>%
+				httr::content(., as = 'parsed') %>%
+				.$quotes %>%
+				purrr::map_dfr(., function(x) {
+					if (x$priorSettle %in% c('0.00', '-')) return() # Whack bug in CME website
+					tibble(
+						vdate = last_trade_date,
+						date = lubridate::ymd(x$expirationDate),
+						value = 100 - as.numeric(x$priorSettle),
+						varname = var$varname,
+					)
+				}) %>%
+				return(.)
+		)
+	
+	## Store raw data into SQL
 	
 	
+	%>%
+		# Now average out so that there's only one value for each (varname, date) combo
+		group_by(varname, date) %>%
+		summarize(., value = mean(value), .groups = 'drop') %>%
+		arrange(., date) %>%
+		# Get rid of forecasts for old observations
+		filter(., date >= lubridate::floor_date(last_trade_date, 'month')) %>%
+		# Assume vintagedate is the same date as the last Quandl obs
+		mutate(., vdate = last_trade_date, fcname = 'cme') %>%
+		filter(., value != 100)
+	message('Completed CME data scrape...')
+	
+	# Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
+	# 	df %>%
+	#   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
+	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
+	# 		View(.)
+	
+	
+	## Add monthly interpolation
+	message('Adding monthly interpolation ...')
+	
+	final_df =
+		combined_df %>%
+		group_by(vdate, varname) %>%
+		group_split(.) %>%
+		lapply(., function(x) {
+			x %>%
+				# Join on missing obs dates
+				right_join(
+					.,
+					tibble(date = seq(from = .$date[[1]], to = tail(.$date, 1), by = '1 month')) %>%
+						mutate(n = 1:nrow(.)),
+					by = 'date'
+				) %>%
+				arrange(date) %>%
+				transmute(
+					.,
+					fcname = head(fcname, 1),
+					varname = head(varname, 1),
+					transform = 'base',
+					freq = 'm',
+					date = date,
+					vdate = head(vdate, 1),
+					value = zoo::na.spline(value)
+				)
+		}) %>%
+		dplyr::bind_rows(.)
 	
 })
+
+## CME Data Storage  ----------------------------------------------------------
 
 ## TDNS ----------------------------------------------------------
 local({
@@ -278,5 +423,40 @@ local({
 
 
 
+# AMX ---------------------------------------------------------------------
+local({
+	
+	httr::GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
+		httr::content(.) %>%
+		rvest::html_elements(., 'ul.document-list > li > a') %>%
+		map_dfr(., function(x)
+			tibble(
+				vdate = as_date(str_sub(rvest::html_attr(x, 'href'), -10)), 
+				url = paste0('https://cboe.com', rvest::html_attr(x, 'href'))
+			)
+		) %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x) 
+			read_csv(x$url, col_names = c('product', 'symbol', 'exp_date', 'price'), col_types = 'ccDn', skip = 1) %>%
+				filter(., product == 'AMB1') %>%
+				transmute(
+					.,
+					varname = 'ameribor',
+					vdate = as_date(x$vdate),
+					date = floor_date(exp_date - months(1), 'months'),
+					value = 100 - price/100
+				)
+		)
+	
+	# Now combine, replacing df2 with df1 if necessary
+	combined_df =
+		full_join(df, df2, by = c('fcname', 'vdate', 'date', 'varname')) %>%
+		# Use quandl data if available, otherwise use other data
+		mutate(., value = ifelse(!is.na(value.x), value.x, value.y)) %>%
+		select(., -value.x, -value.y)
+	
+	
+	
+})
 
 
