@@ -441,7 +441,7 @@ local({
 		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3))
 
 	# Get last DNS coefs
-	dns_coefs_now = as.list(select(filter(dns_data, date == max(date)), tdns1, tdns2, tdns3))
+	dns_coefs_now = as.list(select(filter(dns_coefs_hist, date == max(date)), tdns1, tdns2, tdns3))
 	
 	# Check fit on current data
 	dns_fit =
@@ -464,21 +464,78 @@ local({
 	# note that later these will be "regenerated" in the baseline calculation,
 	# may be off a bit due to calculation from TDNS, compare to
 	
-	# Monthly forecast up to 10 years
+	# Monthly forecast up to 10 years (minus ffr)
 	# Get cumulative return starting from cur_date
 	fitted_curve =
 		tibble(ttm = seq(1: 480)) %>%
-		dplyr::mutate(., cur_date = floor_date(today(), 'months')) %>%
-		dplyr::mutate(
+		mutate(., cur_date = floor_date(today(), 'months')) %>%
+		mutate(
 			.,
 			annualized_yield =
-				dns_coefs$b1 +
-				dns_coefs$b2 * (1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) +
-				dns_coefs$b3 * ((1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) - exp(-1 * optim_lambda * ttm)),
+				dns_coefs_now$tdns1 +
+				dns_coefs_now$tdns2 * (1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) +
+				dns_coefs_now$tdns3 * ((1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) - exp(-1 * optim_lambda * ttm)),
 			# Get dns_coefs yield
 			cum_return = (1 + annualized_yield/100)^(ttm/12)
-		)
+			)
 	
+	# Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
+	# and for each, iterate over the original "ttms" 1, 2, 3,
+	# ..., 120 and for each forecast the cumulative return for the yttm period ahead.
+	treasury_forecasts =
+		yield_curve_names_map$ttm %>%
+		lapply(., function(yttm)
+			fitted_curve %>%
+				mutate(
+					.,
+					yttm_ahead_cum_return = dplyr::lead(cum_return, yttm)/cum_return,
+					yttm_ahead_annualized_yield = (yttm_ahead_cum_return^(12/yttm) - 1) * 100
+				) %>%
+				filter(., ttm <= 120) %>%
+				mutate(., yttm = yttm) %>%
+				inner_join(., yield_curve_names_map, c('yttm' = 'ttm'))
+		) %>%
+		bind_rows(.) %>%
+		mutate(
+			.,
+			date = add_with_rollback(cur_date, months(ttm - 1))
+			) %>%
+		select(., varname, date, value = yttm_ahead_annualized_yield) %>%
+		inner_join(
+			.,
+			forecasts$ffr %>% filter(., vdate == today()) %>% transmute(., ffr = value, date),
+			by = 'date'
+			) %>%
+		transmute(., varname, date, vdate = today(), value = value + ffr)
+	
+	# Plot point forecasts
+	treasury_forecasts %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = varname))
+	
+	# Plot curve forecasts
+	treasury_forecasts %>%
+		left_join(., yield_curve_names_map, by = 'varname') %>%
+		hchart(., 'line', hcaes(x = ttm, y = value, color = date, group = date))
+	
+	# Calculate TDNS1, TDNS2, TDNS3 forecasts
+	# Forecast vintage date should be bound to historical data vintage
+	# date since reliant purely on historical data
+	tdns_forecasts =
+		treasury_forecasts %>%
+		select(., varname, date, value) %>%
+		pivot_wider(., names_from = 'varname') %>%
+		transmute(
+			.,
+			date,
+			tdns1 = t10y,
+			tdns2 = -1 * (t10y - t03m),
+			tdns3 = .3 * (2 * t02y - t03m - t10y)
+		) %>%
+		pivot_longer(., -date, names_to = 'varname') %>%
+		transmute(., varname, date, vdate = today(), value)
+	
+	forecasts$treasuries <<- treasury_forecasts
 })
 
 
