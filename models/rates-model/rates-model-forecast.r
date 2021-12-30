@@ -1,5 +1,5 @@
 #'  Run this script on scheduler after close of business each day
-#'  We can assume this data is not subject to revisions
+#'  Assumes rate data is not subject to revisions
 
 # Initialize ----------------------------------------------------------
 
@@ -255,7 +255,7 @@ local({
 					'Accept-Language' ='en-US,en;q=0.5',
 					'Cache-Control'='no-cache',
 					'Connection'='keep-alive',
-					'Cookie'= cookie,
+					'Cookie'= cme_cookie,
 					'DNT' = '1',
 					'Host' = 'www.cmegroup.com'
 					))
