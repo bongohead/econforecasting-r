@@ -10,6 +10,8 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Added calculations for getting last date by vintage date
 - Added AMERIBOR & Bloomberg BSBY rate imports
 - Added modularization of interest rate models
+- Added cleanup of Treasury rate forecasts
+- Added AMERIBOR & BSBY forecasts
 - Cleaned up TDNS model code
 - Removed Cleveland Fed FRED pull (inconsistent data)
 - Removed old junk in README
