@@ -242,7 +242,8 @@ local({
 			~ varname, ~ cme_id,
 			'ffr', '305',
 			'sofr', '8462',
-			'sofr', '8463'
+			'sofr', '8463',
+			'bsby', '10038'
 		) %>%
 		purrr::transpose(.) %>%
 		purrr::map_dfr(., function(var)
@@ -363,6 +364,33 @@ local({
 					value = zoo::na.spline(value)
 				)
 			})
+	
+	
+	series_data =
+		final_df %>%
+		group_split(., varname) %>%
+		imap(., function(x, i) list(
+			name = x$varname[[1]],
+			data =
+				filter(x, vdate == max(vdate)) %>%
+				mutate(date = datetime_to_timestamp(date)) %>%
+				arrange(., date) %>%
+				purrr::transpose(.) %>%
+				map(., ~ list(.$date, .$value)),
+			color = rainbow(3)[i]
+			))
+	
+	series_chart =
+		highchart(type = 'stock') %>%
+		reduce(
+			series_data,
+			function(accum, x) {
+				hc_add_series(accum, name = x$name, data = x$data)
+				},
+			.init = .
+			)
+
+	print(series_chart)
 	
 	forecasts$sofr <<- filter(final_df, varname == 'sofr')
 	forecasts$ffr <<- filter(final_df, varname == 'ffr')
