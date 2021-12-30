@@ -539,12 +539,11 @@ local({
 })
 
 
-
-
-# AMX ---------------------------------------------------------------------
+## AMX ---------------------------------------------------------------------
 local({
 	
-	httr::GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
+	cboe_data =
+		httr::GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
 		httr::content(.) %>%
 		rvest::html_elements(., 'ul.document-list > li > a') %>%
 		map_dfr(., function(x)
@@ -554,7 +553,62 @@ local({
 			)
 		) %>%
 		purrr::transpose(.) %>%
-		lapply(., function(x) 
+		map_dfr(., function(x) 
+			read_csv(x$url, col_names = c('product', 'symbol', 'exp_date', 'price'), col_types = 'ccDn', skip = 1) %>%
+				filter(., product == 'AMB1') %>%
+				transmute(
+					.,
+					varname = 'ameribor',
+					vdate = as_date(x$vdate),
+					date = floor_date(exp_date - months(1), 'months'),
+					value = 100 - price/100
+				)
+			)
+	
+	# Plot comparison against TDNS & 
+	cboe_data %>%
+		filter(., vdate == max(vdate)) %>%
+		bind_rows(
+			.,
+			filter(forecasts$ffr, vdate == max(vdate)),
+			filter(forecasts$sofr, vdate == max(vdate))
+			) %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = varname, group = varname))
+	
+	ameribor_forecasts =
+		cboe_data %>%
+		right_join(., transmute(forecasts$sofr, vdate, date, sofr = value), by = c('vdate', 'date')) %>%
+		mutate(., spread = value - sofr) %>%
+		mutate(
+			.,
+			spread = {c(
+				na.omit(.$spread),
+				forecast::forecast(forecast::Arima(.$spread, order = c(1, 1, 0)), length(.$spread[is.na(.$spread)]))$mean
+				)},
+			value = round(ifelse(!is.na(value), value, sofr + spread), 4)
+			) %>%
+		transmute(., varname, vdate, date, value)
+	
+	forecasts$ameribor <<- ameribor_forecasts
+})
+
+
+## BSBY ---------------------------------------------------------------------
+local({
+	
+	cboe_data =
+		httr::GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
+		httr::content(.) %>%
+		rvest::html_elements(., 'ul.document-list > li > a') %>%
+		map_dfr(., function(x)
+			tibble(
+				vdate = as_date(str_sub(rvest::html_attr(x, 'href'), -10)), 
+				url = paste0('https://cboe.com', rvest::html_attr(x, 'href'))
+			)
+		) %>%
+		purrr::transpose(.) %>%
+		map_dfr(., function(x) 
 			read_csv(x$url, col_names = c('product', 'symbol', 'exp_date', 'price'), col_types = 'ccDn', skip = 1) %>%
 				filter(., product == 'AMB1') %>%
 				transmute(
@@ -566,15 +620,33 @@ local({
 				)
 		)
 	
-	# Now combine, replacing df2 with df1 if necessary
-	combined_df =
-		full_join(df, df2, by = c('fcname', 'vdate', 'date', 'varname')) %>%
-		# Use quandl data if available, otherwise use other data
-		mutate(., value = ifelse(!is.na(value.x), value.x, value.y)) %>%
-		select(., -value.x, -value.y)
+	# Plot comparison against TDNS & 
+	cboe_data %>%
+		filter(., vdate == max(vdate)) %>%
+		bind_rows(
+			.,
+			filter(forecasts$ffr, vdate == max(vdate)),
+			filter(forecasts$sofr, vdate == max(vdate))
+		) %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = varname, group = varname))
 	
+	ameribor_forecasts =
+		cboe_data %>%
+		right_join(., transmute(forecasts$sofr, vdate, date, sofr = value), by = c('vdate', 'date')) %>%
+		mutate(., spread = value - sofr) %>%
+		mutate(
+			.,
+			spread = {c(
+				na.omit(.$spread),
+				forecast::forecast(forecast::Arima(.$spread, order = c(1, 1, 0)), length(.$spread[is.na(.$spread)]))$mean
+			)},
+			value = round(ifelse(!is.na(value), value, sofr + spread), 4)
+		) %>%
+		transmute(., varname, vdate, date, value)
 	
-	
+	forecasts$ameribor <<- ameribor_forecasts
 })
+
 
 
