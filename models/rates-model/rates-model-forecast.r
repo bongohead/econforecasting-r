@@ -332,6 +332,25 @@ local({
 	))
 	
 	
+	## Bloom forecasts
+	# These are necessary to fill in missing BSBY forecasts for first 3 months before 
+	# date of first CME future
+	bloom_data =
+		hist$bloom %>%
+		filter(., vdate == max(vdate)) %>%
+		mutate(
+			.,
+			date =
+				case_when(
+					varname == 'bsby' ~ date,
+					varname == 'bsby01m' ~ date + months(1),
+					varname == 'bsby03m' ~ date + months(3),
+					varname == 'bsby06m' ~ date + months(6),
+					varname == 'bsby01y' ~ date + months(12)
+					) %>% floor_date(., 'months')
+			) %>%
+		transmute(., varname = 'bsby', vdate = max(cme_data$vdate), date, value)
+	
 	## Combine datasets and add monthly interpolation
 	message('Adding monthly interpolation ...')
 	final_df =
@@ -342,6 +361,15 @@ local({
 			) %>%
 		mutate(., value = ifelse(!is.na(quandl), quandl, cme)) %>%
 		select(., -quandl, -cme) %>%
+		full_join(
+			.,
+			rename(bloom_data, bloom = value),
+			by = c('varname', 'vdate', 'date')
+		) %>%
+		mutate(., value = ifelse(!is.na(bloom), bloom, value)) %>%
+		select(., -bloom) %>%
+		# If this months forecast misisng for BSBY, add it in for interpolation purposes
+		# Otherwise the dataset starts 3 motnhs out
 		group_split(., vdate, varname) %>%
 		map_dfr(., function(x) {
 			x %>%
@@ -366,6 +394,12 @@ local({
 			})
 	
 	
+	# Print diagnostics
+	final_df %>%
+		filter(., vdate == max(vdate)) %>%
+		pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value') %>%
+		arrange(., date)
+	
 	series_data =
 		final_df %>%
 		group_split(., varname) %>%
@@ -376,7 +410,7 @@ local({
 				mutate(date = datetime_to_timestamp(date)) %>%
 				arrange(., date) %>%
 				purrr::transpose(.) %>%
-				map(., ~ list(.$date, .$value)),
+				map(., ~ list(.$date, round(.$value, 2))),
 			color = rainbow(3)[i]
 			))
 	
@@ -388,12 +422,15 @@ local({
 				hc_add_series(accum, name = x$name, data = x$data)
 				},
 			.init = .
-			)
+			) %>%
+		hc_add_theme(hc_theme_bloom()) %>%
+		hc_legend(., enabled = TRUE)
 
 	print(series_chart)
 	
 	forecasts$sofr <<- filter(final_df, varname == 'sofr')
 	forecasts$ffr <<- filter(final_df, varname == 'ffr')
+	forecasts$bsby <<- filter(final_df, varname == 'bsby')
 })
 
 ## TDNS ----------------------------------------------------------
@@ -621,60 +658,6 @@ local({
 	forecasts$ameribor <<- ameribor_forecasts
 })
 
-
-## BSBY ---------------------------------------------------------------------
-local({
-	
-	cboe_data =
-		httr::GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
-		httr::content(.) %>%
-		rvest::html_elements(., 'ul.document-list > li > a') %>%
-		map_dfr(., function(x)
-			tibble(
-				vdate = as_date(str_sub(rvest::html_attr(x, 'href'), -10)), 
-				url = paste0('https://cboe.com', rvest::html_attr(x, 'href'))
-			)
-		) %>%
-		purrr::transpose(.) %>%
-		map_dfr(., function(x) 
-			read_csv(x$url, col_names = c('product', 'symbol', 'exp_date', 'price'), col_types = 'ccDn', skip = 1) %>%
-				filter(., product == 'AMB1') %>%
-				transmute(
-					.,
-					varname = 'ameribor',
-					vdate = as_date(x$vdate),
-					date = floor_date(exp_date - months(1), 'months'),
-					value = 100 - price/100
-				)
-		)
-	
-	# Plot comparison against TDNS & 
-	cboe_data %>%
-		filter(., vdate == max(vdate)) %>%
-		bind_rows(
-			.,
-			filter(forecasts$ffr, vdate == max(vdate)),
-			filter(forecasts$sofr, vdate == max(vdate))
-		) %>%
-		ggplot(.) +
-		geom_line(aes(x = date, y = value, color = varname, group = varname))
-	
-	ameribor_forecasts =
-		cboe_data %>%
-		right_join(., transmute(forecasts$sofr, vdate, date, sofr = value), by = c('vdate', 'date')) %>%
-		mutate(., spread = value - sofr) %>%
-		mutate(
-			.,
-			spread = {c(
-				na.omit(.$spread),
-				forecast::forecast(forecast::Arima(.$spread, order = c(1, 1, 0)), length(.$spread[is.na(.$spread)]))$mean
-			)},
-			value = round(ifelse(!is.na(value), value, sofr + spread), 4)
-		) %>%
-		transmute(., varname, vdate, date, value)
-	
-	forecasts$ameribor <<- ameribor_forecasts
-})
 
 
 
