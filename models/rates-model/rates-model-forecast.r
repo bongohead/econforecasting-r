@@ -65,12 +65,12 @@ input_sources = tribble(
 	)
 
 
-forecast_sources = tribble(
-	~ forecastname, 
-	'cme',
-	'tdns',
-	'ameribor'
-)
+# forecast_sources = tribble(
+# 	~ forecastname, 
+# 	'cme',
+# 	'tdns',
+# 	'ameribor'
+# )
 
 
 # Historical Data ----------------------------------------------------------
@@ -162,7 +162,7 @@ local({
 
 # Models  ----------------------------------------------------------
 
-## CME   ----------------------------------------------------------
+## CME: Futures  ----------------------------------------------------------
 local({
 	
 	# Quandl Data
@@ -441,7 +441,7 @@ local({
 	models$cme <<- final_df
 })
 
-## TDNS ----------------------------------------------------------
+## TDNS: Nelson-Siegel Treasury Yield Forecast ----------------------------------------------------------
 local({
 
 	message('***** Adding Calculated Variables')
@@ -570,7 +570,10 @@ local({
 		select(., varname, date, value = yttm_ahead_annualized_yield) %>%
 		inner_join(
 			.,
-			models$ffr %>% filter(., vdate == today()) %>% transmute(., ffr = value, date),
+			models$cme %>%
+				filter(., varname == 'ffr') %>%
+				filter(., vdate == max(vdate)) %>%
+				transmute(., ffr = value, date),
 			by = 'date'
 			) %>%
 		transmute(., varname, date, vdate = today(), value = value + ffr)
@@ -605,7 +608,7 @@ local({
 	models$tdns <<- treasury_forecasts
 })
 
-## Ameribor ---------------------------------------------------------------------
+## CBOE: Futures ---------------------------------------------------------------------
 local({
 	
 	cboe_data =
@@ -644,7 +647,11 @@ local({
 	
 	ameribor_forecasts =
 		cboe_data %>%
-		right_join(., transmute(models$sofr, vdate, date, sofr = value), by = c('vdate', 'date')) %>%
+		right_join(
+			.,
+			transmute(filter(models$cme, varname == 'sofr'), vdate, date, sofr = value),
+			by = c('vdate', 'date')
+			) %>%
 		mutate(., spread = value - sofr) %>%
 		mutate(
 			.,
@@ -656,9 +663,96 @@ local({
 			) %>%
 		transmute(., varname, vdate, date, value)
 	
-	models$ameribor <<- ameribor_forecasts
+	models$cboe <<- ameribor_forecasts
 })
 
 
+## EINF: Expected Inflation -----------------------------------------------------------
+local({
 
+	download.file(
+		paste0(
+			'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/',
+			'indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
+		),
+		file.path(tempdir(), 'inf.xls'),
+		mode = 'wb'
+	)
+	
+	# Get vintage dates for each release
+	vintage_dates_1 =
+		httr::GET(paste0(
+			'https://www.clevelandfed.org/en/our-research/',
+			'indicators-and-data/inflation-expectations/archives.aspx'
+			)) %>%
+			httr::content(.) %>%
+			rvest::html_nodes('div[itemprop="text"] ul li') %>%
+			keep(., ~ length(rvest::html_nodes(., 'a.download')) == 1) %>%
+			map_chr(., ~ str_extract(rvest::html_text(.), '(?<=released ).*')) %>%
+			mdy(.)
+	
+	vintage_dates_2 =
+		httr::GET(paste0(
+			'https://www.clevelandfed.org/en/our-research/',
+			'indicators-and-data/inflation-expectations/inflation-expectations-archives.aspx'
+			)) %>%
+			httr::content(.) %>%
+			rvest::html_nodes('ul.topic-list li time') %>%
+			map_chr(., ~ rvest::html_text(.)) %>%
+			mdy(.)
+	
+	vdate_map =
+		c(vintage_dates_1, vintage_dates_2) %>%
+		tibble(vdate = .) %>%
+		mutate(., vdate0 = floor_date(vdate, 'months')) %>% 
+		group_by(., vdate0) %>% summarize(., vdate = max(vdate)) %>%
+		arrange(., vdate0)
+		
+	# Now parse data and get inflation expectations
+	einf_final =
+		readxl::read_excel(file.path(tempdir(), 'inf.xls'), sheet = 'Expected Inflation') %>%
+		rename(., vdate0 = 'Model Output Date') %>%
+		pivot_longer(., -vdate0, names_to = 'ttm', values_to = 'yield') %>%
+		mutate(
+			.,
+			vdate0 = as_date(vdate0), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
+		) %>%
+		# Correct vdates
+		inner_join(., vdate_map, by = 'vdate0') %>%
+		select(., -vdate0) %>%
+		filter(., vdate >= as_date('2015-01-01')) %>%
+		group_split(., vdate) %>%
+		map_dfr(., function(x)
+			right_join(x, tibble(ttm = 1:360), by = 'ttm') %>%
+				arrange(., ttm) %>%
+				mutate(
+					.,
+					yield = zoo::na.spline(yield),
+					vdate = unique(na.omit(vdate)),
+					cur_date = floor_date(vdate, 'months'),
+					cum_return = (1 + yield)^(ttm/12),
+					yttm_ahead_cum_return = dplyr::lead(cum_return, 1)/cum_return,
+					yttm_ahead_annualized_yield = (yttm_ahead_cum_return ^ 12 - 1) * 100,
+					date = add_with_rollback(cur_date, months(ttm - 1))
+				)
+		) %>%
+		transmute(
+			.,
+			varname = 'inf',
+			vdate,
+			date,
+			value = yttm_ahead_annualized_yield,
+		) %>%
+		na.omit(.)
+	
+	einf_chart =
+		einf_final %>%
+		filter(., month(vdate) %in% c(1, 6)) %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = as.factor(vdate)))
+
+	print(einf_chart)
+	
+	models$einf <<- einf_final
+})
 
