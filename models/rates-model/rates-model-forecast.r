@@ -757,7 +757,7 @@ local({
 })
 
 
-## SPF ---------------------------------------------------------------
+## SPF: Forecasts ---------------------------------------------------------------
 local({
 	
 	# Scrape vintage dates
@@ -843,7 +843,7 @@ local({
 	models$spf <<- spf_data
 })
 
-## CBO ---------------------------------------------------------------------
+## CBO: Forecasts ---------------------------------------------------------------------
 local({
 
 	message('**** CBO')
@@ -931,15 +931,180 @@ local({
 			
 		}) %>%
 		transmute(., varname, vdate, date, value)
-
+	
+	models$cbo <<- cbo
 })
 
+
+## WSJ: External -----------------------------------------------------------
+local({
+	
+	message('**** WSJ Survey')
+	
+	wsj_params = tribble(
+		~ forecastname, ~ fullname,
+		'wsj', 'WSJ Consensus',
+		'wsj_fnm', 'Fannie Mae',
+		'wsj_wfc', 'Wells Fargo & Co.',
+		'wsj_gsu', 'Georgia State University',
+		'wsj_sp', 'S&P Global Ratings',
+		'wsj_ucla', 'UCLA Anderson Forecast',
+		'wsj_gs', 'Goldman, Sachs & Co.',
+		'wsj_ms', 'Morgan Stanley'
+		)
+	
+	# Jan/Apr/Jul/Oct
+	file_paths = tribble(
+		~ vdate, ~ file,
+		'2020-01-16', 'wsjecon0120.xls',
+		'2020-04-08', 'wsjecon0420.xls',
+		'2020-07-09', 'wsjecon0720.xls',
+		'2020-10-08', 'wsjecon1020.xls',
+		'2021-01-14', 'wsjecon0121.xls',
+		'2021-04-11', 'wsjecon0421.xls',
+		'2021-07-11', 'wsjecon0721.xls',
+		'2021-10-17', 'wsjecon1021.xls'
+		# Jan 16 next
+		) %>%
+		purrr::transpose(.)
+	
+	wsj_data = map_dfr(file_paths, function(x) {
+		
+		dest = file.path(tempdir(), 'wsj.xls')
+		
+		# A user-agent is required or garbage is returned
+		httr::GET(
+			paste0('https://online.wsj.com/public/resources/documents/', x$file),
+			httr::write_disk(file.path(tempdir(), 'wsj.xls'), overwrite = TRUE),
+			httr::add_headers(
+				'Host' = 'online.wsj.com',
+				'User-Agent' = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+				)
+			)
+		
+		# Read first two lines to parse column names
+		xl_df = suppressMessages(readxl::read_excel(dest, col_names = FALSE, .name_repair = 'unique'))
+		
+		# Create new column names
+		xl_repaired =
+			xl_df %>%
+			{tibble(colname = unlist(.[1, ]), date = unlist(.[2, ]))} %>%
+			tidyr::fill(., colname) %>%
+			mutate(
+				.,
+				varname = str_to_lower(colname),
+				# https://stackoverflow.com/questions/4389644/regex-to-match-string-containing-two-names-in-any-order
+				# Repair varnames
+				varname = case_when(
+					str_detect(date, 'Organization') ~ 'fullname',
+					str_detect(varname, '(?=.*gdp)(?=.*quarterly)') ~ 'gdp',
+					str_detect(varname, '(?=.*fed)(?=.*funds)') ~ 'ffr',
+					str_detect(varname, 'cpi') ~ 'inf',
+					str_detect(varname, 'unemployment') ~ 'ue'
+					),
+				keep = varname %in% c('fullname', 'gdp', 'ffr', 'inf', 'ue')
+			) %>%
+			mutate(
+				.,
+				# Repair dates
+				date = str_replace_all(
+					date,
+					c(
+						'Fourth Quarter ' = '10 ', 'Third Quarter ' = '7 ',
+						'Second Quarter ' = '4 ', 'First Quarter ' = '1 ',
+						setNames(paste0(1:12, ' '), paste0(month.abb, ' ')),
+						setNames(paste0(1:12, ' '), paste0(month.name, ' '))
+					)
+				),
+				date =
+					ifelse(
+						!date %in% c('Name:', 'Organization:') & keep == TRUE,
+						paste0(
+							str_sub(date, -4),
+							'-',
+							str_pad(str_squish(str_sub(date, 1, nchar(date) - 4)), 2, pad = '0'),
+							'-01'
+						),
+						NA
+					),
+				date = as_date(date)
+			)
+		
+		
+		df =
+			suppressMessages(readxl::read_excel(
+				dest,
+				col_names = paste0(xl_repaired$varname, '_', xl_repaired$date),
+				na = c('', ' ', '-', 'NA'),
+				skip = 2
+			)) %>%
+			# Only keep columns selected as keep = TRUE in last step
+			select(
+				.,
+				xl_repaired %>% mutate(., index = 1:nrow(.)) %>% filter(., keep == TRUE) %>% .$index
+			) %>%
+			rename(., 'fullname' = 1) %>%
+			# Bind WSJ row - select last vintage
+			mutate(., fullname = ifelse(fullname %in% month.name, 'WSJ Consensus', fullname)) %>%
+			filter(., fullname %in% wsj_params$fullname) %>%
+			{
+				bind_rows(
+					filter(., !fullname %in% 'WSJ Consensus'),
+					filter(., fullname %in% 'WSJ Consensus') %>% head(., 1)
+				)
+			} %>%
+			mutate(., across(-fullname, as.numeric)) %>%
+			pivot_longer(., -fullname, names_sep = '_', names_to = c('varname', 'date')) %>%
+			mutate(., date = as_date(date)) %>%
+			# Now split and fill in frequencies and quarterly data
+			group_by(., fullname, varname) %>%
+			group_split(.) %>%
+			purrr::keep(., function(z) nrow(filter(z, !is.na(value))) > 0 ) %>% # Cull completely empty data frames
+			purrr::map_dfr(., function(z)
+				tibble(
+					date = seq(from = min(na.omit(z)$date), to = max(na.omit(z)$date), by = '3 months')
+				) %>%
+					left_join(., z, by = 'date') %>%
+					mutate(., value = zoo::na.approx(value)) %>%
+					mutate(
+						.,
+						fullname = unique(z$fullname),
+						varname = unique(z$varname),
+						freq = 'q',
+						transform = case_when(
+							varname == 'gdp' ~ 'apchg',
+							varname == 'ffr' ~ 'base',
+							varname == 'inf' ~ 'base',
+							varname == 'ue' ~ 'base'
+						),
+						vdate = as_date(x$vdate)
+					)
+			) %>%
+			right_join(., wsj_params, by = 'fullname') %>%
+			select(., -fullname)
+		}) %>%
+		na.omit(.)
+	
+	
+	# Verify
+	wsj_data %>%
+		group_split(., varname) %>%
+		setNames(., map(., ~.$varname[[1]])) %>%
+		lapply(., function(x) pivot_wider(x, id_cols = c('forecastname', 'vdate'), names_from = 'date'))
+	
+	models$wsj %>%
+		filter(., vdate == max(vdate) & varname == 'ffr') %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = forecastname))
+	
+	models$wsj <<- wsj_data
+})
 
 
 
 # Stacked Models ----------------------------------------------------------
 
-## Treasuries
+## FFR
 local({
 	
 	
