@@ -160,7 +160,7 @@ local({
 })
 
 
-# Models  ----------------------------------------------------------
+# Sub-Models  ----------------------------------------------------------
 
 ## CME: Futures  ----------------------------------------------------------
 local({
@@ -756,3 +756,192 @@ local({
 	models$einf <<- einf_final
 })
 
+
+## SPF ---------------------------------------------------------------
+local({
+	
+	# Scrape vintage dates
+	vintage_dates =
+		httr::GET(paste0('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+										 'survey-of-professional-forecasters/spf-release-dates.txt?'
+		)) %>%
+		httr::content(., as = 'text', encoding = 'UTF-8') %>%
+		str_sub(
+			.,
+			str_locate(., coll('1990 Q2'))[1], str_locate(., coll('*The 1990Q2'))[1] - 1
+		) %>%
+		read_csv(., col_names = 'X1', col_types = 'c') %>%
+		.$X1 %>%
+		purrr::map_dfr(., function(x)
+			x %>%
+				str_squish(.) %>%
+				str_split(., ' ') %>%
+				.[[1]] %>%
+				{
+					if (length(.) == 4) tibble(X1 = .[1], X2 = .[2], X3 = .[3], X4 = .[4])
+					else if (length(.) == 3) tibble(X1 = NA, X2 = .[1], X3 = .[2], X4 = .[3])
+					else stop ('Error parsing data')
+				}
+		) %>%
+		tidyr::fill(., X1, .direction = 'down') %>%
+		transmute(
+			.,
+			release_date = from_pretty_date(paste0(X1, X2), 'q'),
+			vdate = lubridate::mdy(str_replace_all(str_extract(X3, "[^\\s]+"), '[*]', ''))
+		) %>%
+		# Don't include first date - weirdly has same vintage date as second date
+		filter(., release_date >= as_date('2000-01-01'))
+	
+	spf_params = tribble(
+		~ varname, ~ spfname, ~ method,
+		't03m', 'TBILL', 'level',
+		't10y', 'TBOND', 'level',
+		'inf', 'CORECPI', 'level'
+		)
+	
+	spf_data = purrr::map_dfr(c('level', 'growth'), function(m) {
+
+		httr::GET(
+			paste0(
+				'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+				'survey-of-professional-forecasters/historical-data/median', m, '.xlsx?la=en'
+				),
+			httr::write_disk(file.path(tempdir(), paste0('spf-', m, '.xlsx')), overwrite = TRUE)
+			)
+		
+		spf_params %>%
+			filter(., method == m) %>%
+			purrr::transpose(.) %>%
+			lapply(., function(x)
+				readxl::read_excel(file.path(tempdir(), paste0('spf-', m, '.xlsx')), na = '#N/A', sheet = x$spfname) %>%
+					select(
+						.,
+						c('YEAR', 'QUARTER', {
+							if (m == 'level') paste0(x$spfname, 2:6) else paste0('d', str_to_lower(x$spfname), 2:6)
+						})
+					) %>%
+					mutate(., release_date = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q')) %>%
+					select(., -YEAR, -QUARTER) %>%
+					tidyr::pivot_longer(., -release_date, names_to = 'fcPeriods') %>%
+					mutate(., fcPeriods = as.numeric(str_sub(fcPeriods, -1)) - 2) %>%
+					mutate(., date = add_with_rollback(release_date, months(fcPeriods * 3))) %>%
+					na.omit(.) %>%
+					inner_join(., vintage_dates, by = 'release_date') %>%
+					transmute(
+						.,
+						varname = x$varname,
+						vdate,
+						date,
+						value
+					)
+			) %>%
+			bind_rows(.) %>%
+			return(.)
+		
+		})
+	
+	models$spf <<- spf_data
+})
+
+## CBO ---------------------------------------------------------------------
+local({
+
+	message('**** CBO')
+	
+	cbo_vintages =
+		map(0:2, function(page)
+			paste0('https://www.cbo.gov/data/publications-with-data-files?page=', page, '') %>%
+				httr::GET(.) %>%
+				httr::content(.) %>%
+				rvest::html_nodes('#block-cbo-cbo-system-main div.item-list > ul > li') %>%
+				keep(
+					.,
+					~ str_detect(rvest::html_text(rvest::html_node(., 'span.views-field-title')), coll('Economic Outlook'))
+				) %>%
+				map_chr(., ~ rvest::html_text(rvest::html_node(., 'div.views-field-field-display-date')))
+		) %>%
+		unlist(.) %>%
+		mdy(.) %>%
+		tibble(release_date = .) %>%
+		group_by(., month(release_date), year(release_date)) %>%
+		summarize(., release_date = min(release_date), .groups = 'drop') %>%
+		select(., release_date) %>%
+		arrange(., release_date)
+	
+	url_params =
+		httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
+		httr::content(., type = 'parsed') %>%
+		xml2::read_html(.) %>%
+		rvest::html_nodes('div .view-content') %>%
+		.[[9]] %>%
+		rvest::html_nodes(., 'a') %>%
+		map_dfr(., function(x) tibble(date = rvest::html_text(x), url = rvest::html_attr(x, 'href'))) %>%
+		transmute(., date = mdy(paste0(str_sub(date, 1, 3), ' 1 ' , str_sub(date, -4))), url) %>%
+		mutate(., date = as_date(date)) %>%
+		inner_join(., cbo_vintages %>% mutate(., date = floor_date(release_date, 'months')), by = 'date') %>%
+		transmute(., vdate = release_date, url)
+
+	cbo_params = tribble(
+		~ varname, ~ cbo_category, ~ cbo_name, ~ cbo_units,
+		'inf', 'Prices', 'Consumer Price Index, All Urban Consumers (CPI-U)', 'Percentage change, annual rate',
+		'ffr', 'Interest Rates', 'Federal Funds Rate', 'Percent',
+		't03m', 'Interest Rates', '3-Month Treasury Bill', 'Percent',
+		't10y', 'Interest Rates', '10-Year Treasury Note', 'Percent'
+		)
+	
+	
+	cbo_data =
+		url_params %>%
+		purrr::transpose(.) %>%
+		imap_dfr(., function(x, i) {
+			
+			download.file(x$url, file.path(tempdir(), 'cbo.xlsx'), mode = 'wb', quiet = TRUE)
+			
+			# Not all spreadsheets start at the same row
+			skip_rows = 
+				suppressMessages(readxl::read_excel(
+					file.path(tempdir(), 'cbo.xlsx'),
+					sheet = '1. Quarterly',
+					skip = 0
+				)) %>%
+				mutate(., idx = 1:nrow(.)) %>%
+				filter(., .[[1]] == 'Output') %>% 
+				{.$idx - 1}
+			
+			xl =
+				suppressMessages(readxl::read_excel(
+					file.path(tempdir(), 'cbo.xlsx'),
+					sheet = '1. Quarterly',
+					skip = skip_rows
+				)) %>%
+				rename(., cbo_category = 1, cbo_name = 2, cbo_name_2 = 3, cbo_units = 4) %>%
+				mutate(., cbo_name = ifelse(is.na(cbo_name), cbo_name_2, cbo_name)) %>%
+				select(., -cbo_name_2) %>%
+				tidyr::fill(., cbo_category, .direction = 'down') %>%
+				tidyr::fill(., cbo_name, .direction = 'down') %>%
+				na.omit(.)
+			
+			xl %>%
+				inner_join(., cbo_params, by = c('cbo_category', 'cbo_name', 'cbo_units')) %>%
+				select(., -cbo_category, -cbo_name, -cbo_units) %>%
+				pivot_longer(., -varname, names_to = 'date') %>%
+				mutate(., date = from_pretty_date(date, 'q')) %>%
+				filter(., date >= as_date(x$vdate)) %>%
+				mutate(., vdate = as_date(x$vdate))
+			
+		}) %>%
+		transmute(., varname, vdate, date, value)
+
+})
+
+
+
+
+# Stacked Models ----------------------------------------------------------
+
+## Treasuries
+local({
+	
+	
+	
+})
