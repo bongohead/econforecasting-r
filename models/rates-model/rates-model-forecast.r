@@ -21,6 +21,7 @@ library(tidyverse)
 library(httr)
 library(DBI)
 library(econforecasting)
+library(highcharter)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -33,7 +34,7 @@ db = dbConnect(
 	password = CONST$DB_PASSWORD
 	)
 hist = list()
-forecasts = list()
+models = list()
 
 ## Load Variable Defs ----------------------------------------------------------'
 input_sources = tribble(
@@ -62,6 +63,14 @@ input_sources = tribble(
 	't20y', 'hist', 'FRED', 'DGS20', 'd',
 	't30y', 'hist', 'FRED', 'DGS30', 'd'
 	)
+
+
+forecast_sources = tribble(
+	~ forecastname, 
+	'cme',
+	'tdns',
+	'ameribor'
+)
 
 
 # Historical Data ----------------------------------------------------------
@@ -117,7 +126,7 @@ local({
 				map_dfr(., ~ as_tibble(.)) %>%
 				transmute(
 					.,
-					varname = x$varname, freq = 'd', date = as_date(dateTime), vdate = date + days(1),
+					varname = x$varname, freq = 'd', date = as_date(dateTime), vdate = date,
 					value
 					) %>%
 				na.omit(.)
@@ -153,7 +162,7 @@ local({
 
 # Models  ----------------------------------------------------------
 
-## FFR & SOFR   ----------------------------------------------------------
+## CME   ----------------------------------------------------------
 local({
 	
 	# Quandl Data
@@ -343,10 +352,10 @@ local({
 			date =
 				case_when(
 					varname == 'bsby' ~ date,
-					varname == 'bsby01m' ~ date + months(1),
-					varname == 'bsby03m' ~ date + months(3),
-					varname == 'bsby06m' ~ date + months(6),
-					varname == 'bsby01y' ~ date + months(12)
+					varname == 'bsby01m' ~ add_with_rollback(date, months(1)),
+					varname == 'bsby03m' ~ add_with_rollback(date, months(3)),
+					varname == 'bsby06m' ~ add_with_rollback(date, months(6)),
+					varname == 'bsby01y' ~ add_with_rollback(date, months(12))
 					) %>% floor_date(., 'months')
 			) %>%
 		transmute(., varname = 'bsby', vdate = max(cme_data$vdate), date, value)
@@ -361,6 +370,7 @@ local({
 			) %>%
 		mutate(., value = ifelse(!is.na(quandl), quandl, cme)) %>%
 		select(., -quandl, -cme) %>%
+		# Replace Bloom futures with data 
 		full_join(
 			.,
 			rename(bloom_data, bloom = value),
@@ -428,9 +438,7 @@ local({
 
 	print(series_chart)
 	
-	forecasts$sofr <<- filter(final_df, varname == 'sofr')
-	forecasts$ffr <<- filter(final_df, varname == 'ffr')
-	forecasts$bsby <<- filter(final_df, varname == 'bsby')
+	models$cme <<- final_df
 })
 
 ## TDNS ----------------------------------------------------------
@@ -518,16 +526,10 @@ local({
 		geom_line(aes(x = ttm, y = fitted))
 	
 	print(dns_fit)
-
-	# Print forecasts
-	# Requires FFR Forecasts
-	# DIEBOLD LI FUNCTION SHOULD BE ffr + f1 + f2 () + f3()
+	
 	# Calculated TDNS1: TYield_10y
 	# Calculated TDNS2: -1 * (t10y - t03m)
 	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
-	# Keep these treasury yield forecasts as the external forecasts ->
-	# note that later these will be "regenerated" in the baseline calculation,
-	# may be off a bit due to calculation from TDNS, compare to
 	
 	# Monthly forecast up to 10 years (minus ffr)
 	# Get cumulative return starting from cur_date
@@ -568,7 +570,7 @@ local({
 		select(., varname, date, value = yttm_ahead_annualized_yield) %>%
 		inner_join(
 			.,
-			forecasts$ffr %>% filter(., vdate == today()) %>% transmute(., ffr = value, date),
+			models$ffr %>% filter(., vdate == today()) %>% transmute(., ffr = value, date),
 			by = 'date'
 			) %>%
 		transmute(., varname, date, vdate = today(), value = value + ffr)
@@ -600,11 +602,10 @@ local({
 		pivot_longer(., -date, names_to = 'varname') %>%
 		transmute(., varname, date, vdate = today(), value)
 	
-	forecasts$treasuries <<- treasury_forecasts
+	models$tdns <<- treasury_forecasts
 })
 
-
-## AMX ---------------------------------------------------------------------
+## Ameribor ---------------------------------------------------------------------
 local({
 	
 	cboe_data =
@@ -635,15 +636,15 @@ local({
 		filter(., vdate == max(vdate)) %>%
 		bind_rows(
 			.,
-			filter(forecasts$ffr, vdate == max(vdate)),
-			filter(forecasts$sofr, vdate == max(vdate))
+			filter(models$cme, varname == 'ffr' & vdate == max(vdate)),
+			filter(models$cme, varname == 'sofr' & vdate == max(vdate))
 			) %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = varname, group = varname))
 	
 	ameribor_forecasts =
 		cboe_data %>%
-		right_join(., transmute(forecasts$sofr, vdate, date, sofr = value), by = c('vdate', 'date')) %>%
+		right_join(., transmute(models$sofr, vdate, date, sofr = value), by = c('vdate', 'date')) %>%
 		mutate(., spread = value - sofr) %>%
 		mutate(
 			.,
@@ -655,7 +656,7 @@ local({
 			) %>%
 		transmute(., varname, vdate, date, value)
 	
-	forecasts$ameribor <<- ameribor_forecasts
+	models$ameribor <<- ameribor_forecasts
 })
 
 
