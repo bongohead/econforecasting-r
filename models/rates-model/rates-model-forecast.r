@@ -34,7 +34,7 @@ db = dbConnect(
 	password = CONST$DB_PASSWORD
 	)
 hist = list()
-models = list()
+submodels = list()
 
 ## Load Variable Defs ----------------------------------------------------------'
 input_sources = tribble(
@@ -162,20 +162,20 @@ local({
 
 # Sub-Models  ----------------------------------------------------------
 
-## CME: Futures  ----------------------------------------------------------
+## Quandl: Futures  ----------------------------------------------------------
+#' Deprecated: last data as of 6/24/21
 local({
 	
-	# Quandl Data
 	message('Starting Quandl data scrape')
 	quandl_data =
 		purrr::map_dfr(1:24, function(j)
 			read_csv(
 				str_glue('https://www.quandl.com/api/v3/datasets/CHRIS/CME_FF{j}.csv?api_key={CONST$QUANDL_API_KEY}'),
 				col_types = 'Ddddddddd'
-				) %>%
+			) %>%
 				transmute(., vdate = Date, settle = Settle, j = j) %>%
 				filter(., vdate >= as_date('2010-01-01'))
-			) %>%
+		) %>%
 		transmute(
 			.,
 			varname = 'ffr',
@@ -189,7 +189,7 @@ local({
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_quandl')
 	if (!'rates_model_quandl' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(db,
-			'CREATE TABLE rates_model_quandl (
+				'CREATE TABLE rates_model_quandl (
 				varname VARCHAR(255),
 				vdate DATE,
 				date DATE,
@@ -197,16 +197,18 @@ local({
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
 				CONSTRAINT rates_model_quandl_pk PRIMARY KEY (varname, vdate, date)
 				)'
-			)
+		)
 		dbExecute(db, 'SELECT create_hypertable(relation => \'rates_model_quandl\', time_column_name => \'vdate\')')
 	}
 	dbExecute(db, create_insert_query(
 		quandl_data,
 		'rates_model_quandl',
 		'ON CONFLICT (varname, vdate, date) DO UPDATE SET value=EXCLUDED.value'
-		))
-	
-	
+	))
+})
+
+## CME: Futures  ----------------------------------------------------------
+local({
 
 	# CME Group Data
 	message('Starting CME data scrape...')
@@ -284,27 +286,6 @@ local({
 				})
 			)
 	
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme_raw')
-	if (!'rates_model_cme_raw' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		dbExecute(db,
-			'CREATE TABLE rates_model_cme_raw (
-			varname VARCHAR(255),
-			cme_id VARCHAR(255),
-			vdate DATE,
-			date DATE,
-			value NUMERIC (20, 4),
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			CONSTRAINT rates_model_cme_raw_pk PRIMARY KEY (varname, cme_id, vdate, date)
-			)'
-		)
-		dbExecute(db,  'SELECT create_hypertable(relation => \'rates_model_cme_raw\', time_column_name => \'vdate\')')
-	}
-	dbExecute(db, create_insert_query(
-		cme_raw_data,
-		'rates_model_cme_raw',
-		'ON CONFLICT (varname, cme_id, vdate, date) DO UPDATE SET value=EXCLUDED.value'
-		))
-	
 	cme_data =
 		cme_raw_data %>%
 		# Now average out so that there's only one value for each (varname, date) combo
@@ -320,26 +301,6 @@ local({
 	#   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
 	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 	# 		View(.)
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme')
-	if (!'rates_model_cme' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		dbExecute(db,
-			'CREATE TABLE rates_model_cme (
-			varname VARCHAR(255),
-			vdate DATE,
-			date DATE,
-			value NUMERIC (20, 4),
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			CONSTRAINT rates_model_cme_pk PRIMARY KEY (varname, vdate, date)
-			)'
-		)
-		dbExecute(db,  'SELECT create_hypertable(relation => \'rates_model_cme\', time_column_name => \'vdate\')')
-	}
-	dbExecute(db, create_insert_query(
-		cme_data,
-		'rates_model_cme',
-		'ON CONFLICT (varname, vdate, date) DO UPDATE SET value=EXCLUDED.value'
-	))
-	
 	
 	## Bloom forecasts
 	# These are necessary to fill in missing BSBY forecasts for first 3 months before 
@@ -363,13 +324,7 @@ local({
 	## Combine datasets and add monthly interpolation
 	message('Adding monthly interpolation ...')
 	final_df =
-		full_join(
-			rename(quandl_data, quandl = value),
-			rename(cme_data, cme = value),
-			by = c('varname', 'vdate', 'date')
-			) %>%
-		mutate(., value = ifelse(!is.na(quandl), quandl, cme)) %>%
-		select(., -quandl, -cme) %>%
+		cme_data %>%
 		# Replace Bloom futures with data 
 		full_join(
 			.,
@@ -438,7 +393,47 @@ local({
 
 	print(series_chart)
 	
-	models$cme <<- final_df
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme_raw')
+	if (!'rates_model_cme_raw' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(db,
+							'CREATE TABLE rates_model_cme_raw (
+			varname VARCHAR(255),
+			cme_id VARCHAR(255),
+			vdate DATE,
+			date DATE,
+			value NUMERIC (20, 4),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT rates_model_cme_raw_pk PRIMARY KEY (varname, cme_id, vdate, date)
+			)'
+		)
+		dbExecute(db,  'SELECT create_hypertable(relation => \'rates_model_cme_raw\', time_column_name => \'vdate\')')
+	}
+	dbExecute(db, create_insert_query(
+		cme_raw_data,
+		'rates_model_cme_raw',
+		'ON CONFLICT (varname, cme_id, vdate, date) DO UPDATE SET value=EXCLUDED.value'
+	))
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme')
+	if (!'rates_model_cme' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(db,
+							'CREATE TABLE rates_model_cme (
+			varname VARCHAR(255),
+			vdate DATE,
+			date DATE,
+			value NUMERIC (20, 4),
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT rates_model_cme_pk PRIMARY KEY (varname, vdate, date)
+			)'
+		)
+		dbExecute(db,  'SELECT create_hypertable(relation => \'rates_model_cme\', time_column_name => \'vdate\')')
+	}
+	dbExecute(db, create_insert_query(
+		cme_data,
+		'rates_model_cme',
+		'ON CONFLICT (varname, vdate, date) DO UPDATE SET value=EXCLUDED.value'
+	))
+	
+	submodels$cme <<- final_df
 })
 
 ## TDNS: Nelson-Siegel Treasury Yield Forecast ----------------------------------------------------------
@@ -570,7 +565,7 @@ local({
 		select(., varname, date, value = yttm_ahead_annualized_yield) %>%
 		inner_join(
 			.,
-			models$cme %>%
+			submodels$cme %>%
 				filter(., varname == 'ffr') %>%
 				filter(., vdate == max(vdate)) %>%
 				transmute(., ffr = value, date),
@@ -605,7 +600,7 @@ local({
 		pivot_longer(., -date, names_to = 'varname') %>%
 		transmute(., varname, date, vdate = today(), value)
 	
-	models$tdns <<- treasury_forecasts
+	submodels$tdns <<- treasury_forecasts
 })
 
 ## CBOE: Futures ---------------------------------------------------------------------
@@ -634,23 +629,23 @@ local({
 				)
 			)
 	
-	# Plot comparison against TDNS & 
+	# Plot comparison against TDNS
 	cboe_data %>%
 		filter(., vdate == max(vdate)) %>%
 		bind_rows(
 			.,
-			filter(models$cme, varname == 'ffr' & vdate == max(vdate)),
-			filter(models$cme, varname == 'sofr' & vdate == max(vdate))
+			filter(submodels$cme, varname == 'ffr' & vdate == max(vdate)),
+			filter(submodels$cme, varname == 'sofr' & vdate == max(vdate))
 			) %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = varname, group = varname))
 	
 	ameribor_forecasts =
-		cboe_data %>%
+		filter(cboe_data, vdate == max(vdate)) %>%
 		right_join(
 			.,
-			transmute(filter(models$cme, varname == 'sofr'), vdate, date, sofr = value),
-			by = c('vdate', 'date')
+			transmute(filter(submodels$cme, varname == 'sofr' & vdate == max(vdate)), date, sofr = value),
+			by = 'date'
 			) %>%
 		mutate(., spread = value - sofr) %>%
 		mutate(
@@ -663,7 +658,7 @@ local({
 			) %>%
 		transmute(., varname, vdate, date, value)
 	
-	models$cboe <<- ameribor_forecasts
+	submodels$cboe <<- ameribor_forecasts
 })
 
 
@@ -753,7 +748,7 @@ local({
 
 	print(einf_chart)
 	
-	models$einf <<- einf_final
+	submodels$einf <<- einf_final
 })
 
 
@@ -840,7 +835,7 @@ local({
 		
 		})
 	
-	models$spf <<- spf_data
+	submodels$spf <<- spf_data
 })
 
 ## CBO: Forecasts ---------------------------------------------------------------------
@@ -932,7 +927,7 @@ local({
 		}) %>%
 		transmute(., varname, vdate, date, value)
 	
-	models$cbo <<- cbo
+	submodels$cbo <<- cbo
 })
 
 
@@ -1092,20 +1087,23 @@ local({
 		setNames(., map(., ~.$varname[[1]])) %>%
 		lapply(., function(x) pivot_wider(x, id_cols = c('forecastname', 'vdate'), names_from = 'date'))
 	
-	models$wsj %>%
+	submodels$wsj %>%
 		filter(., vdate == max(vdate) & varname == 'ffr') %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = forecastname))
 	
-	models$wsj <<- wsj_data
+	submodels$wsj <<- wsj_data
 })
-
 
 
 # Stacked Models ----------------------------------------------------------
 
 ## FFR
 local({
+	imap(models, function(x, i) mutate(x, submodel = i))
+	ffr_forecasts = bind_rows(
+		
+	)
 	
 	
 	
