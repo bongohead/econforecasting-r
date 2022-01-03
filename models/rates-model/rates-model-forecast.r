@@ -927,7 +927,7 @@ local({
 		}) %>%
 		transmute(., varname, vdate, date, value)
 	
-	submodels$cbo <<- cbo
+	submodels$cbo <<- cbo_data
 })
 
 
@@ -1095,6 +1095,17 @@ local({
 	submodels$wsj <<- wsj_data
 })
 
+
+## Store in SQL ----------------------------------------------------------
+local({
+	
+	purrr::imap(models, function(x, i) mutate(x, submodel = i))
+	ffr_forecasts = bind_rows(
+		
+	)
+	
+	
+})
 
 # Stacked Models ----------------------------------------------------------
 

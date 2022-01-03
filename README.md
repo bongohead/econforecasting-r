@@ -6,6 +6,8 @@ This project contains the code for data scraping, data cleaning, and modeling us
 
 ## [v.20] (Model Re-Release)
 This continues modularization & adds an initial web release on test.econforecasting.com.
+- Added SPF, CBO, WSJ external forecasts
+- Deprecated Quandl data input
 
 ## [v0.19] (Model Backtesting and Vintage Analysis)
 This is a full model rewrite. The rewrite for the full-scale model is delayed, but immediate releases of external forecasts & composite external forecasts are intended for the version. In addition, alternate indices are included in the release. The code is restructured to build a more comprehensive backend built off TimescaleDB/Postgres with proper vintage storage, but with more intermediary and partial releases. 
