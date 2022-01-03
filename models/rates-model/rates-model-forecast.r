@@ -1,5 +1,6 @@
 #'  Run this script on scheduler after close of business each day
 #'  Assumes rate data is not subject to revisions
+#'  TBD: Add TD forecasts
 
 # Initialize ----------------------------------------------------------
 
@@ -650,6 +651,8 @@ local({
 		mutate(., spread = value - sofr) %>%
 		mutate(
 			.,
+			varname = 'ameribor',
+			vdate = head(vdate, 1),
 			spread = {c(
 				na.omit(.$spread),
 				forecast::forecast(forecast::Arima(.$spread, order = c(1, 1, 0)), length(.$spread[is.na(.$spread)]))$mean
@@ -937,7 +940,7 @@ local({
 	message('**** WSJ Survey')
 	
 	wsj_params = tribble(
-		~ forecastname, ~ fullname,
+		~ submodel, ~ fullname,
 		'wsj', 'WSJ Consensus',
 		'wsj_fnm', 'Fannie Mae',
 		'wsj_wfc', 'Wells Fargo & Co.',
@@ -1065,13 +1068,6 @@ local({
 						.,
 						fullname = unique(z$fullname),
 						varname = unique(z$varname),
-						freq = 'q',
-						transform = case_when(
-							varname == 'gdp' ~ 'apchg',
-							varname == 'ffr' ~ 'base',
-							varname == 'inf' ~ 'base',
-							varname == 'ue' ~ 'base'
-						),
 						vdate = as_date(x$vdate)
 					)
 			) %>%
@@ -1085,12 +1081,12 @@ local({
 	wsj_data %>%
 		group_split(., varname) %>%
 		setNames(., map(., ~.$varname[[1]])) %>%
-		lapply(., function(x) pivot_wider(x, id_cols = c('forecastname', 'vdate'), names_from = 'date'))
+		lapply(., function(x) pivot_wider(x, id_cols = c('submodel', 'vdate'), names_from = 'date'))
 	
-	submodels$wsj %>%
+	wsj_data %>%
 		filter(., vdate == max(vdate) & varname == 'ffr') %>%
 		ggplot(.) +
-		geom_line(aes(x = date, y = value, color = forecastname))
+		geom_line(aes(x = date, y = value, color = submodel))
 	
 	submodels$wsj <<- wsj_data
 })
@@ -1099,11 +1095,60 @@ local({
 ## Store in SQL ----------------------------------------------------------
 local({
 	
-	purrr::imap(models, function(x, i) mutate(x, submodel = i))
-	ffr_forecasts = bind_rows(
-		
-	)
+	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
+		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
+		else x
+		})
 	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_submodel_values CASCADE')
+	if (!'rates_model_submodel_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE rates_model_submodel_values (
+				submodel VARCHAR(10) NOT NULL,
+				vdate DATE NOT NULL,
+				varname VARCHAR(255) NOT NULL,
+				date DATE NOT NULL,
+				value NUMERIC(20, 4) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (submodel, vdate, varname, date)
+				)'
+			)
+		
+		dbExecute(db, '
+			SELECT create_hypertable(
+				relation => \'rates_model_submodel_values\',
+				time_column_name => \'vdate\'
+				);
+			')
+	}
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		submodel_values %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_split(., split, keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'rates_model_submodel_values',
+				'ON CONFLICT (submodel, vdate, varname, date) DO UPDATE SET value=EXCLUDED.value'
+				) %>%
+				dbExecute(db, .)
+			) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	
+	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	message('***** Data Sent to SQL:')
+	print(sum(unlist(sql_result)))
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_forecast_values')$count)
+	message('***** Initial Count: ', final_count)
+	message('***** Rows Added: ', final_count - initial_count)
 	
 })
 
