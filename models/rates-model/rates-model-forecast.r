@@ -1106,8 +1106,8 @@ local({
 			db,
 			'CREATE TABLE rates_model_submodel_values (
 				submodel VARCHAR(10) NOT NULL,
-				vdate DATE NOT NULL,
 				varname VARCHAR(255) NOT NULL,
+				vdate DATE NOT NULL,
 				date DATE NOT NULL,
 				value NUMERIC(20, 4) NOT NULL,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -1146,21 +1146,31 @@ local({
 	message('***** Data Sent to SQL:')
 	print(sum(unlist(sql_result)))
 	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_forecast_values')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
+	submodel_values <<- submodel_values
 })
+
 
 # Stacked Models ----------------------------------------------------------
 
-## FFR
+## FFR ----------------------------------------------------------
 local({
-	imap(models, function(x, i) mutate(x, submodel = i))
-	ffr_forecasts = bind_rows(
-		
-	)
 	
-	
+	submodel_values %>%
+		filter(., varname == 'ffr') %>%
+		inner_join(
+			.,
+			hist$fred %>%
+				filter(., varname == 'ffr' & freq == 'd') %>%
+				group_by(., date) %>%
+				filter(., vdate == max(vdate)) %>%
+				ungroup(.) %>%
+				transmute(., date, release_date = date, actual = value),
+			by = 'date'
+			) %>%
+		mutate(., dates_before_release = interval(vdate, release_date) %/% days(1))
 	
 })
