@@ -7,7 +7,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'PULL_YIELDS'
 EF_DIR = Sys.getenv('EF_DIR')
-RESET_SQL = FALSE
+RESET_SQL = F
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -87,9 +87,9 @@ local({
 		purrr::keep(., ~ .$source == 'FRED') %>%
 		purrr::imap_dfr(., function(x, i) {
 			message(str_glue('Pull {i}: {x$varname}'))
-			get_fred_data(x$source_key, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = T, .verbose = F) %>%
-				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
-				filter(., date >= as_date('2010-01-01') & vdate >= as_date('2010-01-01'))
+			get_fred_data(x$source_key, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = F, .verbose = F) %>%
+				transmute(., varname = x$varname, freq = x$freq, date, value) %>%
+				filter(., date >= as_date('2010-01-01'))
 			})
 
 	hist$fred <<- fred_data
@@ -127,7 +127,7 @@ local({
 				map_dfr(., ~ as_tibble(.)) %>%
 				transmute(
 					.,
-					varname = x$varname, freq = 'd', date = as_date(dateTime), vdate = date,
+					varname = x$varname, freq = 'd', date = as_date(dateTime),
 					value
 					) %>%
 				na.omit(.)
@@ -148,17 +148,91 @@ local({
 				select(., all_of(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y'))) %>%
 				mutate(., across(-date, function(x) as.numeric(x)))
 			) %>%
-		mutate(., date = ymd(date), vdate = date + days(1)) %>%
-		pivot_longer(., -c('date', 'vdate'), names_to = 'varname_scrape', values_to = 'value') %>%
+		mutate(., date = ymd(date)) %>%
+		pivot_longer(., -date, names_to = 'varname_scrape', values_to = 'value') %>%
 		inner_join(
 			.,
 			select(filter(input_sources, source == 'AFX'), varname, source_key),
 			by = c('varname_scrape' = 'source_key')
 			) %>%
-		transmute(., varname, freq = 'd', date, vdate, value)
+		distinct(.) %>%
+		transmute(., varname, freq = 'd', date, value)
 	
 	hist$afx <<- afx_data
 })
+
+
+## Store in SQL ----------------------------------------------------------
+local({
+	
+	message('**** Storing SQL Data')
+	
+	hist_values =
+		purrr::imap_dfr(hist, function(x, source) {
+			if (!'source' %in% colnames(x)) x %>% mutate(., source = source)
+			else x
+		}) %>%
+		bind_rows(
+			.,
+			filter(., freq %in% c('d', 'w')) %>%
+				mutate(., date = floor_date(date, 'months'), freq = 'm') %>%
+				group_by(., source, varname, freq, date) %>%
+				summarize(., value = mean(value), .groups = 'drop')
+			)
+	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_hist_values CASCADE')
+	if (!'rates_model_hist_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE rates_model_hist_values (
+				source VARCHAR(255) NOT NULL,
+				varname VARCHAR(255) NOT NULL,
+				freq CHAR(1) NOT NULL,
+				date DATE NOT NULL,
+				value NUMERIC(20, 4) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (source, varname, freq, date)
+				)'
+			)
+		
+		dbExecute(db, '
+			SELECT create_hypertable(
+				relation => \'rates_model_hist_values\',
+				time_column_name => \'date\'
+				);
+			')
+	}
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_hist_values')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		hist_values %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_split(., split, keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'rates_model_hist_values',
+				'ON CONFLICT (source, varname, freq, date) DO UPDATE SET value=EXCLUDED.value'
+			) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	
+	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	message('***** Data Sent to SQL:')
+	print(sum(unlist(sql_result)))
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_hist_values')$count)
+	message('***** Initial Count: ', final_count)
+	message('***** Rows Added: ', final_count - initial_count)
+	
+	hist_values <<- hist_values
+})
+
 
 
 # Sub-Models  ----------------------------------------------------------
@@ -207,6 +281,7 @@ local({
 		'ON CONFLICT (varname, vdate, date) DO UPDATE SET value=EXCLUDED.value'
 	))
 })
+
 
 ## CME: Futures  ----------------------------------------------------------
 local({
@@ -308,7 +383,7 @@ local({
 	# date of first CME future
 	bloom_data =
 		hist$bloom %>%
-		filter(., vdate == max(vdate)) %>%
+		filter(., date == max(date)) %>%
 		mutate(
 			.,
 			date =
@@ -353,6 +428,7 @@ local({
 				transmute(
 					.,
 					varname = unique(varname),
+					freq = 'm',
 					vdate = unique(vdate),
 					date,
 					value = zoo::na.spline(value)
@@ -572,7 +648,7 @@ local({
 				transmute(., ffr = value, date),
 			by = 'date'
 			) %>%
-		transmute(., varname, date, vdate = today(), value = value + ffr)
+		transmute(., varname, freq = 'm', date, vdate = today(), value = value + ffr)
 	
 	# Plot point forecasts
 	treasury_forecasts %>%
@@ -599,7 +675,7 @@ local({
 			tdns3 = .3 * (2 * t02y - t03m - t10y)
 		) %>%
 		pivot_longer(., -date, names_to = 'varname') %>%
-		transmute(., varname, date, vdate = today(), value)
+		transmute(., varname, freq = 'm', date, vdate = today(), value)
 	
 	submodels$tdns <<- treasury_forecasts
 })
@@ -659,7 +735,7 @@ local({
 				)},
 			value = round(ifelse(!is.na(value), value, sofr + spread), 4)
 			) %>%
-		transmute(., varname, vdate, date, value)
+		transmute(., varname, freq = 'm', vdate, date, value)
 	
 	submodels$cboe <<- ameribor_forecasts
 })
@@ -737,6 +813,7 @@ local({
 		transmute(
 			.,
 			varname = 'inf',
+			freq = 'm',
 			vdate,
 			date,
 			value = yttm_ahead_annualized_yield,
@@ -828,6 +905,7 @@ local({
 					transmute(
 						.,
 						varname = x$varname,
+						freq = 'q',
 						vdate,
 						date,
 						value
@@ -928,7 +1006,7 @@ local({
 				mutate(., vdate = as_date(x$vdate))
 			
 		}) %>%
-		transmute(., varname, vdate, date, value)
+		transmute(., varname, freq = 'q', vdate, date, value)
 	
 	submodels$cbo <<- cbo_data
 })
@@ -1074,7 +1152,8 @@ local({
 			right_join(., wsj_params, by = 'fullname') %>%
 			select(., -fullname)
 		}) %>%
-		na.omit(.)
+		na.omit(.) %>%
+		transmute(., submodel, varname, freq = 'q', vdate, date, value)
 	
 	
 	# Verify
@@ -1107,11 +1186,12 @@ local({
 			'CREATE TABLE rates_model_submodel_values (
 				submodel VARCHAR(10) NOT NULL,
 				varname VARCHAR(255) NOT NULL,
+				freq CHAR(1) NOT NULL,
 				vdate DATE NOT NULL,
 				date DATE NOT NULL,
 				value NUMERIC(20, 4) NOT NULL,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY (submodel, vdate, varname, date)
+				PRIMARY KEY (submodel, varname, freq, vdate, date)
 				)'
 			)
 		
@@ -1134,7 +1214,7 @@ local({
 			create_insert_query(
 				x,
 				'rates_model_submodel_values',
-				'ON CONFLICT (submodel, vdate, varname, date) DO UPDATE SET value=EXCLUDED.value'
+				'ON CONFLICT (submodel, varname, freq, vdate, date) DO UPDATE SET value=EXCLUDED.value'
 				) %>%
 				dbExecute(db, .)
 			) %>%
