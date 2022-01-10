@@ -1237,20 +1237,20 @@ local({
 # Stacked Models ----------------------------------------------------------
 
 ## FFR ----------------------------------------------------------
-local({
-	
-	submodel_values %>%
-		filter(., varname == 'ffr') %>%
-		inner_join(
-			.,
-			hist$fred %>%
-				filter(., varname == 'ffr' & freq == 'd') %>%
-				group_by(., date) %>%
-				filter(., vdate == max(vdate)) %>%
-				ungroup(.) %>%
-				transmute(., date, release_date = date, actual = value),
-			by = 'date'
-			) %>%
-		mutate(., dates_before_release = interval(vdate, release_date) %/% days(1))
-	
-})
+# local({
+# 	
+# 	submodel_values %>%
+# 		filter(., varname == 'ffr') %>%
+# 		inner_join(
+# 			.,
+# 			hist$fred %>%
+# 				filter(., varname == 'ffr' & freq == 'd') %>%
+# 				group_by(., date) %>%
+# 				filter(., vdate == max(vdate)) %>%
+# 				ungroup(.) %>%
+# 				transmute(., date, release_date = date, actual = value),
+# 			by = 'date'
+# 			) %>%
+# 		mutate(., dates_before_release = interval(vdate, release_date) %/% days(1))
+# 	
+# })
