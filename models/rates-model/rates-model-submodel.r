@@ -447,7 +447,7 @@ local({
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme')
 	if (!'rates_model_cme' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(db,
-							'CREATE TABLE rates_model_cme (
+			'CREATE TABLE rates_model_cme (
 			varname VARCHAR(255),
 			vdate DATE,
 			date DATE,
@@ -1125,6 +1125,8 @@ local({
 })
 
 
+# Finalize ----------------------------------------------------------
+
 ## Store in SQL ----------------------------------------------------------
 local({
 	
@@ -1187,26 +1189,5 @@ local({
 	submodel_values <<- submodel_values
 })
 
-
-# Stacked Models ----------------------------------------------------------
-
-## FFR ----------------------------------------------------------
-local({
-
-	submodel_values %>%
-		filter(., varname == 'ffr') %>%
-		inner_join(
-			.,
-			hist$fred %>%
-				filter(., varname == 'ffr' & freq == 'd') %>%
-				group_by(., date) %>%
-				ungroup(.) %>%
-				transmute(., date, release_date = date, actual = value),
-			by = 'date'
-			) %>%
-		mutate(., dates_before_release = interval(vdate, release_date) %/% days(1))
-
-})
-
-# Scenario Forecasts ----------------------------------------------------------
-
+## Close Connections ----------------------------------------------------------
+dbDisconnect(db)
