@@ -1027,10 +1027,8 @@ local({
 				# Repair varnames
 				varname = case_when(
 					str_detect(date, 'Organization') ~ 'fullname',
-					str_detect(varname, '(?=.*gdp)(?=.*quarterly)') ~ 'gdp',
 					str_detect(varname, '(?=.*fed)(?=.*funds)') ~ 'ffr',
-					str_detect(varname, 'cpi') ~ 'inf',
-					str_detect(varname, 'unemployment') ~ 'ue'
+					str_detect(varname, 'cpi') ~ 'inf'
 					),
 				keep = varname %in% c('fullname', 'gdp', 'ffr', 'inf', 'ue')
 			) %>%
