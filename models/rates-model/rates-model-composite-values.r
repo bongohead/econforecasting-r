@@ -54,18 +54,14 @@ local({
 	submodel_data %>%
 		# Split into submodel-forecasted date groups
 		group_split(., submodel, varname, freq, date) %>% 
-		lapply(., function(x) {
-			freq = {
-				if (x$freq == 'd') 'day'
-				else if (x$freq == 'm') 'month'
-				else if (x$freq == 'q') 'quarter'
-				else stop()
-				}
+		purrr::imap(., function(x, i) {
+			message(i)
+			freq = switch(x$freq[[1]], 'd' = 'day', 'm' = 'month', 'q' = 'quarter')
 			tibble(vdate = seq(min(x$vdate), ceiling_date(x$date[[1]], freq) - days(1), '1 day')) %>%
 				left_join(., transmute(x, vdate, value), by = 'vdate') %>%
 				mutate(., value = zoo::na.locf(value))
 			}) %>% 
-		.[[1]]
+		.[[5]]
 	
 	#' Note: need to add max allowable break:
 	#' E.g., suppose one submodel-date combination forecasts for 2020Q1 from 2010Q1
