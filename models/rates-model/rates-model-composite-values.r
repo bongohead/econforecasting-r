@@ -46,6 +46,33 @@ submodel_data =
 	dbGetQuery(db, 'SELECT * FROM rates_model_submodel_values') %>% 
 	as_tibble(.)
 
+## Submodel Data Interpolated  ----------------------------------------------------------
+#' This fills in submodel data for vintage dates that are missing 
+#' 
+local({
+	
+	submodel_data %>%
+		# Split into submodel-forecasted date groups
+		group_split(., submodel, varname, freq, date) %>% 
+		lapply(., function(x) {
+			freq = {
+				if (x$freq == 'd') 'day'
+				else if (x$freq == 'm') 'month'
+				else if (x$freq == 'q') 'quarter'
+				else stop()
+				}
+			tibble(vdate = seq(min(x$vdate), ceiling_date(x$date[[1]], freq) - days(1), '1 day')) %>%
+				left_join(., transmute(x, vdate, value), by = 'vdate') %>%
+				mutate(., value = zoo::na.locf(value))
+			}) %>% 
+		.[[1]]
+	
+	#' Note: need to add max allowable break:
+	#' E.g., suppose one submodel-date combination forecasts for 2020Q1 from 2010Q1
+	#' This forecast should "expire" at a certain point, even if no new data is released!
+	
+})
+
 
 # Stacked Models ----------------------------------------------------------
 
@@ -60,10 +87,13 @@ local({
 ## FFR ----------------------------------------------------------
 local({
 	
+	
+	# 
+	
 	# Assume date of historical vintage is the same as the date of actual vintage
 	error_df =
 		submodel_data %>%
-		filter(., varname == 'ffr' & submodel == 'cme_quandl') %>%
+		filter(., varname == 'ffr') %>%
 		inner_join(
 			.,
 			hist_data %>%
@@ -79,10 +109,10 @@ local({
 			x %>%
 				mutate(
 					.,
-					dates_before_release = interval(vdate, ceiling_date(
+					day_before_value = interval(vdate, ceiling_date(
 						date,
 						{if (x$freq[[1]] == 'm') 'month' else if (x$freq[[1]] == 'q') 'q' else stop()}
-						)) %/% days(1)
+						) - days(1)) %/% days(1)
 					)
 			) %>%
 		# Forecast error
@@ -102,10 +132,12 @@ local({
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = mae))
 	
-	
-	# Graph historical performance
-
-	
+	error_df %>%
+		group_by(., submodel, freq, dates_before_release) %>%
+		summarize(., mae = mean(abs(forecast_error)), n = n(), .groups = 'drop') %>%
+		filter(., n >= 3) %>%
+		ggplot(.) +
+		geom_line(aes(x = -1 * dates_before_release, y = mae, color = submodel))
 
 })
 
