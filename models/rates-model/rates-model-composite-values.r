@@ -61,17 +61,50 @@ local({
 local({
 	
 	# Assume date of historical vintage is the same as the date of actual vintage
-	submodel_data %>%
-		filter(., varname == 'ffr') %>%
+	error_df =
+		submodel_data %>%
+		filter(., varname == 'ffr' & submodel == 'cme_quandl') %>%
 		inner_join(
 			.,
 			hist_data %>%
-				filter(., varname == 'ffr' & freq == 'd') %>%
-				transmute(., date, actual = value),
+				filter(., varname == 'ffr' & freq == 'm') %>%
+				transmute(., date, actual = value) %>%
+				arrange(., date) %>%
+				mutate(., lag_actual = lag(actual)),
 			by = 'date'
 		) %>%
-		mutate(., dates_before_release = interval(vdate, date) %/% days(1))
+		# The release date for non-daily data is pushed to end-of-period values
+		group_split(., freq) %>%
+		purrr::map_dfr(., function(x) 
+			x %>%
+				mutate(
+					.,
+					dates_before_release = interval(vdate, ceiling_date(
+						date,
+						{if (x$freq[[1]] == 'm') 'month' else if (x$freq[[1]] == 'q') 'q' else stop()}
+						)) %/% days(1)
+					)
+			) %>%
+		# Forecast error
+		mutate(
+			.,
+			forecast_error = abs((actual - value)/lag_actual)
+			)
 	
+	error_df %>%
+		group_by(., vdate) %>%
+		summarize(
+			.,
+			obs_pred = n(),
+			mae = mean(abs(forecast_error)),
+			.groups = 'drop'
+		) %>%
+		ggplot(.) +
+		geom_line(aes(x = vdate, y = mae))
+	
+	
+	# Graph historical performance
+
 	
 
 })
