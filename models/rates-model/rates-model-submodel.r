@@ -1073,7 +1073,11 @@ local({
 			) %>%
 			rename(., 'fullname' = 1) %>%
 			# Bind WSJ row - select last vintage
-			mutate(., fullname = ifelse(fullname %in% month.name, 'WSJ Consensus', fullname)) %>%
+			mutate(
+				.,
+				fullname =
+					ifelse(str_detect(fullname, paste0(month.name, collapse = '|')), 'WSJ Consensus', fullname)
+				) %>%
 			filter(., fullname %in% wsj_params$fullname) %>%
 			{
 				bind_rows(
