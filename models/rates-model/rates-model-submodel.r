@@ -11,10 +11,12 @@ RESET_SQL = F
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
-	sinkfile = file(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log')), open = 'wt')
-	sink(sinkfile, type = 'output')
-	sink(sinkfile, type = 'message')
-	message(paste0('Run ', Sys.Date()))
+	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
+	sink_conn = file(sink_path, open = 'at')
+	system(paste0('echo "$(tail -1000 ', sink_path, ')" > ', sink_path,''))
+	sink(sink_conn, append = T, type = 'output')
+	sink(sink_conn, append = T, type = 'message')
+	message(paste0('----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
 }
 
 ## Load Libs ----------------------------------------------------------'
