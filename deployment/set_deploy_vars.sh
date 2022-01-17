@@ -29,5 +29,5 @@ $CONDA list -n econforecasting
 $CONDA config --add channels conda-forge
 $CONDA config --set channel_priority strict 
 # Install dirs
-$CONDA install pandas
-$CONDA install camelot-py
+$CONDA install -n econforecasting -c conda-forge pandas
+$CONDA install -n econforecasting -c conda-forge camelot-py
