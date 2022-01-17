@@ -7,7 +7,6 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'PULL_YIELDS'
 EF_DIR = Sys.getenv('EF_DIR')
-EF_PY = Sys.getenv('EF_PY')
 RESET_SQL = F
 
 ## Cron Log ----------------------------------------------------------
@@ -27,9 +26,8 @@ library(DBI)
 library(econforecasting)
 library(highcharter)
 library(reticulate)
-
-## Set Python Dir ----------------------------------------------------------
-use_python('C:/Users/Charles/miniconda3/python.exe')
+use_python_version('3.8.7')
+use_virtualenv('econforecasting')
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -992,7 +990,6 @@ local({
 			)) %>%
 		na.omit(.) 
 
-	
 	fnma_dir = file.path(tempdir(), 'fnma')
 	fs::dir_create(fnma_dir)
 		
@@ -1025,12 +1022,16 @@ local({
 			
 			tibble(
 				vdate = vdate, 
-				econ_forecast_path = file.path(fnma_dir, paste0('econ_', vdate, '.pdf')),
-				housing_forecast_path = file.path(fnma_dir, paste0('housing_', vdate, '.pdf'))
+				econ_forecast_path = normalizePath(file.path(fnma_dir, paste0('econ_', vdate, '.pdf'))),
+				housing_forecast_path = normalizePath(file.path(fnma_dir, paste0('housing_', vdate, '.pdf')))
 				)
 			})
 	
+	source_python(
+		file.path(EF_DIR, 'models', 'rates-model', 'rates-model-submodel-fnma.py')
+		)
 
+	parse_fnma_pdf('C:/Users/Charles/Downloads/economic-forecast-11821.pdf')
 })
 
 
