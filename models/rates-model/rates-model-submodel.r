@@ -7,6 +7,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'PULL_YIELDS'
 EF_DIR = Sys.getenv('EF_DIR')
+EF_PY = Sys.getenv('EF_PY')
 RESET_SQL = F
 
 ## Cron Log ----------------------------------------------------------
@@ -16,7 +17,7 @@ if (interactive() == FALSE) {
 	system(paste0('echo "$(tail -1000 ', sink_path, ')" > ', sink_path,''))
 	sink(sink_conn, append = T, type = 'output')
 	sink(sink_conn, append = T, type = 'message')
-	message(paste0('----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
+	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
 }
 
 ## Load Libs ----------------------------------------------------------'
@@ -25,6 +26,10 @@ library(httr)
 library(DBI)
 library(econforecasting)
 library(highcharter)
+library(reticulate)
+
+## Set Python Dir ----------------------------------------------------------
+use_python('C:/Users/Charles/miniconda3/python.exe')
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -967,6 +972,67 @@ local({
 	submodels$cbo <<- cbo_data
 })
 
+## FNMA: External  -----------------------------------------------------------
+local({
+	
+	fnma_links =
+		httr::GET('https://www.fanniemae.com/research-and-insights/forecast/forecast-monthly-archive') %>%
+		httr::content(., type = 'parsed') %>%
+		xml2::read_html(.) %>%
+		rvest::html_nodes('div.fm-accordion ul li a') %>%
+		purrr::keep(., ~ str_detect(rvest::html_text(.), 'News Release| Forecast')) %>%
+		map_dfr(., ~ tibble(
+			url = rvest::html_attr(., 'href'),
+			type = case_when(
+				str_detect(rvest::html_text(.), 'News Release') ~ 'article',
+				str_detect(rvest::html_text(.), 'Economic Forecast') ~ 'econ_forecast',
+				str_detect(rvest::html_text(.), 'Housing Forecast') ~ 'housing_forecast',
+				TRUE ~ NA_character_
+				)
+			)) %>%
+		na.omit(.) 
+
+	
+	fnma_dir = file.path(tempdir(), 'fnma')
+	fs::dir_create(fnma_dir)
+		
+	fnma_details =
+		fnma_links %>%
+		mutate(., group = (1:nrow(.) - 1) %/% 3) %>%
+		pivot_wider(., id_cols = group, names_from = type, values_from = url) %>%
+		purrr::transpose(.) %>%
+		purrr::imap_dfr(., function(x, i) {
+			
+			if (i %% 20 == 0) message('Downloading ', i)
+			
+			vdate =
+				httr::GET(paste0('https://www.fanniemae.com', x$article)) %>%
+				httr::content(., type = 'parsed') %>%
+				xml2::read_html(.) %>%
+				rvest::html_node(., "div[data-block-plugin-id='field_block:node:news:field_date'] > div") %>%
+				rvest::html_text(.) %>%
+				mdy(.)
+			
+			httr::GET(
+				paste0('https://www.fanniemae.com', x$econ_forecast),
+				httr::write_disk(file.path(fnma_dir, paste0('econ_', vdate, '.pdf')), overwrite = TRUE)
+				)
+			
+			httr::GET(
+				paste0('https://www.fanniemae.com', x$housing_forecast),
+				httr::write_disk(file.path(fnma_dir, paste0('housing_', vdate, '.pdf')), overwrite = TRUE)
+			)
+			
+			tibble(
+				vdate = vdate, 
+				econ_forecast_path = file.path(fnma_dir, paste0('econ_', vdate, '.pdf')),
+				housing_forecast_path = file.path(fnma_dir, paste0('housing_', vdate, '.pdf'))
+				)
+			})
+	
+
+})
+
 
 ## WSJ: External -----------------------------------------------------------
 local({
@@ -995,12 +1061,15 @@ local({
 		'2021-01-14', 'wsjecon0121.xls',
 		'2021-04-11', 'wsjecon0421.xls',
 		'2021-07-11', 'wsjecon0721.xls',
-		'2021-10-17', 'wsjecon1021.xls'
+		'2021-10-17', 'wsjecon1021.xls',
+		'2021-01-16', 'wsjecon0122.xls'
 		# Jan 16 next
 		) %>%
 		purrr::transpose(.)
 	
 	wsj_data = map_dfr(file_paths, function(x) {
+		
+		message(x)
 		
 		dest = file.path(tempdir(), 'wsj.xls')
 		
@@ -1030,6 +1099,7 @@ local({
 				varname = case_when(
 					str_detect(date, 'Organization') ~ 'fullname',
 					str_detect(varname, '(?=.*fed)(?=.*funds)') ~ 'ffr',
+					str_detect(varname, '(?=.*treasury)(?=.*10)') ~ 'tyield_10y',
 					str_detect(varname, 'cpi') ~ 'inf'
 					),
 				keep = varname %in% c('fullname', 'gdp', 'ffr', 'inf', 'ue')
@@ -1043,7 +1113,8 @@ local({
 						'Fourth Quarter ' = '10 ', 'Third Quarter ' = '7 ',
 						'Second Quarter ' = '4 ', 'First Quarter ' = '1 ',
 						setNames(paste0(1:12, ' '), paste0(month.abb, ' ')),
-						setNames(paste0(1:12, ' '), paste0(month.name, ' '))
+						setNames(paste0(1:12, ' '), paste0(month.name, ' ')),
+						'On ' = ''
 					)
 				),
 				date =
