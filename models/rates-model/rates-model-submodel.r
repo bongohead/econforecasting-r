@@ -1072,7 +1072,7 @@ local({
 						str_detect(varname, 'Government Consumption') ~ 'govt',
 						str_detect(varname, 'Net Exports') ~ 'nx',
 						str_detect(varname, 'Change in Business Inventories') ~ 'chinv',
-						str_detect(varname, 'Consumer Price Index') ~ 'inf',
+						str_detect(varname, 'Consumer Price Index') & !str_detect(varname, 'Core') ~ 'inf',
 						str_detect(varname, 'Unemployment Rate') ~ 'ue',
 						str_detect(varname, 'Federal Funds Rate') ~ 'ffr',
 						str_detect(varname, '1-Year Treasury') ~ 'tyield_1y',
