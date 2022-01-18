@@ -972,6 +972,7 @@ local({
 
 ## FNMA: External  -----------------------------------------------------------
 local({
+	message('**** Downloading Fannie Mae Data')
 	
 	fnma_dir = file.path(tempdir(), 'fnma')
 	fs::dir_create(fnma_dir)
@@ -1001,9 +1002,10 @@ local({
 		pivot_wider(., id_cols = group, names_from = type, values_from = url) %>%
 		na.omit(.) %>%
 		purrr::transpose(.) %>%
+		.[1:12] %>%
 		purrr::imap_dfr(., function(x, i) {
 			
-			if (i %% 10 == 0) message('Downloading ', i)
+			# if (i %% 10 == 0) message('Downloading ', i)
 			
 			vdate =
 				httr::GET(paste0('https://www.fanniemae.com', x$article)) %>%
@@ -1030,16 +1032,17 @@ local({
 				)
 			})
 	
-	import('camelot')
+	camelot = import('camelot')
 	
-	fnma_data_list =
+	fnma_clean =
 		fnma_details %>%
-		head(., 10) %>%
 		purrr::transpose(.) %>%
-		lapply(., function(x) {
+		purrr::imap_dfr(., function(x, i) {
 			
-			x = camelot$read_pdf(
-				fnma_details$econ_forecast_path[[10]],
+			# message(i)
+			
+			raw_import = camelot$read_pdf(
+				x$econ_forecast_path,
 				pages = '1',
 				flavor = 'stream',
 				# Below needed to prevent split wrapping columns correctly https://www.fanniemae.com/media/42376/display
@@ -1077,22 +1080,20 @@ local({
 						),
 					date = from_pretty_date(date, 'q'),
 					value = as.numeric(str_replace_all(value, c(',' = '')))
-					)
+					) %>%
+				na.omit(.) %>%
+				transmute(., vdate = as_date(x$vdate), varname, date, value)
+			
+			if (length(unique(clean_import$varname)) < 12) stop('Missing variable')
 			
 			return(clean_import)
 		})
 
-	clean_import
+	fnma_final =
+		fnma_clean %>%
+		transmute(., varname, freq = 'q', vdate, date, value)
 	
-	# source_python(
-	# 	file.path(EF_DIR, 'models', 'rates-model', 'rates-model-submodel-fnma.py')
-	# 	)
-
-	# parse_fnma_pdf('C:/Users/Charles/Downloads/economic-forecast-111821.pdf') %>%
-	# 	as_tibble(.) %>%
-	# 	.[4:nrow(.), ]
-	# 
-	camelot$read_pdf('C:/Users/Charles/Downloads/economic-forecast-111821.pdf', pages = '1', flavor = 'stream')[0]$df
+	submodels$fnma <<- fnma_final
 })
 
 
