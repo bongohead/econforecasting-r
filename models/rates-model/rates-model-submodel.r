@@ -214,7 +214,7 @@ local({
 	sql_result =
 		hist_values %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-		group_split(., split, keep = FALSE) %>%
+		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
@@ -1034,13 +1034,11 @@ local({
 	
 	camelot = import('camelot')
 	
-	fnma_clean =
+	fnma_clean_macro =
 		fnma_details %>%
 		purrr::transpose(.) %>%
 		purrr::imap_dfr(., function(x, i) {
-			
-			# message(i)
-			
+	
 			raw_import = camelot$read_pdf(
 				x$econ_forecast_path,
 				pages = '1',
@@ -1088,11 +1086,54 @@ local({
 			
 			return(clean_import)
 		})
-
+	
+	fnma_clean_housing =
+		fnma_details %>%
+		purrr::transpose(.) %>%
+		purrr::imap_dfr(., function(x, i) {
+			
+			raw_import = camelot$read_pdf(
+				x$housing_forecast_path,
+				pages = '1',
+				flavor = 'stream',
+				column_tol = -1 
+				)[0]$df %>%
+				as_tibble(.)
+			
+			col_names =
+				purrr::transpose(raw_import[3, ])[[1]] %>%
+				str_replace_all(., coll(c('.' = 'Q'))) %>%
+				paste0('20', .) %>%
+				{ifelse(. == '20', 'varname', .)}
+			
+			clean_import =
+				raw_import[4:nrow(raw_import), ] %>%
+				set_names(., col_names) %>%
+				pivot_longer(., -varname, names_to = 'date', values_to = 'value') %>%
+				filter(., str_length(date) == 6 & str_detect(date, 'Q') & value != '') %>%
+				mutate(
+					.,
+					varname = case_when(
+						str_detect(varname, 'Total Housing Starts') ~ 'houst',
+						str_detect(varname, 'Total Home Sales') ~ 'hsold',
+						str_detect(varname, '30-Year') ~ 'mort30y',
+						str_detect(varname, '5-Year') ~ 'mort5y'
+					),
+					date = from_pretty_date(date, 'q'),
+					value = as.numeric(str_replace_all(value, c(',' = '')))
+				) %>%
+				na.omit(.) %>%
+				transmute(., vdate = as_date(x$vdate), varname, date, value)
+			
+			if (length(unique(clean_import$varname)) < 4) stop('Missing variable')
+			
+			return(clean_import)
+		})
+	
 	fnma_final =
-		fnma_clean %>%
+		bind_rows(fnma_clean_macro, fnma_clean_housing) %>%
 		transmute(., varname, freq = 'q', vdate, date, value) %>%
-		filter(., varname %in% c('tyield_10y', 'tyield_1y', 'ffr', 'inf'))
+		filter(., varname %in% c('tyield_10y', 'tyield_1y', 'ffr', 'inf', 'mort30y', 'mort5y'))
 	
 	submodels$fnma <<- fnma_final
 })
@@ -1220,7 +1261,7 @@ local({
 	sql_result =
 		submodel_values %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-		group_split(., split, keep = FALSE) %>%
+		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
