@@ -1216,7 +1216,7 @@ local({
 					value
 				)
 		}) %>%
-		filter(., varname %in% c('tyield_10y', 'ffr', 'inf'))
+		filter(., varname %in% c('t10y', 'ffr', 'inf'))
 		
 	submodels$wsj <<- wsj_data
 })
