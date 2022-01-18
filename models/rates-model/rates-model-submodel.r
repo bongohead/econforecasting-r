@@ -1073,8 +1073,8 @@ local({
 						str_detect(varname, 'Consumer Price Index') & !str_detect(varname, 'Core') ~ 'inf',
 						str_detect(varname, 'Unemployment Rate') ~ 'ue',
 						str_detect(varname, 'Federal Funds Rate') ~ 'ffr',
-						str_detect(varname, '1-Year Treasury') ~ 'tyield_1y',
-						str_detect(varname, '10-Year Treasury') ~ 'tyield_10y'
+						str_detect(varname, '1-Year Treasury') ~ 't01y',
+						str_detect(varname, '10-Year Treasury') ~ 't10y'
 						),
 					date = from_pretty_date(date, 'q'),
 					value = as.numeric(str_replace_all(value, c(',' = '')))
@@ -1133,7 +1133,7 @@ local({
 	fnma_final =
 		bind_rows(fnma_clean_macro, fnma_clean_housing) %>%
 		transmute(., varname, freq = 'q', vdate, date, value) %>%
-		filter(., varname %in% c('tyield_10y', 'tyield_1y', 'ffr', 'inf', 'mort30y', 'mort5y'))
+		filter(., varname %in% c('t10y', 't01y', 'ffr', 'inf', 'mort30y', 'mort5y'))
 	
 	submodels$fnma <<- fnma_final
 })
