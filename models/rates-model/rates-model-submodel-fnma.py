@@ -8,6 +8,3 @@ def parse_fnma_pdf(input_file):
 		table_areas = ['150, 550, 650, 250']
 		)[0].df
 	return parsed_df
-
-def print_model(file):
-	print(file)

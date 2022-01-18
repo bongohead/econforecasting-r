@@ -1091,16 +1091,17 @@ local({
 
 	fnma_final =
 		fnma_clean %>%
-		transmute(., varname, freq = 'q', vdate, date, value)
+		transmute(., varname, freq = 'q', vdate, date, value) %>%
+		filter(., varname %in% c('tyield_10y', 'tyield_1y', 'ffr', 'inf'))
 	
 	submodels$fnma <<- fnma_final
 })
-
 
 ## WSJ: External -----------------------------------------------------------
 local({
 	
 	message('**** WSJ Survey')
+	message('***** Last Import Jan 22')
 	
 	wsj_params = tribble(
 		~ submodel, ~ fullname,
@@ -1112,156 +1113,72 @@ local({
 		'wsj_ucla', 'UCLA Anderson Forecast',
 		'wsj_gs', 'Goldman, Sachs & Co.',
 		'wsj_ms', 'Morgan Stanley'
-		)
+	)
 	
-	# Jan/Apr/Jul/Oct
-	file_paths = tribble(
-		~ vdate, ~ file,
-		'2020-01-16', 'wsjecon0120.xls',
-		'2020-04-08', 'wsjecon0420.xls',
-		'2020-07-09', 'wsjecon0720.xls',
-		'2020-10-08', 'wsjecon1020.xls',
-		'2021-01-14', 'wsjecon0121.xls',
-		'2021-04-11', 'wsjecon0421.xls',
-		'2021-07-11', 'wsjecon0721.xls',
-		'2021-10-17', 'wsjecon1021.xls',
-		'2021-01-16', 'wsjecon0122.xls'
-		# Jan 16 next
-		) %>%
-		purrr::transpose(.)
+	xl_path = file.path(EF_DIR, 'model-inputs', 'external-forecasts-manual.xlsx')
 	
-	wsj_data = map_dfr(file_paths, function(x) {
-		
-		message(x)
-		
-		dest = file.path(tempdir(), 'wsj.xls')
-		
-		# A user-agent is required or garbage is returned
-		httr::GET(
-			paste0('https://online.wsj.com/public/resources/documents/', x$file),
-			httr::write_disk(file.path(tempdir(), 'wsj.xls'), overwrite = TRUE),
-			httr::add_headers(
-				'Host' = 'online.wsj.com',
-				'User-Agent' = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-				)
-			)
-		
-		# Read first two lines to parse column names
-		xl_df = suppressMessages(readxl::read_excel(dest, col_names = FALSE, .name_repair = 'unique'))
-		
-		# Create new column names
-		xl_repaired =
-			xl_df %>%
-			{tibble(colname = unlist(.[1, ]), date = unlist(.[2, ]))} %>%
-			tidyr::fill(., colname) %>%
-			mutate(
-				.,
-				varname = str_to_lower(colname),
-				# https://stackoverflow.com/questions/4389644/regex-to-match-string-containing-two-names-in-any-order
-				# Repair varnames
-				varname = case_when(
-					str_detect(date, 'Organization') ~ 'fullname',
-					str_detect(varname, '(?=.*fed)(?=.*funds)') ~ 'ffr',
-					str_detect(varname, '(?=.*treasury)(?=.*10)') ~ 'tyield_10y',
-					str_detect(varname, 'cpi') ~ 'inf'
-					),
-				keep = varname %in% c('fullname', 'gdp', 'ffr', 'inf', 'ue')
-			) %>%
-			mutate(
-				.,
-				# Repair dates
-				date = str_replace_all(
-					date,
-					c(
-						'Fourth Quarter ' = '10 ', 'Third Quarter ' = '7 ',
-						'Second Quarter ' = '4 ', 'First Quarter ' = '1 ',
-						setNames(paste0(1:12, ' '), paste0(month.abb, ' ')),
-						setNames(paste0(1:12, ' '), paste0(month.name, ' ')),
-						'On ' = ''
-					)
-				),
-				date =
-					ifelse(
-						!date %in% c('Name:', 'Organization:') & keep == TRUE,
-						paste0(
-							str_sub(date, -4),
-							'-',
-							str_pad(str_squish(str_sub(date, 1, nchar(date) - 4)), 2, pad = '0'),
-							'-01'
-						),
-						NA
-					),
-				date = as_date(date)
-			)
-		
-		
-		df =
-			suppressMessages(readxl::read_excel(
-				dest,
-				col_names = paste0(xl_repaired$varname, '_', xl_repaired$date),
-				na = c('', ' ', '-', 'NA'),
+	wsj_data =
+		readxl::excel_sheets(xl_path) %>%
+		keep(., ~ str_extract(., '[^_]+') == 'wsj') %>%
+		map_dfr(., function(sheetname) {
+			
+			vdate = str_extract(sheetname, '(?<=_).*')
+			
+			col_names = suppressMessages(readxl::read_excel(
+				xl_path,
+				sheet = sheetname,
+				col_names = F,
+				.name_repair = 'universal',
+				n_max = 2
+				)) %>%
+				replace(., is.na(.), '') %>%
+				{paste0(.[1,], '-', .[2,])}
+			
+			if (length(unique(col_names)) != length(col_names)) stop('WSJ Input Error!')
+			
+			readxl::read_excel(
+				xl_path,
+				sheet = sheetname,
+				col_names = col_names,
 				skip = 2
-			)) %>%
-			# Only keep columns selected as keep = TRUE in last step
-			select(
-				.,
-				xl_repaired %>% mutate(., index = 1:nrow(.)) %>% filter(., keep == TRUE) %>% .$index
-			) %>%
-			rename(., 'fullname' = 1) %>%
-			# Bind WSJ row - select last vintage
-			mutate(
-				.,
-				fullname =
-					ifelse(str_detect(fullname, paste0(month.name, collapse = '|')), 'WSJ Consensus', fullname)
 				) %>%
-			filter(., fullname %in% wsj_params$fullname) %>%
-			{
-				bind_rows(
-					filter(., !fullname %in% 'WSJ Consensus'),
-					filter(., fullname %in% 'WSJ Consensus') %>% head(., 1)
-				)
-			} %>%
-			mutate(., across(-fullname, as.numeric)) %>%
-			pivot_longer(., -fullname, names_sep = '_', names_to = c('varname', 'date')) %>%
-			mutate(., date = as_date(date)) %>%
-			# Now split and fill in frequencies and quarterly data
-			group_by(., fullname, varname) %>%
-			group_split(.) %>%
-			purrr::keep(., function(z) nrow(filter(z, !is.na(value))) > 0 ) %>% # Cull completely empty data frames
-			purrr::map_dfr(., function(z)
-				tibble(
-					date = seq(from = min(na.omit(z)$date), to = max(na.omit(z)$date), by = '3 months')
+				pivot_longer(
+					cols = -'-Forecast',
+					names_to = 'varname_date',
+					values_to = 'value'
+					) %>%
+				transmute(
+					vdate = as_date(vdate),
+					fullname = .$'-Forecast',
+					varname = str_extract(varname_date, '[^-]+'),
+					date = from_pretty_date(str_extract(varname_date, '(?<=-).*'), 'q'),
+					value
 				) %>%
-					left_join(., z, by = 'date') %>%
-					mutate(., value = zoo::na.approx(value)) %>%
-					mutate(
-						.,
-						fullname = unique(z$fullname),
-						varname = unique(z$varname),
-						vdate = as_date(x$vdate)
-					)
-			) %>%
-			right_join(., wsj_params, by = 'fullname') %>%
-			select(., -fullname)
+				inner_join(., wsj_params, by = 'fullname') %>%
+				transmute(., submodel, varname, freq = 'q', vdate, date, value)
 		}) %>%
 		na.omit(.) %>%
-		transmute(., submodel, varname, freq = 'q', vdate, date, value)
-	
-	
-	# Verify
-	wsj_data %>%
-		group_split(., varname) %>%
-		setNames(., map(., ~.$varname[[1]])) %>%
-		lapply(., function(x) pivot_wider(x, id_cols = c('submodel', 'vdate'), names_from = 'date'))
-	
-	wsj_data %>%
-		filter(., vdate == max(vdate) & varname == 'ffr') %>%
-		ggplot(.) +
-		geom_line(aes(x = date, y = value, color = submodel))
-	
+		group_split(., submodel, varname, freq, vdate) %>%
+		purrr::imap_dfr(., function(z, i) {
+			tibble(
+				date = seq(from = min(z$date, na.rm = T), to = max(z$date, na.rm = T), by = '3 months')
+				) %>%
+				left_join(., z, by = 'date') %>%
+				mutate(., value = zoo::na.approx(value)) %>%
+				transmute(
+					.,
+					submodel = unique(z$submodel),
+					varname = unique(z$varname),
+					freq = unique(z$freq),
+					vdate = unique(z$vdate),
+					date,
+					value
+				)
+		}) %>%
+		filter(., varname %in% c('tyield_10y', 'ffr', 'inf'))
+		
 	submodels$wsj <<- wsj_data
 })
-
 
 # Finalize ----------------------------------------------------------
 
