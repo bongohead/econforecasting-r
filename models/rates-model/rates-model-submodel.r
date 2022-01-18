@@ -973,6 +973,11 @@ local({
 ## FNMA: External  -----------------------------------------------------------
 local({
 	
+	fnma_dir = file.path(tempdir(), 'fnma')
+	fs::dir_create(fnma_dir)
+	
+	message('***** FNMA dir: ', fnma_dir)
+	
 	fnma_links =
 		httr::GET('https://www.fanniemae.com/research-and-insights/forecast/forecast-monthly-archive') %>%
 		httr::content(., type = 'parsed') %>%
@@ -990,17 +995,15 @@ local({
 			)) %>%
 		na.omit(.) 
 
-	fnma_dir = file.path(tempdir(), 'fnma')
-	fs::dir_create(fnma_dir)
-		
 	fnma_details =
 		fnma_links %>%
 		mutate(., group = (1:nrow(.) - 1) %/% 3) %>%
 		pivot_wider(., id_cols = group, names_from = type, values_from = url) %>%
+		na.omit(.) %>%
 		purrr::transpose(.) %>%
 		purrr::imap_dfr(., function(x, i) {
 			
-			if (i %% 20 == 0) message('Downloading ', i)
+			if (i %% 10 == 0) message('Downloading ', i)
 			
 			vdate =
 				httr::GET(paste0('https://www.fanniemae.com', x$article)) %>%
@@ -1027,11 +1030,69 @@ local({
 				)
 			})
 	
-	source_python(
-		file.path(EF_DIR, 'models', 'rates-model', 'rates-model-submodel-fnma.py')
-		)
+	import('camelot')
+	
+	fnma_data_list =
+		fnma_details %>%
+		head(., 10) %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x) {
+			
+			x = camelot$read_pdf(
+				fnma_details$econ_forecast_path[[10]],
+				pages = '1',
+				flavor = 'stream',
+				# Below needed to prevent split wrapping columns correctly https://www.fanniemae.com/media/42376/display
+				column_tol = -1 
+				#table_areas = list('100, 490, 700, 250')
+				)[0]$df %>%
+				as_tibble(.)
+			
+			col_names =
+				purrr::transpose(raw_import[3, ])[[1]] %>%
+				str_replace_all(., coll(c('.' = 'Q'))) %>%
+				paste0('20', .) %>%
+				{ifelse(. == '20', 'varname', .)}
+		
+			clean_import =
+				raw_import[4:nrow(raw_import), ] %>%
+				set_names(., col_names) %>%
+				pivot_longer(., -varname, names_to = 'date', values_to = 'value') %>%
+				filter(., str_length(date) == 6 & str_detect(date, 'Q') & value != '') %>%
+				mutate(
+					.,
+					varname = case_when(
+						str_detect(varname, 'Gross Domestic Product') ~ 'gdp',
+						str_detect(varname, 'Personal Consumption') ~ 'pce',
+						str_detect(varname, 'Residential Fixed Investment') ~ 'pdir',
+						str_detect(varname, 'Business Fixed Investment') ~ 'pdin',
+						str_detect(varname, 'Government Consumption') ~ 'govt',
+						str_detect(varname, 'Net Exports') ~ 'nx',
+						str_detect(varname, 'Change in Business Inventories') ~ 'chinv',
+						str_detect(varname, 'Consumer Price Index') ~ 'inf',
+						str_detect(varname, 'Unemployment Rate') ~ 'ue',
+						str_detect(varname, 'Federal Funds Rate') ~ 'ffr',
+						str_detect(varname, '1-Year Treasury') ~ 'tyield_1y',
+						str_detect(varname, '10-Year Treasury') ~ 'tyield_10y'
+						),
+					date = from_pretty_date(date, 'q'),
+					value = as.numeric(str_replace_all(value, c(',' = '')))
+					)
+			
+			return(clean_import)
+		})
 
-	parse_fnma_pdf('C:/Users/Charles/Downloads/economic-forecast-11821.pdf')
+	clean_import
+	
+	# source_python(
+	# 	file.path(EF_DIR, 'models', 'rates-model', 'rates-model-submodel-fnma.py')
+	# 	)
+
+	# parse_fnma_pdf('C:/Users/Charles/Downloads/economic-forecast-111821.pdf') %>%
+	# 	as_tibble(.) %>%
+	# 	.[4:nrow(.), ]
+	# 
+	camelot$read_pdf('C:/Users/Charles/Downloads/economic-forecast-111821.pdf', pages = '1', flavor = 'stream')[0]$df
 })
 
 
