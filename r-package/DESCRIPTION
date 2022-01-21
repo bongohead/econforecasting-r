@@ -9,11 +9,14 @@ Authors@R:
              email = "charles@cmefi.com"))
 Description: Provides miscellaneous functions for forecasting and analysis of economic time series. 
 License: GPL (>= 3)
-Depends:
-    dplyr,
-    lubridate,
-    purrr,
-    tibble
+Imports:
+	dplyr,
+	lubridate,
+	purrr,
+	tibble
+Suggests:
+	highcharter,
+	DT
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.1.2
