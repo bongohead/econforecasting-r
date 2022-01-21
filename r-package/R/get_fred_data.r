@@ -9,6 +9,7 @@
 #'
 #' @return A data frame of forecasts.
 #'
+#' @import dplyr purrr httr
 #' @export
 get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FALSE, .vintage_date = NULL, .verbose = FALSE) {
 

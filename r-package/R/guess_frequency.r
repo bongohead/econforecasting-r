@@ -7,7 +7,9 @@
 #' data(economics)
 #' guess_frequency(economics, 'date')
 #'
-#'
+#' @import dplyr
+#' @importFrom tibble as_tibble
+#' @importFrom stringr str_glue
 #' @export
 guess_frequency = function(df, date_col = 'date') {
 

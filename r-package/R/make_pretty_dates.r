@@ -7,6 +7,8 @@
 #' @param x A vector of R dates.
 #' @param frequency One of 'q', 'quarter', 'm', or 'month'.
 #'
+#' @import dplyr
+#' @importFrom lubridate quarter month year
 #' @export
 to_pretty_date = function(x, frequency) {
 
@@ -26,6 +28,8 @@ to_pretty_date = function(x, frequency) {
 #'
 #' @rdname to_pretty_date
 #'
+#' @import dplyr
+#' @importFrom stringr str_sub str_locate str_pad
 #' @export
 from_pretty_date = function(x, frequency) {
 

@@ -13,7 +13,8 @@ Imports:
 	dplyr,
 	lubridate,
 	purrr,
-	tibble
+	tibble,
+	httr
 Suggests:
 	highcharter,
 	DT

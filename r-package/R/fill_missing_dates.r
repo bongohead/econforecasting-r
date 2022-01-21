@@ -21,7 +21,10 @@
 #'  pivot_longer(., -date, names_to = 'varname')
 #' fill_missing_dates(test_data, 'date', id_cols = 'varname', frequency = 'month')
 #'
-#'
+#' @import dplyr purrr
+#' @importFrom tidyr as_tibble
+#' @importFrom lubridate floor_date as_date
+#' @importFrom stringr str_glue
 #' @export
 fill_missing_dates = function(df, date_col = 'date', id_cols = NULL, frequency = NULL) {
 

@@ -14,6 +14,7 @@
 #' dat = mutate(economics, pop = diff(pop, 2))
 #' original = mutate(dat, pop = economics$pce[[1]])
 #'
+#' @import dplyr purrr
 #' @export
 diff = function(x, .l) {
 	x - dplyr::lag(x, .l)
