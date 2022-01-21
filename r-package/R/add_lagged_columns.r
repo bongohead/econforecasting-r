@@ -14,6 +14,9 @@
 #'
 #' add_lagged_columns(economics, date_col = 'date', cols = c('pce', 'pop'), max_lag = 2)
 #'
+#' @import dplyr
+#' @importFrom stringr str_glue
+#' @importFrom tibble as_tibble
 #' @export
 add_lagged_columns = function(df, date_col = 'date', cols = NULL, max_lag = 1) {
 

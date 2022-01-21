@@ -6,10 +6,14 @@
 #'
 #' @return A character string representing a SQL query.
 #'
+#' @import dplyr
+#' @importFrom tidyr unite
 #' @export
 create_insert_query = function(df, tblname, .append = '') {
 
-    paste0(
+	if (!requireNamespace('DBI', quietly = T)) stop('Package "DBI" must be installed to use this function.', call. = F)
+
+	paste0(
         'INSERT INTO ', tblname, ' (', paste0(colnames(df), collapse = ','), ')\n',
         'VALUES\n',
         df %>%
