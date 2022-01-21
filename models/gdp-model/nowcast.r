@@ -1,12 +1,11 @@
 #'  Run this script on scheduler after close of business each day
-#'
-#'
 
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-DIR = Sys.getenv('EF_DIR')
-RESET_SQL = FALSE
+JOB_NAME = 'GDP_NOWCAST'
+EF_DIR = Sys.getenv('EF_DIR')
+RESET_SQL = F
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
