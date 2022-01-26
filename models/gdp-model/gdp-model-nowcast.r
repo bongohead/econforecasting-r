@@ -430,9 +430,10 @@ local({
 	hist_agg <<- hist_agg
 })
 
-# Select  ----------------------------------------------------------
+# Transform & Prep Data  ----------------------------------------------------------
 
 ## Create List of Vintage Dates ----------------------------------------------------------
+# For current version, let all past this point work with the last available vdate
 this_vdate = Sys.Date()
 
 ## Add Stationary Transformations (Last Vintage Date) ----------------------------------------------------------
@@ -483,6 +484,29 @@ local({
 
 	hist_all <<- transformed_data
 })
+
+## Add Stationary Transformations (Last Vintage Date) ----------------------------------------------------------
+
+## Create Monthly/Quarterly Matrices
+local({
+	
+	hist_wide =
+		hist_all %>%
+		data.table::as.data.table(.) %>%
+		split(., by = 'freq') %>%
+		lapply(., function(x)
+			split(x, by = 'form') %>%
+				lapply(., function(y)
+					as_tibble(y) %>%
+						dplyr::select(., -freq, -form) %>%
+						tidyr::pivot_wider(., id_cols = c('date'), names_from = varname, values_from = value) %>%
+						dplyr::arrange(., date)
+				)
+		)
+	
+	hist_wide <<- hist_wide
+})
+
 
 
 
