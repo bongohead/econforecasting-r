@@ -438,12 +438,12 @@ this_vdate = Sys.Date()
 
 ## Add Stationary Transformations (Last Vintage Date) ----------------------------------------------------------
 local({
-	
+
 	transformed_data =
 		hist_agg %>%
 		group_split(., sourcename, varname, transform, freq) %>%
 		map_dfr(., function(df_by_var_freq) {
-			
+
 			# Get last available obs for each dates as pf this vintage date
 			last_obs =
 				filter(df_by_var_freq, vdate <= this_vdate) %>%
@@ -452,11 +452,11 @@ local({
 				ungroup(.) %>%
 				arrange(., date) %>%
 				select(., -transform)
-			
+
 			# Get variable params
 			variable_param = purrr::transpose(filter(variable_params, varname == df_by_var_freq$varname[[1]]))[[1]]
 			if (is.null(variable_param)) stop(str_glue('Missing {df_by_var_freq$varname[[1]]} in variable_params'))
-			
+
 			# Now apply transformations
 			last_obs_transformed = lapply(c('st', 'd1', 'd2'), function(.form) {
 				transform = variable_param[[.form]]
@@ -478,7 +478,7 @@ local({
 				}) %>%
 				purrr::keep(., ~ !is.null(.) & is_tibble(.)) %>%
 				bind_rows(., mutate(last_obs, form = 'base'))
-				
+
 				return(last_obs_transformed)
 			})
 
@@ -489,7 +489,7 @@ local({
 
 ## Create Monthly/Quarterly Matrices
 local({
-	
+
 	hist_wide =
 		hist_all %>%
 		data.table::as.data.table(.) %>%
@@ -503,7 +503,7 @@ local({
 						dplyr::arrange(., date)
 				)
 		)
-	
+
 	hist_wide <<- hist_wide
 })
 
