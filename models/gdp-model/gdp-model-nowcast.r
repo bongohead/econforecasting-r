@@ -19,6 +19,7 @@ if (interactive() == FALSE) {
 
 ## Load Libs ----------------------------------------------------------'
 library(tidyverse)
+library(data.table)
 library(httr)
 library(DBI)
 library(econforecasting)
@@ -380,6 +381,46 @@ local({
 
 	hist$agg <<- hist_agg
 })
+
+## 5. Split By Vintage Date ----------------------------------------------------------
+local({
+	
+	message('*** Splitting by Vintage Date')
+	
+	last_obs_by_vdate =
+		hist$agg %>%
+		as.data.table(.) %>% 
+		split(., by = c('varname', 'freq')) %>%
+		lapply(., function(x)  {
+			
+			message(str_glue('... Getting last vintage dates for {x$varname[[1]]}'))
+			
+			last_obs_for_all_vdates =
+				x %>%	
+					.[order(vdate)] %>%
+					dcast(., varname + freq + vdate ~  date, value.var = 'value') %>%
+					.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
+					melt(
+						.,
+						id.vars = c('varname', 'freq', 'vdate'),
+						value.name = 'value',
+						variable.name = 'date',
+						na.rm = T
+					)
+			
+			lapply(test_vdates, function(test_vdate)
+				last_obs_for_all_vdates %>%
+					.[vdate <= test_vdate] %>%
+					.[vdate == max(vdate)] %>%
+					.[, bdate := test_vdate]
+				) %>%
+				rbindlist(.)
+		}) %>%
+		rbindlist(.)
+	
+	hist$base <<- last_obs_by_vdate
+})
+
 
 ## 5. Add Stationary Transformations ----------------------------------------------------------
 local({
