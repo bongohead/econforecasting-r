@@ -37,12 +37,22 @@ db = dbConnect(
 	)
 releases = list()
 hist = list()
-ext = list()
+model = list()
 
-## Load Variable Defs ----------------------------------------------------------'
-variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'variables')
+## Load Variable Defs ----------------------------------------------------------
+variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'gdp-model-inputs')
 release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'data-releases')
 
+## Set Backtest Dates  ----------------------------------------------------------
+test_vdates = c(
+	# Include all days in last 6 months
+	seq(today() - days(180), today(), by = '1 day'),
+	# Plus one random day per month before that
+	seq(as_date('2012-01-01'), add_with_rollback(today() - days(180), months(-1)), by = '1 month') %>%
+		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
+	) %>% sort(.)
+	
+	
 # Release Data ----------------------------------------------------------
 
 ## 1. Get Data Releases ----------------------------------------------------------
@@ -69,7 +79,7 @@ local({
 		# Now create a column of included releaseDates
 		left_join(
 			.,
-			map_dfr(transpose(filter(., relsc == 'fred')), function(x) {
+			map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
 
 				RETRY(
 					'GET',
@@ -90,13 +100,13 @@ local({
 			by = 'relkey'
 			)
 
-	releases$fred <<- fred_releases
+	releases$raw$fred <<- fred_releases
 })
 
 ## 2. Combine ----------------------------------------------------------
 local({
 
-	releases_final <<- bind_rows(releases)
+	releases$final <<- bind_rows(releases$raw)
 })
 
 # Historical Data ----------------------------------------------------------
@@ -108,33 +118,16 @@ local({
 
 	fred_data =
 		variable_params %>%
-		transpose(.) %>%
+		purrr::transpose(.) %>%
 		keep(., ~ .$source == 'fred') %>%
 		imap_dfr(., function(x, i) {
 			message(str_glue('Pull {i}: {x$varname}'))
-			get_fred_data(
-					x$sckey,
-					CONST$FRED_API_KEY,
-					.freq = x$freq,
-					.return_vintages = T,
-					.verbose = F
-					) %>%
-				transmute(
-					.,
-					varname = x$varname,
-					freq = x$freq,
-					date,
-					vdate = vintage_date,
-					value
-					) %>%
-				filter(
-					.,
-					date >= as_date('2010-01-01'),
-					vdate >= as_date('2010-01-01')
-					)
+			get_fred_data(x$sckey, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = T, .verbose = F) %>%
+				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
+				filter(., date >= as_date('2010-01-01'), vdate >= as_date('2010-01-01'))
 			})
 
-	hist$fred <<- fred_data
+	hist$raw$fred <<- fred_data
 })
 
 ## 2. Yahoo Finance ----------------------------------------------------------
@@ -144,7 +137,7 @@ local({
 
 	yahoo_data =
 		variable_params %>%
-		transpose(.) %>%
+		purrr::transpose(.) %>%
 		keep(., ~ .$source == 'yahoo') %>%
 		map_dfr(., function(x) {
 			url =
@@ -172,224 +165,188 @@ local({
 				return(.)
 		})
 
-	hist$yahoo <<- yahoo_data
+	hist$raw$yahoo <<- yahoo_data
 })
 
 ## 3. Calculated Variables ----------------------------------------------------------
 local({
 
-	#' message('***** Adding Calculated Variables')
-	#'
-	#' fred_data =
-	#' 	variable_params %>%
-	#' 	filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
-	#' 	transpose(.) %>%
-	#' 	map_dfr(., function(x) {
-	#' 		get_fred_data(x$sckey, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
-	#' 			transmute(., varname = x$varname, date, vdate = vintage_date, value) %>%
-	#' 			filter(., date >= as_date('2010-01-01'))
-	#' 		})
-	#'
-	#' # Monthly aggregation & append EOM with current val
-	#' fred_data_cat =
-	#' 	fred_data %>%
-	#' 	mutate(., date = floor_date(date, 'months')) %>%
-	#' 	group_by(., varname, date) %>%
-	#' 	summarize(., value = mean(value), .groups = 'drop')
-	#'
-	#' # Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
-	#' yield_curve_names_map =
-	#' 	variable_params %>%
-	#' 	purrr::transpose(.) %>%
-	#' 	map_chr(., ~.$varname) %>%
-	#' 	unique(.) %>%
-	#' 	keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
-	#' 	tibble(varname = .) %>%
-	#' 	mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
-	#'
-	#' # Create training dataset from SPREAD from ffr - fitted on last 3 months
-	#' train_df =
-	#' 	filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-	#' 	select(., -freq) %>%
-	#' 	filter(., date >= add_with_rollback(Sys.Date(), months(-3))) %>%
-	#' 	right_join(., yield_curve_names_map, by = 'varname') %>%
-	#' 	left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
-	#' 	mutate(., value = value - ffr) %>%
-	#' 	select(., -ffr)
-	#'
-	#' #' Calculate DNS fit
-	#' #'
-	#' #' @param df: (tibble) A tibble continuing columns obsDate, value, and ttm
-	#' #' @param return_all: (boolean) FALSE by default.
-	#' #' If FALSE, will return only the MAPE (useful for optimization).
-	#' #' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
-	#' #'
-	#' #' @export
-	#' get_dns_fit = function(df, lambda, return_all = FALSE) {
-	#' 	df %>%
-	#' 		mutate(
-	#' 			.,
-	#' 			f1 = 1,
-	#' 			f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm),
-	#' 			f3 = f2 - exp(-1 * lambda * ttm)
-	#' 		) %>%
-	#' 		group_by(date) %>%
-	#' 		group_split(.) %>%
-	#' 		lapply(., function(x) {
-	#' 			reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
-	#' 			bind_cols(x, fitted = fitted(reg)) %>%
-	#' 				mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
-	#' 				mutate(., resid = value - fitted)
-	#' 		}) %>%
-	#' 		bind_rows(.) %>%
-	#' 		{
-	#' 			if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse
-	#' 			else .
-	#' 		} %>%
-	#' 		return(.)
-	#' }
-	#'
-	#' # Find MSE-minimizing lambda value
-	#' optim_lambda =
-	#' 	optimize(
-	#' 		get_dns_fit,
-	#' 		df = train_df,
-	#' 		return_all = FALSE,
-	#' 		interval = c(-1, 1),
-	#' 		maximum = FALSE
-	#' 	)$minimum
-	#'
-	#' hist_df =
-	#' 	filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-	#' 	select(., -freq) %>%
-	#' 	filter(., date >= add_with_rollback(Sys.Date(), months(-120))) %>%
-	#' 	right_join(., yield_curve_names_map, by = 'varname') %>%
-	#' 	left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
-	#' 	mutate(., value = value - ffr) %>%
-	#' 	select(., -ffr)
-	#'
-	#' # Store DNS coefficients
-	#' dns_data =
-	#' 	get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE) %>%
-	#' 	group_by(., date) %>%
-	#' 	summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
-	#' 	pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
-	#' 	transmute(
-	#' 		.,
-	#' 		sourcename = 'calc',
-	#' 		varname,
-	#' 		transform = 'base',
-	#' 		freq = 'm',
-	#' 		date,
-	#' 		vdate =
-	#' 			# Avoid storing too much old DNS data - assign vdate as newesty possible value of edit for
-	#' 			# previous months
-	#' 			as_date(ifelse(ceiling_date(date, 'months') <= today(), ceiling_date(date, 'months'), today())),
-	#' 		value = as.numeric(value)
-	#' 	)
-	#'
-	#'
-	#' # For each vintage date, pull all CPI values from the latest available vintage for each date
-	#' # This intelligently handles revisions and prevents
-	#' # duplications of CPI values by vintage dates/obs date
-	#' cpi_df =
-	#' 	hist$fred %>%
-	#' 	filter(., varname == 'cpi' & transform == 'base' & freq == 'm') %>%
-	#' 	select(., date, vdate, value)
-	#'
-	#' inf_data =
-	#' 	cpi_df %>%
-	#' 	group_split(., vdate) %>%
-	#' 	purrr::map_dfr(., function(x)
-	#' 		filter(cpi_df, vdate <= x$vdate[[1]]) %>%
-	#' 			group_by(., date) %>%
-	#' 			filter(., vdate == max(vdate)) %>%
-	#' 			ungroup(.) %>%
-	#' 			arrange(., date) %>%
-	#' 			transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
-	#' 		) %>%
-	#' 	na.omit(.) %>%
-	#' 	distinct(., date, vdate, value) %>%
-	#' 	transmute(
-	#' 		.,
-	#' 		sourcename = 'calc',
-	#' 		varname = 'inf',
-	#' 		transform = 'base',
-	#' 		freq = 'm',
-	#' 		date,
-	#' 		vdate,
-	#' 		value
-	#' 	)
-	#'
-	#'
-	#' # Calculate misc interest rate spreads from cross-weekly/daily rates
-	#' # Assumes no revisions for this data
-	#' rates_wd_data = tribble(
-	#' 	~ varname, ~ var_w, ~ var_d,
-	#' 	'mort30yt30yspread', 'mort30y', 't30y',
-	#' 	'mort15yt10yspread', 'mort15y', 't10y'
-	#' 	) %>%
-	#' 	purrr::transpose(., .names = .$varname) %>%
-	#' 	purrr::map_dfr(., function(x) {
-	#'
-	#' 		# Use weekly data as mortgage pulls are weekly
-	#' 		var_w_df =
-	#' 			filter(hist$fred, varname == x$var_w & transform == 'base' & freq == 'w') %>%
-	#' 			select(., varname, date, vdate, value)
-	#'
-	#' 		var_d_df =
-	#' 			filter(hist$fred, varname == x$var_d & transform == 'base' & freq == 'd') %>%
-	#' 			select(., varname, date, vdate, value)
-	#'
-	#' 		# Get week-end days
-	#' 		w_obs_dates =
-	#' 			filter(hist$fred, varname == x$var_w & transform == 'base' & freq == 'w') %>%
-	#' 			.$date %>%
-	#' 			unique(.)
-	#'
-	#' 		# Iterate through the week-end days
-	#' 		purrr::map_dfr(w_obs_dates, function(w_obs_date) {
-	#'
-	#' 			var_d_df_x =
-	#' 				var_d_df %>%
-	#' 				filter(., date %in% seq(w_obs_date - days(6), to = w_obs_date, by = '1 day')) %>%
-	#' 				summarize(., d_vdate = max(vdate), d_value = mean(value))
-	#'
-	#' 			var_w_df_x =
-	#' 				var_w_df %>%
-	#' 				filter(., date == w_obs_date) %>%
-	#' 				transmute(., w_vdate = vdate, w_value = value)
-	#'
-	#' 			if (nrow(var_d_df_x) == 0 | nrow(var_w_df_x) == 0) return(NA)
-	#'
-	#' 			bind_cols(var_w_df_x, var_d_df_x) %>%
-	#' 				transmute(
-	#' 					.,
-	#' 					sourcename = 'calc',
-	#' 					varname = x$varname,
-	#' 					transform = 'base',
-	#' 					freq = 'w',
-	#' 					date = w_obs_date,
-	#' 					vdate = max(w_vdate, d_vdate),
-	#' 					value = w_value - d_value
-	#' 					) %>%
-	#' 				return(.)
-	#'
-	#' 			}) %>%
-	#' 			distinct(.)
-	#' 		})
-	#'
-	#'
-	#' hist_calc = bind_rows(dns_data, inf_data, rates_wd_data)
-	#'
-	#' hist$calc <<- hist_calc
-})
+	message('***** Adding Calculated Variables')
 
+	fred_data =
+		hist$raw$fred %>%
+		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]') | varname == 'ffr'))
+	
+	# Monthly aggregation & append EOM with current val
+	fred_data_cat =
+		fred_data %>%
+		mutate(., date = floor_date(date, 'months')) %>%
+		group_by(., varname, date) %>%
+		summarize(., value = mean(value), .groups = 'drop')
+
+	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
+	yield_curve_names_map =
+		variable_params %>%
+		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]'))) %>%
+		select(., varname) %>%
+		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
+	
+	# Create training dataset from SPREAD from ffr - fitted on last 3 months
+	hist_df =
+		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
+		filter(., date >= add_with_rollback(today(), months(-120))) %>%
+		right_join(., yield_curve_names_map, by = 'varname') %>%
+		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
+		mutate(., value = value - ffr) %>%
+		select(., -ffr)
+	
+	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
+	
+	#' Calculate DNS fit
+	#'
+	#' @param df: A tibble continuing columns date, value, and ttm
+	#' @param return_all: FALSE by default.
+	#' If FALSE, will return only the MSE (useful for optimization).
+	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
+	#'
+	#' @export
+	get_dns_fit = function(df, lambda, return_all = FALSE) {
+		df %>%
+			mutate(f1 = 1, f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm), f3 = f2 - exp(-1 * lambda * ttm)) %>%
+			group_split(., date) %>%
+			map_dfr(., function(x) {
+				reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
+				bind_cols(x, fitted = fitted(reg)) %>%
+					mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
+					mutate(., resid = value - fitted)
+			}) %>%
+			{if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse else .}
+	}
+	
+	# Find MSE-minimizing lambda value
+	optim_lambda = optimize(
+		get_dns_fit,
+		df = train_df,
+		return_all = FALSE,
+		interval = c(-1, 1),
+		maximum = FALSE
+	)$minimum
+	
+	# Get historical DNS coefficients
+	dns_fit_hist = get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE)
+	
+	dns_data =
+		dns_fit_hist %>%
+		group_by(., date) %>%
+		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
+		pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
+		transmute(
+			.,
+			varname,
+			freq = 'm',
+			date,
+			vdate =
+				# Avoid storing too much old DNS data - assign vdate as newesty possible value of edit for
+				# previous months
+				as_date(ifelse(ceiling_date(date, 'months') <= today(), ceiling_date(date, 'months'), today())),
+			value = as.numeric(value)
+		)
+
+	
+	# For each vintage date, pull all CPI values from the latest available vintage for each date
+	# This intelligently handles revisions and prevents
+	# duplications of CPI values by vintage dates/obs date
+	cpi_df =
+		hist$raw$fred %>%
+		filter(., varname == 'cpi' & freq == 'm') %>%
+		select(., date, vdate, value)
+
+	inf_data =
+		cpi_df %>%
+		group_split(., vdate) %>%
+		purrr::map_dfr(., function(x)
+			filter(cpi_df, vdate <= x$vdate[[1]]) %>%
+				group_by(., date) %>%
+				filter(., vdate == max(vdate)) %>%
+				ungroup(.) %>%
+				arrange(., date) %>%
+				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
+			) %>%
+		na.omit(.) %>%
+		distinct(., date, vdate, value) %>%
+		transmute(
+			.,
+			varname = 'inf',
+			freq = 'm',
+			date,
+			vdate,
+			value
+		)
+
+	# Calculate misc interest rate spreads from cross-weekly/daily rates
+	# Assumes no revisions for this data
+	rates_wd_data = tribble(
+		~ varname, ~ var_w, ~ var_d,
+		'mort30yt30yspread', 'mort30y', 't30y',
+		'mort15yt10yspread', 'mort15y', 't10y'
+		) %>%
+		purrr::transpose(., .names = .$varname) %>%
+		map_dfr(., function(x) {
+
+			# Use weekly data as mortgage pulls are weekly
+			var_w_df =
+				filter(hist$raw$fred, varname == x$var_w & freq == 'w') %>%
+				select(., varname, date, vdate, value)
+
+			var_d_df =
+				filter(hist$raw$fred, varname == x$var_d & freq == 'd') %>%
+				select(., varname, date, vdate, value)
+
+			# Get week-end days
+			w_obs_dates =
+				filter(hist$raw$fred, varname == x$var_w & freq == 'w') %>%
+				.$date %>%
+				unique(.)
+
+			# Iterate through the week-end days
+			purrr::map_dfr(w_obs_dates, function(w_obs_date) {
+
+				var_d_df_x =
+					var_d_df %>%
+					filter(., date %in% seq(w_obs_date - days(6), to = w_obs_date, by = '1 day')) %>%
+					summarize(., d_vdate = max(vdate), d_value = mean(value))
+
+				var_w_df_x =
+					var_w_df %>%
+					filter(., date == w_obs_date) %>%
+					transmute(., w_vdate = vdate, w_value = value)
+
+				if (nrow(var_d_df_x) == 0 | nrow(var_w_df_x) == 0) return(NA)
+
+				bind_cols(var_w_df_x, var_d_df_x) %>%
+					transmute(
+						.,
+						varname = x$varname,
+						freq = 'w',
+						date = w_obs_date,
+						vdate = max(w_vdate, d_vdate),
+						value = w_value - d_value
+						) %>%
+					return(.)
+
+				}) %>%
+				distinct(.)
+			})
+
+	hist_calc = bind_rows(dns_data, inf_data, rates_wd_data)
+
+	hist$raw$calc <<- hist_calc
+})
 
 ## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
 
-	hist_agg_0 = bind_rows(hist)
+	hist_agg_0 = bind_rows(hist$raw)
 
 	monthly_agg =
 		# Get all daily/weekly varnames with pre-existing data
@@ -421,59 +378,67 @@ local({
 		bind_rows(hist_agg_0, monthly_agg, quarterly_agg) %>%
 		filter(., freq %in% c('m', 'q'))
 
-	hist_agg <<- hist_agg
+	hist$agg <<- hist_agg
 })
 
-# Transform & Prep Data  ----------------------------------------------------------
-
-## Create List of Vintage Dates ----------------------------------------------------------
-# For current version, let all past this point work with the last available vdate
-this_vdate = today()
-
-## Add Stationary Transformations (Last Vintage Date) ----------------------------------------------------------
+## 5. Add Stationary Transformations ----------------------------------------------------------
 local({
-
-	transformed_data =
-		hist_agg %>%
-		group_split(., varname, freq) %>%
-		map_dfr(., function(df_by_var_freq) {
-
-			# Get last available obs for each dates as pf this vintage date
-			last_obs =
-				filter(df_by_var_freq, vdate <= this_vdate) %>%
-				group_by(., date) %>%
-				filter(., vdate == max(vdate)) %>%
-				ungroup(.) %>%
-				arrange(., date)
-
-			# Get variable params
-			variable_param = purrr::transpose(filter(variable_params, varname == df_by_var_freq$varname[[1]]))[[1]]
-			if (is.null(variable_param)) stop(str_glue('Missing {df_by_var_freq$varname[[1]]} in variable_params'))
-
-			# Now apply transformations
-			last_obs_transformed = lapply(c('st', 'd1', 'd2'), function(.form) {
-				transform = variable_param[[.form]]
-				if (transform == 'none') return(NULL)
-				last_obs %>%
-					mutate(
-						.,
-						value = {
-							if (transform == 'base') value
+	
+	message('*** Adding Stationary Transformations')
+	# Get last observation date available for each possible vintage	
+	last_obs_by_vdate =
+		hist$agg %>%
+		as.data.table(.) %>% 
+		split(., by = c('varname', 'freq')) %>%
+		lapply(., function(x) 
+			x %>%	
+				.[order(vdate)] %>%
+				dcast(., varname + freq + vdate ~  date, value.var = 'value') %>%
+				.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
+				melt(
+					.,
+					id.vars = c('varname', 'freq', 'vdate'),
+					value.name = 'value',
+					variable.name = 'date',
+					na.rm = T
+					)
+			) %>%
+		rbindlist(.)
+	
+	stat_groups =
+		last_obs_by_vdate %>%
+		.[vdate >= as_date('2020-01-01')] %>%
+		split(., by = c('varname', 'freq', 'vdate')) %>%
+		unname(.)
+		
+	stat_final =
+		stat_groups %>%
+		imap(., function(x, i) {
+			
+			if (i %% 1000 == 0) message(str_glue('... Transforming {i} of {length(stat_groups)}'))
+			
+			variable_param = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
+			if (is.null(variable_param)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
+			
+			last_obs_by_vdate_t = lapply(c('st', 'd1', 'd2'), function(form) {
+				transform = variable_param[[form]]
+				copy(x) %>%
+					.[,
+						value := {
+							if (transform == 'none') NA
+							else if (transform == 'base') value
 							else if (transform == 'dlog') dlog(value)
 							else if (transform == 'diff1') diff1(value)
 							else if (transform == 'pchg') pchg(value)
 							else if (transform == 'apchg') apchg(value, {if (variable_param$freq == 'q') 4 else 12})
 							else stop('Error')
-							},
-						form = .form
-						) %>%
-					na.omit(.)
+						}] %>%
+					.[, form := form]
 				}) %>%
-				purrr::keep(., ~ !is.null(.) & is_tibble(.)) %>%
-				bind_rows(., mutate(last_obs, form = 'base'))
-
-				return(last_obs_transformed)
-			})
+				rbindlist(.)
+		}) %>%
+		rbindlist(.) %>%
+		na.omit(.)
 
 	hist_all <<- transformed_data
 })
