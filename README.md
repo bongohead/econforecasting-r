@@ -5,10 +5,11 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # CHANGELOG
 
 ## [v.20] (Model Re-Release)
-This continues modularization & adds an initial web release on test.econforecasting.com.
+This continues modularization & adds an initial web release on beta.econforecasting.com.
 - Added SPF, CBO, WSJ external forecasts
 - Added reticulate Python integration
 - Added Fannie Mae data parsing
+- Added fixed nowcast model
 - Deprecated Quandl data input
 
 ## [v0.19] (Model Backtesting and Vintage Analysis)
