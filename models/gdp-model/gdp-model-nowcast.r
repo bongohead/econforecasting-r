@@ -3,15 +3,18 @@
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
+JOB_NAME = 'GDP-MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
-	sinkfile = file(file.path(DIR, 'logs', 'pull-data.log'), open = 'wt')
-	sink(sinkfile, type = 'output')
-	sink(sinkfile, type = 'message')
-	message(paste0('Run ', Sys.Date()))
+	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
+	sink_conn = file(sink_path, open = 'at')
+	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
+	sink(sink_conn, append = T, type = 'output')
+	sink(sink_conn, append = T, type = 'message')
+	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
 }
 
 ## Load Libs ----------------------------------------------------------'
@@ -20,6 +23,7 @@ library(httr)
 library(DBI)
 library(econforecasting)
 library(lubridate)
+library(jsonlite)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
@@ -49,25 +53,25 @@ local({
 	fred_releases =
 		variable_params %>%
 		group_by(., relkey) %>%
-		summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop') %>%
+		summarize(., n_varnames = n(), varnames = toJSON(fullname), .groups = 'drop') %>%
 		left_join(
 			.,
 			variable_params  %>%
 				filter(., nc_dfm_input == 1) %>%
 				group_by(., relkey) %>%
-				summarize(., n_dfm_varnames = n(), dfm_varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
+				summarize(., n_dfm_varnames = n(), dfm_varnames = toJSON(fullname), .groups = 'drop'),
 			variable_params %>%
 				group_by(., relkey) %>%
-				summarize(., n_varnames = n(), varnames = jsonlite::toJSON(fullname), .groups = 'drop'),
+				summarize(., n_varnames = n(), varnames = toJSON(fullname), .groups = 'drop'),
 			by = 'relkey'
 		) %>%
 		left_join(., release_params, by = 'relkey') %>%
 		# Now create a column of included releaseDates
 		left_join(
 			.,
-			purrr::map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
+			map_dfr(transpose(filter(., relsc == 'fred')), function(x) {
 
-				httr::RETRY(
+				RETRY(
 					'GET',
 					str_glue(
 						'https://api.stlouisfed.org/fred/release/dates?',
@@ -76,7 +80,7 @@ local({
 					),
 					times = 10
 					) %>%
-					httr::content(., as = 'parsed') %>%
+					content(., as = 'parsed') %>%
 					.$release_dates %>%
 					sapply(., function(y) y$date) %>%
 					tibble(relkey = x$relkey, reldates = .)
@@ -104,22 +108,20 @@ local({
 
 	fred_data =
 		variable_params %>%
-		purrr::transpose(.)	%>%
-		purrr::keep(., ~ .$source == 'fred') %>%
-		purrr::imap_dfr(., function(x, i) {
+		transpose(.) %>%
+		keep(., ~ .$source == 'fred') %>%
+		imap_dfr(., function(x, i) {
 			message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_data(
 					x$sckey,
 					CONST$FRED_API_KEY,
 					.freq = x$freq,
-					.return_vintages = TRUE,
+					.return_vintages = T,
 					.verbose = F
 					) %>%
 				transmute(
 					.,
-					sourcename = 'fred',
 					varname = x$varname,
-					transform = 'base',
 					freq = x$freq,
 					date,
 					vdate = vintage_date,
@@ -142,9 +144,9 @@ local({
 
 	yahoo_data =
 		variable_params %>%
-		purrr::transpose(.) %>%
-		purrr::keep(., ~ .$source == 'yahoo') %>%
-		purrr::map_dfr(., function(x) {
+		transpose(.) %>%
+		keep(., ~ .$source == 'yahoo') %>%
+		map_dfr(., function(x) {
 			url =
 				paste0(
 					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
@@ -161,9 +163,7 @@ local({
 				filter(., value != 'null') %>%
 				mutate(
 					.,
-					sourcename = 'yahoo',
 					varname = x$varname,
-					transform = 'base',
 					freq = x$freq,
 					date,
 					vdate = date,
@@ -183,8 +183,8 @@ local({
 	fred_data =
 		variable_params %>%
 		filter(., str_detect(fullname, 'Treasury Yield') | varname == 'ffr') %>%
-		purrr::transpose(.) %>%
-		purrr::map_dfr(., function(x) {
+		transpose(.) %>%
+		map_dfr(., function(x) {
 			get_fred_data(x$sckey, CONST$FRED_API_KEY, .return_vintages = TRUE) %>%
 				transmute(., varname = x$varname, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date('2010-01-01'))
@@ -209,7 +209,7 @@ local({
 		purrr::transpose(.) %>%
 		map_chr(., ~.$varname) %>%
 		unique(.) %>%
-		purrr::keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
+		keep(., ~ str_sub(., 1, 1) == 't' & str_length(.) == 4) %>%
 		tibble(varname = .) %>%
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
 
