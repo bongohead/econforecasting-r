@@ -46,8 +46,8 @@ release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'
 
 ## Set Backtest Dates  ----------------------------------------------------------
 test_vdates = c(
-	# Include all days in last 6 months
-	seq(today() - days(180), today(), by = '1 day'),
+	# Include all days in last 4 months
+	seq(today() - days(120), today(), by = '1 day'),
 	# Plus one random day per month before that
 	seq(as_date('2012-01-01'), add_with_rollback(today() - days(180), months(-1)), by = '1 month') %>%
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
@@ -387,6 +387,10 @@ local({
 	
 	message('*** Splitting by Vintage Date')
 	
+	# Check min dates
+	# The latest min date for PCA inputs should be no earlier than the last PCA input variable
+	hist$agg %>% group_by(., varname) %>% summarize(., min_dt = min(date)) %>% arrange(., desc(min_dt))
+	
 	last_obs_by_vdate =
 		hist$agg %>%
 		as.data.table(.) %>% 
@@ -411,8 +415,7 @@ local({
 			lapply(test_vdates, function(test_vdate)
 				last_obs_for_all_vdates %>%
 					.[vdate <= test_vdate] %>%
-					.[vdate == max(vdate)] %>%
-					.[, bdate := test_vdate]
+					{if (nrow(.) == 0) NULL else .[vdate == max(vdate)] %>% .[, bdate := test_vdate]}
 				) %>%
 				rbindlist(.)
 		}) %>%
@@ -426,29 +429,9 @@ local({
 local({
 	
 	message('*** Adding Stationary Transformations')
-	# Get last observation date available for each possible vintage	
-	last_obs_by_vdate =
-		hist$agg %>%
-		as.data.table(.) %>% 
-		split(., by = c('varname', 'freq')) %>%
-		lapply(., function(x) 
-			x %>%	
-				.[order(vdate)] %>%
-				dcast(., varname + freq + vdate ~  date, value.var = 'value') %>%
-				.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
-				melt(
-					.,
-					id.vars = c('varname', 'freq', 'vdate'),
-					value.name = 'value',
-					variable.name = 'date',
-					na.rm = T
-					)
-			) %>%
-		rbindlist(.)
-	
+
 	stat_groups =
-		last_obs_by_vdate %>%
-		.[vdate >= as_date('2020-01-01')] %>%
+		hist$base %>%
 		split(., by = c('varname', 'freq', 'vdate')) %>%
 		unname(.)
 		
@@ -479,9 +462,10 @@ local({
 				rbindlist(.)
 		}) %>%
 		rbindlist(.) %>%
+		bind_rows(., hist$base[, form := 'base']) %>%
 		na.omit(.)
 
-	hist_all <<- transformed_data
+	hist$flat <<- stat_final
 })
 
 ## Add Stationary Transformations (Last Vintage Date) ----------------------------------------------------------
@@ -506,10 +490,7 @@ local({
 	hist_wide <<- hist_wide
 })
 
-
-
 # Nowcast -----------------------------------------------------------------
-
 local({
 
 	quartersForward = 1
