@@ -346,7 +346,7 @@ local({
 ## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
 	
-	message('*** Aggregating Frequencies')
+	message('*** Aggregating Monthly & Quarterly Data')
 	
 	hist_agg_0 = bind_rows(hist$raw)
 
@@ -354,28 +354,54 @@ local({
 		# Get all daily/weekly varnames with pre-existing data
 		hist_agg_0 %>%
 		filter(., freq %in% c('d', 'w')) %>%
-		# Add monthly values for current month
-		mutate(
-			.,
-			freq = 'm',
-			date = lubridate::floor_date(date, 'month')
-			) %>%
-		group_by(., varname, freq, date, vdate) %>%
-		summarize(., value = mean(value), .groups = 'drop')
+		# Add in month of date
+		mutate(., this_month = lubridate::floor_date(date, 'month')) %>%
+		as.data.table(.) %>%
+		# For each variable, for each month, create a dataframe of all month obs across all vintages
+		# Then for each vintage date, take the latest vintage date for every obs in the month and
+		# calculate the rolling mean
+		split(., by = c('this_month', 'varname')) %>%
+		lapply(., function(x)
+			x %>%
+				dcast(., vdate ~ date, value.var = 'value') %>%
+				.[order(vdate)] %>%
+				.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
+				# {data.table(vdate = .$vdate, value = rowMeans(.[, -1], na.rm = T))} %>%
+				melt(., id.vars = 'vdate', value.name = 'value', variable.name = 'input_date', na.rm = T) %>%
+				.[, input_date := as_date(input_date)] %>%
+				.[, list(value = mean(value, na.rm = T), count = .N), by = 'vdate'] %>%
+				.[, c('varname', 'date') := list(x$varname[[1]], date = x$this_month[[1]])] 
+		) %>%
+		rbindlist(.) %>%
+		as_tibble(.) %>%
+		transmute(., varname, freq = 'm', date, vdate, value)
+	
 
+	# Works similarly as monthly aggregation but does not create new quarterly data unless all
+	# 3 monthly data points are available, and where the vintage is at least as great as the
+	# EOQ value of the obs date
 	quarterly_agg =
-		hist_agg_0 %>%
-		filter(., freq %in% c('d', 'w', 'm')) %>%
-		mutate(
-			.,
-			freq = 'q',
-			date = lubridate::floor_date(date, 'quarter')
+		monthly_agg %>%
+		bind_rows(., filter(hist_agg_0, freq == 'm')) %>%
+		filter(., varname == 'spy') %>%
+		mutate(., this_quarter = lubridate::floor_date(date, 'quarter')) %>%
+		as.data.table(.) %>%
+		split(., by = c('this_quarter', 'varname')) %>%
+		lapply(., function(x)
+			x %>%
+				dcast(., vdate ~ date, value.var = 'value') %>%
+				.[order(vdate)] %>%
+				.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
+				melt(., id.vars = 'vdate', value.name = 'value', variable.name = 'input_date', na.rm = T) %>%
+				.[, input_date := as_date(input_date)] %>%
+				.[, list(value = mean(value, na.rm = T), count = .N), by = 'vdate'] %>%
+				.[, c('varname', 'date') := list(x$varname[[1]], date = x$this_quarter[[1]])] #%>%
+				# .[count == 3]
 			) %>%
-		group_by(., varname, freq, date, vdate) %>%
-		summarize(., value = mean(value), count = n(), .groups = 'drop') %>%
-		filter(., count == 3) %>%
-		select(., -count)
-
+		rbindlist(.) %>%
+		as_tibble(.) %>%
+		transmute(., varname, freq = 'q', date, vdate, value)
+	
 	hist_agg =
 		bind_rows(hist_agg_0, monthly_agg, quarterly_agg) %>%
 		filter(., freq %in% c('m', 'q'))
@@ -439,7 +465,7 @@ local({
 		hist$base %>%
 		split(., by = c('varname', 'freq', 'vdate')) %>%
 		unname(.)
-		
+	
 	stat_final =
 		stat_groups %>%
 		imap(., function(x, i) {
@@ -479,34 +505,20 @@ local({
 ## Create Monthly/Quarterly Matrices ----------------------------------------------------------
 local({
 	
-	hist$flat %>%
-		split(., by = c('freq', 'form', 'bdate')) %>%
-		lapply(., function(x)
-			list(
-				freq = x$freq[[1]],
-				form = x$form[[1]],
-				bdate = x$bdate[[1]],
-				df = 
-					x %>%
-					as_tibble(.) %>%
-					select(., -freq, -form, -bdate) %>%
-					pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value') %>%
-					arrange(., date)
-				)
-			) %>%
-		.[[1]]
-
-	hist =
+	wide =
 		hist$flat %>%
-		split(., by = 'freq') %>%
+		split(., by = 'freq', keep.by = F) %>%
 		lapply(., function(x)
-			split(x, by = 'form') %>%
+			split(x, by = 'form', keep.by = F) %>%
 				lapply(., function(y)
-					as_tibble(y) %>%
-						select(., -freq, -form) %>%
-						pivot_wider(., id_cols = c('date'), names_from = varname, values_from = value) %>%
-						arrange(., date)
-					)
+					split(y, by = 'bdate', keep.by = F) %>%
+					lapply(., function(z)
+						dcast(z, date ~ varname, value.var = 'value') %>%
+							.[, date := as_date(date)] %>%
+							.[order(date)] %>%
+							as_tibble(.)
+						)
+				)
 			)
 
 	hist_wide <<- hist_wide
