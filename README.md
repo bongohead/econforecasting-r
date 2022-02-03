@@ -9,8 +9,11 @@ This continues modularization & adds an initial web release on beta.econforecast
 - Added SPF, CBO, WSJ external forecasts
 - Added reticulate Python integration
 - Added Fannie Mae data parsing
-- Added fixed nowcast model
+- Added nowcast model with correct aggregations and stationary transformations (by vintage date)
+- Added UUP import to replace FRED USD source (vintage dates start too late)
 - Deprecated Quandl data input
+- Fixed bug in get_fred_data related to observation date pulls
+- Fixed STLFSI with updated version
 
 ## [v0.19] (Model Backtesting and Vintage Analysis)
 This is a full model rewrite. The rewrite for the full-scale model is delayed, but immediate releases of external forecasts & composite external forecasts are intended for the version. In addition, alternate indices are included in the release. The code is restructured to build a more comprehensive backend built off TimescaleDB/Postgres with proper vintage storage, but with more intermediary and partial releases. 

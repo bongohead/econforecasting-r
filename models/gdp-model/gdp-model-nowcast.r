@@ -49,11 +49,11 @@ bdates = c(
 	# Include all days in last 4 months
 	seq(today() - days(120), today(), by = '1 day'),
 	# Plus one random day per month before that
-	seq(as_date('2012-01-01'), add_with_rollback(today() - days(180), months(-1)), by = '1 month') %>%
+	seq(as_date('2015-01-01'), add_with_rollback(today() - days(180), months(-1)), by = '1 month') %>%
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
 	) %>% sort(.)
-	
-	
+
+
 # Release Data ----------------------------------------------------------
 
 ## 1. Get Data Releases ----------------------------------------------------------
@@ -177,7 +177,7 @@ local({
 	fred_data =
 		hist$raw$fred %>%
 		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]') | varname == 'ffr'))
-	
+
 	# Monthly aggregation & append EOM with current val
 	fred_data_cat =
 		fred_data %>%
@@ -191,7 +191,7 @@ local({
 		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]'))) %>%
 		select(., varname) %>%
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
-	
+
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	hist_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
@@ -200,9 +200,9 @@ local({
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
-	
+
 	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
-	
+
 	#' Calculate DNS fit
 	#'
 	#' @param df: A tibble continuing columns date, value, and ttm
@@ -223,7 +223,7 @@ local({
 			}) %>%
 			{if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse else .}
 	}
-	
+
 	# Find MSE-minimizing lambda value
 	optim_lambda = optimize(
 		get_dns_fit,
@@ -232,10 +232,10 @@ local({
 		interval = c(-1, 1),
 		maximum = FALSE
 	)$minimum
-	
+
 	# Get historical DNS coefficients
 	dns_fit_hist = get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE)
-	
+
 	dns_data =
 		dns_fit_hist %>%
 		group_by(., date) %>%
@@ -345,9 +345,9 @@ local({
 
 ## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
-	
+
 	message('*** Aggregating Monthly & Quarterly Data')
-	
+
 	hist_agg_0 = bind_rows(hist$raw)
 
 	monthly_agg =
@@ -370,12 +370,12 @@ local({
 				melt(., id.vars = 'vdate', value.name = 'value', variable.name = 'input_date', na.rm = T) %>%
 				.[, input_date := as_date(input_date)] %>%
 				.[, list(value = mean(value, na.rm = T), count = .N), by = 'vdate'] %>%
-				.[, c('varname', 'date') := list(x$varname[[1]], date = x$this_month[[1]])] 
+				.[, c('varname', 'date') := list(x$varname[[1]], date = x$this_month[[1]])]
 		) %>%
 		rbindlist(.) %>%
 		as_tibble(.) %>%
 		transmute(., varname, freq = 'm', date, vdate, value)
-	
+
 
 	# Works similarly as monthly aggregation but does not create new quarterly data unless all
 	# 3 monthly data points are available, and where the vintage is at least as great as the
@@ -401,7 +401,7 @@ local({
 		rbindlist(.) %>%
 		as_tibble(.) %>%
 		transmute(., varname, freq = 'q', date, vdate, value)
-	
+
 	hist_agg =
 		bind_rows(hist_agg_0, monthly_agg, quarterly_agg) %>%
 		filter(., freq %in% c('m', 'q'))
@@ -411,9 +411,9 @@ local({
 
 ## 5. Split By Vintage Date ----------------------------------------------------------
 local({
-	
+
 	message('*** Splitting by Vintage Date')
-	
+
 	# Check min dates
 	# The latest min date for PCA inputs should be no earlier than the last PCA input variable
 	hist$agg %>%
@@ -421,17 +421,17 @@ local({
 		summarize(., min_dt = min(date)) %>%
 		arrange(., desc(min_dt)) %>%
 		print(., n = 5)
-	
+
 	last_obs_by_vdate =
 		hist$agg %>%
-		as.data.table(.) %>% 
+		as.data.table(.) %>%
 		split(., by = c('varname', 'freq')) %>%
 		lapply(., function(x)  {
-			
+
 			message(str_glue('... Getting last vintage dates for {x$varname[[1]]}'))
-			
+
 			last_obs_for_all_vdates =
-				x %>%	
+				x %>%
 					.[order(vdate)] %>%
 					dcast(., varname + freq + vdate ~  date, value.var = 'value') %>%
 					.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
@@ -442,7 +442,7 @@ local({
 						variable.name = 'date',
 						na.rm = T
 					)
-			
+
 			lapply(bdates, function(test_vdate)
 				last_obs_for_all_vdates %>%
 					.[vdate <= test_vdate] %>%
@@ -451,30 +451,30 @@ local({
 				rbindlist(.)
 		}) %>%
 		rbindlist(.)
-	
+
 	hist$base <<- last_obs_by_vdate
 })
 
 
-## 5. Add Stationary Transformations ----------------------------------------------------------
+## 6. Add Stationary Transformations ----------------------------------------------------------
 local({
-	
+
 	message('*** Adding Stationary Transformations')
 
 	stat_groups =
 		hist$base %>%
 		split(., by = c('varname', 'freq', 'vdate')) %>%
 		unname(.)
-	
+
 	stat_final =
 		stat_groups %>%
 		imap(., function(x, i) {
-			
+
 			if (i %% 1000 == 0) message(str_glue('... Transforming {i} of {length(stat_groups)}'))
-			
+
 			variable_param = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
 			if (is.null(variable_param)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
-			
+
 			last_obs_by_vdate_t = lapply(c('st', 'd1', 'd2'), function(this_form) {
 				transform = variable_param[[this_form]]
 				copy(x) %>%
@@ -495,16 +495,16 @@ local({
 		rbindlist(.) %>%
 		bind_rows(., hist$base[, form := 'base']) %>%
 		na.omit(.)
-	
+
 	stat_final_last = stat_final[bdate == max(bdate)]
 
 	hist$flat <<- stat_final
 	hist$flat_last <<- stat_final_last
 })
 
-## Create Monthly/Quarterly Matrices ----------------------------------------------------------
+## 7. Create Monthly/Quarterly Matrices ----------------------------------------------------------
 local({
-	
+
 	wide =
 		hist$flat %>%
 		split(., by = 'freq', keep.by = F) %>%
@@ -521,67 +521,200 @@ local({
 				)
 			)
 
-	hist_wide <<- hist_wide
+	wide_last <<- lapply(wide, function(x) lapply(x, function(y) tail(y, 1)[[1]]))
+
+	hist$wide <<- wide
+	hist$wide_last <<- wide_last
 })
 
 # Nowcast -----------------------------------------------------------------
+
+## 1. Dates -----------------------------------------------------------------
 local({
 
-	quartersForward = 1
+	quarters_forward = 2
+	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
-	pcaVarnames = ef$paramsDf %>% dplyr::filter(., dfminput == TRUE) %>% .$varname
+	walk(bdates, function(this_bdate) {
 
-	pcaVariablesDf =
-		ef$h$m$st %>%
-		dplyr::select(., date, all_of(pcaVarnames)) %>%
-		dplyr::filter(., date >= as.Date('2010-01-01'))
+		message(this_bdate)
 
-	bigTDates = pcaVariablesDf %>% dplyr::filter(., !if_any(everything(), is.na)) %>% .$date
-	bigTauDates = pcaVariablesDf %>% dplyr::filter(., if_any(everything(), is.na)) %>% .$date
-	bigTStarDates =
-		bigTauDates %>%
-		tail(., 1) %>%
-		seq(
-			from = .,
-			to =
-				# Get this quarter
-				econforecasting::strdateToDate(paste0(lubridate::year(.), 'Q', lubridate::quarter(.))) %>%
-				# Get next quarter minus a month
-				lubridate::add_with_rollback(., months(3 * (1 + quartersForward) - 1)),
-			by = '1 month'
-		) %>%
-		.[2:length(.)]
+		pca_variables_df =
+			hist$wide$m$st[[as.character(this_bdate)]] %>%
+			select(., date, all_of(pca_varnames)) %>%
+			filter(., date >= as_date('2012-01-01'))
+
+		big_t_dates = filter(pca_variables_df, !if_any(everything(), is.na))$date
+		big_tau_dates = filter(pca_variables_df, if_any(everything(), is.na))$date
+		big_tstar_dates =
+			big_tau_dates %>%
+			tail(., 1) %>%
+			seq(
+				from = .,
+				to =
+					# From this quarter to next quarter minus a month
+					from_pretty_date(paste0(lubridate::year(.), 'Q', lubridate::quarter(.)), 'q') %>%
+					lubridate::add_with_rollback(., months(3 * (1 + quarters_forward) - 1)),
+				by = '1 month'
+			) %>%
+			.[2:length(.)]
 
 
-	bigTDate = tail(bigTDates, 1)
-	bigTauDate = tail(bigTauDates, 1)
-	bigTStarDate = tail(bigTauDates, 1)
+		big_t_date = tail(big_t_dates, 1)
+		big_tau_date = tail(big_tau_dates, 1)
+		big_tstar_date = tail(big_tstar_dates, 1)
 
-	bigT = length(bigTDates)
-	bigTau = bigT + length(bigTauDates)
-	bigTStar = bigTau + length(bigTStarDates)
+		big_t = length(big_t_dates)
+		big_tau = big_t + length(big_tau_dates)
+		big_tstar = big_tau + length(big_tstar_dates)
 
-	timeDf =
-		tibble(
-			date = as.Date(c(pcaVariablesDf$date[[1]], bigTDate, bigTauDate, bigTStarDate)),
+		time_df = tibble(
+			date = as_date(c(pca_variables_df$date[[1]], big_t_date, big_tau_date, big_tstar_date)),
 			time = c('1', 'T', 'Tau', 'T*')
+			)
+
+		# model$pca_variables_df <<- pca_variables_df
+		# model$big_t_dates <<- big_t_dates
+		# model$big_tau_dates <<- big_tau_dates
+		# model$big_tstar_dates <<- big_tstar_dates
+		# model$big_t_date <<- big_t_date
+		# model$big_tau_date <<- big_tau_date
+		# model$big_tstar_date <<- big_tstar_date
+		# model$big_t <<- big_t
+		# model$big_tau <<- big_tau
+		# model$big_tstar <<- big_tstar
+		model[[this_bdate]]$time_df <<- time_df
+	})
+
+	model$quarters_forward <<- quarters_forward
+	model$pca_varnames <<- pca_varnames
+})
+
+
+## Extract PCA Factors -----------------------------------------------------------------
+local({
+
+	xDf = ef$nc$pcaVariablesDf %>% dplyr::filter(., date %in% ef$nc$bigTDates)
+
+	xMat =
+		xDf %>%
+		dplyr::select(., -date) %>%
+		as.matrix(.) %>%
+		scale(.)
+
+	lambdaHat = eigen(t(xMat) %*% xMat) %>% .$vectors
+	fHat = (xMat) %*% lambdaHat
+	bigN = ncol(xMat)
+	bigT = nrow(xMat)
+	bigCSquared = min(bigN, bigT)
+
+	# Total variance of data
+	totalVar = xMat %>% cov(.) %>% diag(.) %>% sum(.)
+
+	# Calculate ICs from Bai and Ng (2002)
+	# Total SSE should be approx 0 due to normalization above;
+	# sapply(1:ncol(xMat), function(i)
+	# 	sapply(1:nrow(xMat), function(t)
+	# 		(xMat[i, 1] - matrix(lambdaHat[i, ], nrow = 1) %*% matrix(fHat[t, ], ncol = 1))^2
+	# 		) %>% sum(.)
+	# 	) %>%
+	# 	sum(.) %>%
+	# 	{./(ncol(xMat) %*% nrow(xMat))}
+	(xMat - (fHat %*% t(lambdaHat)))^1
+
+	# Now test by R
+	mseByR =
+		sapply(1:bigN, function(r)
+			sum((xMat - (fHat[, 1:r, drop = FALSE] %*% t(lambdaHat)[1:r, , drop = FALSE]))^2)/(bigT * bigN)
 		)
 
 
+	# Explained variance of data
+	screeDf =
+		fHat %>% cov(.) %>% diag(.) %>%
+		{lapply(1:length(.), function(i)
+			tibble(
+				factors = i,
+				var_explained_by_factor = .[i],
+				pct_of_total = .[i]/totalVar,
+				cum_pct_of_total = sum(.[1:i])/totalVar
+			)
+		)} %>%
+		dplyr::bind_rows(.) %>%
+		dplyr::mutate(., mse = mseByR) %>%
+		dplyr::mutate(
+			.,
+			ic1 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log((bigN * bigT)/(bigN + bigT)),
+			ic2 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log(bigCSquared),
+			ic3 = (mse) + factors * (log(bigCSquared)/bigCSquared)
+		)
 
-	ef$nc$pcaVariablesDf <<- pcaVariablesDf
-	ef$nc$pcaVarnames <<- pcaVarnames
-	ef$nc$quartersForward <<- quartersForward
-	ef$nc$bigTDates <<- bigTDates
-	ef$nc$bigTauDates <<- bigTauDates
-	ef$nc$bigTStarDates <<- bigTStarDates
-	ef$nc$bigTDate <<- bigTDate
-	ef$nc$bigTauDate <<- bigTauDate
-	ef$nc$bigTStarDate <<- bigTStarDate
-	ef$nc$bigT <<- bigT
-	ef$nc$bigTau <<- bigTau
-	ef$nc$bigTStar <<- bigTStar
-	ef$nc$timeDf <<- timeDf
+	screePlot =
+		screeDf %>%
+		ggplot(.) +
+		geom_col(aes(x = factors, y = cum_pct_of_total, fill = factors)) +
+		# geom_col(aes(x = factors, y = pct_of_total)) +
+		labs(title = 'Percent of Variance Explained', x = 'Factors (R)', y = 'Cumulative % of Total Variance Explained', fill = NULL) +
+		ggthemes::theme_fivethirtyeight()
+
+
+	bigR =
+		screeDf %>%
+		dplyr::filter(., ic1 == min(ic1)) %>%
+		.$factors + 2
+	# ((
+	# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
+	#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
+	# 	)/2) %>%
+	# round(., digits = 0)
+
+	zDf =
+		xDf[, 'date'] %>%
+		dplyr::bind_cols(
+			.,
+			fHat[, 1:bigR] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:bigR))
+		)
+
+
+	zPlots =
+		purrr::imap(colnames(zDf) %>% .[. != 'date'], function(x, i)
+			dplyr::select(zDf, all_of(c('date', x))) %>%
+				setNames(., c('date', 'value')) %>%
+				ggplot() +
+				geom_line(
+					aes(x = date, y = value),
+					color = hcl(h = seq(15, 375, length = bigR + 1), l = 65, c = 100)[i]
+				) +
+				labs(x = NULL, y = NULL, title = paste0('Estimated PCA Factor ', str_sub(x, -1), ' Plot')) +
+				ggthemes::theme_fivethirtyeight() +
+				scale_x_date(date_breaks = '1 year', date_labels = '%Y')
+		)
+
+	factorWeightsDf =
+		lambdaHat %>%
+		as.data.frame(.) %>%
+		as_tibble(.) %>%
+		setNames(., paste0('f', str_pad(1:ncol(.), pad = '0', 1))) %>%
+		dplyr::bind_cols(weight = colnames(xMat), .) %>%
+		tidyr::pivot_longer(., -weight, names_to = 'varname') %>%
+		dplyr::group_by(varname) %>%
+		dplyr::arrange(., varname, desc(abs(value))) %>%
+		dplyr::mutate(., order = 1:n(), valFormat = paste0(weight, ' (', round(value, 2), ')')) %>%
+		dplyr::ungroup(.) %>%
+		dplyr::select(., -value, -weight) %>%
+		tidyr::pivot_wider(., names_from = varname, values_from = valFormat) %>%
+		dplyr::arrange(., order) %>%
+		dplyr::select(., -order) %>%
+		dplyr::select(., paste0('f', 1:bigR))
+
+
+	ef$nc$factorWeightsDf <<- factorWeightsDf
+	ef$nc$screeDf <<- screeDf
+	ef$nc$screePlot <<- screePlot
+	ef$nc$bigR <<- bigR
+	ef$nc$pcaInputDf <<- xDf
+	ef$nc$zDf <<- zDf
+	ef$nc$zPlots <<- zPlots
 })
 
 

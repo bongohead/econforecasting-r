@@ -31,7 +31,7 @@ get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FA
 	if (.verbose == TRUE) message(url)
 
 	url %>%
-		httr::RETRY('GET', url = ., times = 10, pause_min = 20) %>%
+		httr::RETRY('GET', url = ., times = 10) %>%
 		httr::content(., as = 'parsed') %>%
 		.$observations %>%
 		purrr::map_dfr(., function(x) as_tibble(x)) %>%
