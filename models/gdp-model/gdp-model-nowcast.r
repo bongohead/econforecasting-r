@@ -45,7 +45,7 @@ variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx
 release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'data-releases')
 
 ## Set Backtest Dates  ----------------------------------------------------------
-test_vdates = c(
+bdates = c(
 	# Include all days in last 4 months
 	seq(today() - days(120), today(), by = '1 day'),
 	# Plus one random day per month before that
@@ -59,7 +59,7 @@ test_vdates = c(
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
 
-	message('***** Getting Releases History')
+	message('*** Getting Releases History')
 
 	fred_releases =
 		variable_params %>%
@@ -115,7 +115,7 @@ local({
 ## 1. FRED ----------------------------------------------------------
 local({
 
-	message('***** Importing FRED Data')
+	message('*** Importing FRED Data')
 
 	fred_data =
 		variable_params %>%
@@ -134,7 +134,7 @@ local({
 ## 2. Yahoo Finance ----------------------------------------------------------
 local({
 
-	message('***** Importing Yahoo Finance Data')
+	message('*** Importing Yahoo Finance Data')
 
 	yahoo_data =
 		variable_params %>%
@@ -172,7 +172,7 @@ local({
 ## 3. Calculated Variables ----------------------------------------------------------
 local({
 
-	message('***** Adding Calculated Variables')
+	message('*** Adding Calculated Variables')
 
 	fred_data =
 		hist$raw$fred %>%
@@ -253,7 +253,6 @@ local({
 			value = as.numeric(value)
 		)
 
-	
 	# For each vintage date, pull all CPI values from the latest available vintage for each date
 	# This intelligently handles revisions and prevents
 	# duplications of CPI values by vintage dates/obs date
@@ -346,7 +345,9 @@ local({
 
 ## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
-
+	
+	message('*** Aggregating Frequencies')
+	
 	hist_agg_0 = bind_rows(hist$raw)
 
 	monthly_agg =
@@ -389,7 +390,11 @@ local({
 	
 	# Check min dates
 	# The latest min date for PCA inputs should be no earlier than the last PCA input variable
-	hist$agg %>% group_by(., varname) %>% summarize(., min_dt = min(date)) %>% arrange(., desc(min_dt))
+	hist$agg %>%
+		group_by(., varname) %>%
+		summarize(., min_dt = min(date)) %>%
+		arrange(., desc(min_dt)) %>%
+		print(., n = 5)
 	
 	last_obs_by_vdate =
 		hist$agg %>%
@@ -412,7 +417,7 @@ local({
 						na.rm = T
 					)
 			
-			lapply(test_vdates, function(test_vdate)
+			lapply(bdates, function(test_vdate)
 				last_obs_for_all_vdates %>%
 					.[vdate <= test_vdate] %>%
 					{if (nrow(.) == 0) NULL else .[vdate == max(vdate)] %>% .[, bdate := test_vdate]}
@@ -444,8 +449,8 @@ local({
 			variable_param = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
 			if (is.null(variable_param)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
 			
-			last_obs_by_vdate_t = lapply(c('st', 'd1', 'd2'), function(form) {
-				transform = variable_param[[form]]
+			last_obs_by_vdate_t = lapply(c('st', 'd1', 'd2'), function(this_form) {
+				transform = variable_param[[this_form]]
 				copy(x) %>%
 					.[,
 						value := {
@@ -457,35 +462,52 @@ local({
 							else if (transform == 'apchg') apchg(value, {if (variable_param$freq == 'q') 4 else 12})
 							else stop('Error')
 						}] %>%
-					.[, form := form]
+					.[, form := this_form]
 				}) %>%
 				rbindlist(.)
 		}) %>%
 		rbindlist(.) %>%
 		bind_rows(., hist$base[, form := 'base']) %>%
 		na.omit(.)
+	
+	stat_final_last = stat_final[bdate == max(bdate)]
 
 	hist$flat <<- stat_final
+	hist$flat_last <<- stat_final_last
 })
 
-## Add Stationary Transformations (Last Vintage Date) ----------------------------------------------------------
-
-## Create Monthly/Quarterly Matrices
+## Create Monthly/Quarterly Matrices ----------------------------------------------------------
 local({
+	
+	hist$flat %>%
+		split(., by = c('freq', 'form', 'bdate')) %>%
+		lapply(., function(x)
+			list(
+				freq = x$freq[[1]],
+				form = x$form[[1]],
+				bdate = x$bdate[[1]],
+				df = 
+					x %>%
+					as_tibble(.) %>%
+					select(., -freq, -form, -bdate) %>%
+					pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value') %>%
+					arrange(., date)
+				)
+			) %>%
+		.[[1]]
 
-	hist_wide =
-		hist_all %>%
-		data.table::as.data.table(.) %>%
+	hist =
+		hist$flat %>%
 		split(., by = 'freq') %>%
 		lapply(., function(x)
 			split(x, by = 'form') %>%
 				lapply(., function(y)
 					as_tibble(y) %>%
-						dplyr::select(., -freq, -form) %>%
-						tidyr::pivot_wider(., id_cols = c('date'), names_from = varname, values_from = value) %>%
-						dplyr::arrange(., date)
-				)
-		)
+						select(., -freq, -form) %>%
+						pivot_wider(., id_cols = c('date'), names_from = varname, values_from = value) %>%
+						arrange(., date)
+					)
+			)
 
 	hist_wide <<- hist_wide
 })
