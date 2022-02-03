@@ -49,7 +49,7 @@ bdates = c(
 	# Include all days in last 4 months
 	seq(today() - days(120), today(), by = '1 day'),
 	# Plus one random day per month before that
-	seq(as_date('2015-01-01'), add_with_rollback(today() - days(180), months(-1)), by = '1 month') %>%
+	seq(as_date('2016-04-01'), add_with_rollback(today() - days(180), months(-1)), by = '1 month') %>%
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
 	) %>% sort(.)
 
@@ -536,9 +536,7 @@ local({
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
 	walk(bdates, function(this_bdate) {
-
-		message(this_bdate)
-
+		
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
 			select(., date, all_of(pca_varnames)) %>%
@@ -559,7 +557,6 @@ local({
 			) %>%
 			.[2:length(.)]
 
-
 		big_t_date = tail(big_t_dates, 1)
 		big_tau_date = tail(big_tau_dates, 1)
 		big_tstar_date = tail(big_tstar_dates, 1)
@@ -573,16 +570,17 @@ local({
 			time = c('1', 'T', 'Tau', 'T*')
 			)
 
-		# model$pca_variables_df <<- pca_variables_df
-		# model$big_t_dates <<- big_t_dates
-		# model$big_tau_dates <<- big_tau_dates
-		# model$big_tstar_dates <<- big_tstar_dates
-		# model$big_t_date <<- big_t_date
-		# model$big_tau_date <<- big_tau_date
-		# model$big_tstar_date <<- big_tstar_date
-		# model$big_t <<- big_t
-		# model$big_tau <<- big_tau
-		# model$big_tstar <<- big_tstar
+		model[[this_bdate]] <<- list()
+		model[[this_bdate]]$pca_variables_df <<- pca_variables_df
+		model[[this_bdate]]$big_t_dates <<- big_t_dates
+		model[[this_bdate]]$big_tau_dates <<- big_tau_dates
+		model[[this_bdate]]$big_tstar_dates <<- big_tstar_dates
+		model[[this_bdate]]$big_t_date <<- big_t_date
+		model[[this_bdate]]$big_tau_date <<- big_tau_date
+		model[[this_bdate]]$big_tstar_date <<- big_tstar_date
+		model[[this_bdate]]$big_t <<- big_t
+		model[[this_bdate]]$big_tau <<- big_tau
+		model[[this_bdate]]$big_tstar <<- big_tstar
 		model[[this_bdate]]$time_df <<- time_df
 	})
 
