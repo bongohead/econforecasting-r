@@ -5,9 +5,6 @@
 #' (2) Install package reticulate
 #' (3) Run set_deploy_vars_nopy.sh; update EF_DIR if necessary
 #' (4) Run python_setup.r
-#' (5) If different, update EF_PY in set_delpoy_vars_nopy.sh with the values printed from (4);
-#'     Then rerun set_deploy_vars_nopy.sh.
-#' (6) Run renv::restore() if necessary
 
 if (!dir.exists(file.path(Sys.getenv('EF_DIR'), '.virtualenvs'))) {
 	dir.create(file.path(Sys.getenv('EF_DIR'), '.virtualenvs'), mode = '0755')

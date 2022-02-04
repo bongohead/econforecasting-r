@@ -535,7 +535,7 @@ local({
 	quarters_forward = 2
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
-	walk(bdates, function(this_bdate) {
+	results = lapply(bdates, function(this_bdate) {
 		
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
@@ -570,20 +570,26 @@ local({
 			time = c('1', 'T', 'Tau', 'T*')
 			)
 
-		model[[this_bdate]] <<- list()
-		model[[this_bdate]]$pca_variables_df <<- pca_variables_df
-		model[[this_bdate]]$big_t_dates <<- big_t_dates
-		model[[this_bdate]]$big_tau_dates <<- big_tau_dates
-		model[[this_bdate]]$big_tstar_dates <<- big_tstar_dates
-		model[[this_bdate]]$big_t_date <<- big_t_date
-		model[[this_bdate]]$big_tau_date <<- big_tau_date
-		model[[this_bdate]]$big_tstar_date <<- big_tstar_date
-		model[[this_bdate]]$big_t <<- big_t
-		model[[this_bdate]]$big_tau <<- big_tau
-		model[[this_bdate]]$big_tstar <<- big_tstar
-		model[[this_bdate]]$time_df <<- time_df
-	})
-
+		list(
+			bdate = this_bdate,
+			pca_variables_df = pca_variables_df,
+			big_t_dates = big_t_dates,
+			big_tau_dates = big_tau_dates,
+			big_tstar_dates = big_tstar_dates,
+			big_t_date = big_t_date,
+			big_tau_date = big_tau_date,
+			big_tstar_date = big_tstar_date,
+			big_t = big_t,
+			big_tau = big_tau,
+			big_tstar = big_tstar,
+			time_df = time_df
+			)
+		})
+	
+	
+	for (x in results) {
+		model[[as.character(x$bdate)]] <<- x
+	}
 	model$quarters_forward <<- quarters_forward
 	model$pca_varnames <<- pca_varnames
 })
