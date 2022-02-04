@@ -26,6 +26,7 @@ library(DBI)
 library(econforecasting)
 library(highcharter)
 library(reticulate)
+library(lubridate)
 use_virtualenv(file.path(EF_DIR, '.virtualenvs', 'econforecasting'))
 
 ## Load Connection Info ----------------------------------------------------------
@@ -1136,6 +1137,34 @@ local({
 	
 	submodels$fnma <<- fnma_final
 })
+
+## TD : External  -----------------------------------------------------------
+#' Testing as of 2/4/2022
+# local({
+# 	message('**** Downloading TD Data')
+# 	
+# 	dl_1 =
+# 		seq(as_date('2019-03-01'), today(), '3 months') %>%
+# 		format('%Y-%b') %>%
+# 		str_to_lower(.) %>%
+# 		paste0('https://economics.td.com/domains/economics.td.com/documents/reports/qef/',. ,'/6-us-outlook.htm') %>%
+# 		lapply(., function(x) httr::GET(x) %>% content(., 'parsed', encoding = 'Windows-1252'))
+# 	
+# 	dl_1 %>%
+# 		lapply(., function(html)
+# 			html %>%
+# 			rvest::html_elements(., 'table tr') %>%
+# 			lapply(., function(x)
+# 				rvest::html_elements(x, 'td,th') %>%
+# 					rvest::html_text(.) %>%
+# 					str_squish(.) %>%
+# 					na_if(., '') 
+# 				) %>%
+# 				.[[3]]
+# 			)
+# 	
+# 		submodels$fnma <<- fnma_final
+# })
 
 ## WSJ: External -----------------------------------------------------------
 local({
