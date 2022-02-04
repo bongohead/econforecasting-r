@@ -1,5 +1,5 @@
-.Rproj
-.Rproj.user
-model-outputs/
+.Rproj.user/
+.virtualenvs/
+renv/
 logs/
 constants.r

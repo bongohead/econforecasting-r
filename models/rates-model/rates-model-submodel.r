@@ -19,15 +19,14 @@ if (interactive() == FALSE) {
 	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
 }
 
-## Load Libs ----------------------------------------------------------'
+## Load Libs ----------------------------------------------------------
 library(tidyverse)
 library(httr)
 library(DBI)
 library(econforecasting)
 library(highcharter)
 library(reticulate)
-use_python_version('3.8.7')
-use_virtualenv('econforecasting')
+use_virtualenv(file.path(EF_DIR, '.virtualenvs', 'econforecasting'))
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
