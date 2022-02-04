@@ -20,7 +20,8 @@ use_python_version('3.8.7')
 virtualenv_create(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'))
 # Camelot-py and opencv for PDF parsing
 # Img2pdf for SVG parsing to PDF
-lapply(c('camelot-py', 'opencv-python', 'svglib'), function(x) 
+# Matplotlib for diagnosing issues with camelot-py
+lapply(c('camelot-py', 'opencv-python', 'svglib', 'requests', 'matplotlib'), function(x) 
 	virtualenv_install(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'), x)
 )
 
