@@ -595,132 +595,478 @@ local({
 })
 
 
-## Extract PCA Factors -----------------------------------------------------------------
+## 2. Extract PCA Factors -----------------------------------------------------------------
 local({
-
-	xDf = ef$nc$pcaVariablesDf %>% dplyr::filter(., date %in% ef$nc$bigTDates)
-
-	xMat =
-		xDf %>%
-		dplyr::select(., -date) %>%
-		as.matrix(.) %>%
-		scale(.)
-
-	lambdaHat = eigen(t(xMat) %*% xMat) %>% .$vectors
-	fHat = (xMat) %*% lambdaHat
-	bigN = ncol(xMat)
-	bigT = nrow(xMat)
-	bigCSquared = min(bigN, bigT)
-
-	# Total variance of data
-	totalVar = xMat %>% cov(.) %>% diag(.) %>% sum(.)
-
-	# Calculate ICs from Bai and Ng (2002)
-	# Total SSE should be approx 0 due to normalization above;
-	# sapply(1:ncol(xMat), function(i)
-	# 	sapply(1:nrow(xMat), function(t)
-	# 		(xMat[i, 1] - matrix(lambdaHat[i, ], nrow = 1) %*% matrix(fHat[t, ], ncol = 1))^2
-	# 		) %>% sum(.)
-	# 	) %>%
-	# 	sum(.) %>%
-	# 	{./(ncol(xMat) %*% nrow(xMat))}
-	(xMat - (fHat %*% t(lambdaHat)))^1
-
-	# Now test by R
-	mseByR =
-		sapply(1:bigN, function(r)
-			sum((xMat - (fHat[, 1:r, drop = FALSE] %*% t(lambdaHat)[1:r, , drop = FALSE]))^2)/(bigT * bigN)
-		)
-
-
-	# Explained variance of data
-	screeDf =
-		fHat %>% cov(.) %>% diag(.) %>%
-		{lapply(1:length(.), function(i)
-			tibble(
-				factors = i,
-				var_explained_by_factor = .[i],
-				pct_of_total = .[i]/totalVar,
-				cum_pct_of_total = sum(.[1:i])/totalVar
+	
+	results = lapply(bdates, function(this_bdate) {
+		
+		m = model[[as.character(this_bdate)]]
+		
+		xDf = filter(m$pca_variables_df, date %in% m$big_t_dates)
+	
+		xMat = scale(as.matrix(select(xDf, -date)))
+	
+		lambdaHat = eigen(t(xMat) %*% xMat)$vectors
+		fHat = (xMat) %*% lambdaHat
+		bigN = ncol(xMat)
+		bigT = nrow(xMat)
+		bigCSquared = min(bigN, bigT)
+	
+		# Total variance of data
+		totalVar = xMat %>% cov(.) %>% diag(.) %>% sum(.)
+	
+		# Calculate ICs from Bai and Ng (2002)
+		# Total SSE should be approx 0 due to normalization above;
+		# sapply(1:ncol(xMat), function(i)
+		# 	sapply(1:nrow(xMat), function(t)
+		# 		(xMat[i, 1] - matrix(lambdaHat[i, ], nrow = 1) %*% matrix(fHat[t, ], ncol = 1))^2
+		# 		) %>% sum(.)
+		# 	) %>%
+		# 	sum(.) %>%
+		# 	{./(ncol(xMat) %*% nrow(xMat))}
+		(xMat - (fHat %*% t(lambdaHat)))^1
+	
+		# Now test by R
+		mseByR =
+			sapply(1:bigN, function(r)
+				sum((xMat - (fHat[, 1:r, drop = FALSE] %*% t(lambdaHat)[1:r, , drop = FALSE]))^2)/(bigT * bigN)
 			)
-		)} %>%
-		dplyr::bind_rows(.) %>%
-		dplyr::mutate(., mse = mseByR) %>%
-		dplyr::mutate(
-			.,
-			ic1 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log((bigN * bigT)/(bigN + bigT)),
-			ic2 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log(bigCSquared),
-			ic3 = (mse) + factors * (log(bigCSquared)/bigCSquared)
+	
+	
+		# Explained variance of data
+		screeDf =
+			fHat %>% cov(.) %>% diag(.) %>%
+			{lapply(1:length(.), function(i)
+				tibble(
+					factors = i,
+					var_explained_by_factor = .[i],
+					pct_of_total = .[i]/totalVar,
+					cum_pct_of_total = sum(.[1:i])/totalVar
+				)
+			)} %>%
+			dplyr::bind_rows(.) %>%
+			dplyr::mutate(., mse = mseByR) %>%
+			dplyr::mutate(
+				.,
+				ic1 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log((bigN * bigT)/(bigN + bigT)),
+				ic2 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log(bigCSquared),
+				ic3 = (mse) + factors * (log(bigCSquared)/bigCSquared)
+			)
+	
+		screePlot =
+			screeDf %>%
+			ggplot(.) +
+			geom_col(aes(x = factors, y = cum_pct_of_total, fill = factors)) +
+			# geom_col(aes(x = factors, y = pct_of_total)) +
+			labs(title = 'Percent of Variance Explained', x = 'Factors (R)', y = 'Cumulative % of Total Variance Explained', fill = NULL) +
+			ggthemes::theme_fivethirtyeight()
+	
+	
+		bigR =
+			screeDf %>%
+			dplyr::filter(., ic1 == min(ic1)) %>%
+			.$factors + 2
+		# ((
+		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
+		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
+		# 	)/2) %>%
+		# round(., digits = 0)
+	
+		zDf =
+			xDf[, 'date'] %>%
+			dplyr::bind_cols(
+				.,
+				fHat[, 1:bigR] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:bigR))
+			)
+	
+	
+		zPlots =
+			purrr::imap(colnames(zDf) %>% .[. != 'date'], function(x, i)
+				dplyr::select(zDf, all_of(c('date', x))) %>%
+					setNames(., c('date', 'value')) %>%
+					ggplot() +
+					geom_line(
+						aes(x = date, y = value),
+						color = hcl(h = seq(15, 375, length = bigR + 1), l = 65, c = 100)[i]
+					) +
+					labs(x = NULL, y = NULL, title = paste0('Estimated PCA Factor ', str_sub(x, -1), ' Plot')) +
+					ggthemes::theme_fivethirtyeight() +
+					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
+			)
+	
+		factorWeightsDf =
+			lambdaHat %>%
+			as.data.frame(.) %>%
+			as_tibble(.) %>%
+			setNames(., paste0('f', str_pad(1:ncol(.), pad = '0', 1))) %>%
+			dplyr::bind_cols(weight = colnames(xMat), .) %>%
+			tidyr::pivot_longer(., -weight, names_to = 'varname') %>%
+			dplyr::group_by(varname) %>%
+			dplyr::arrange(., varname, desc(abs(value))) %>%
+			dplyr::mutate(., order = 1:n(), valFormat = paste0(weight, ' (', round(value, 2), ')')) %>%
+			dplyr::ungroup(.) %>%
+			dplyr::select(., -value, -weight) %>%
+			tidyr::pivot_wider(., names_from = varname, values_from = valFormat) %>%
+			dplyr::arrange(., order) %>%
+			dplyr::select(., -order) %>%
+			dplyr::select(., paste0('f', 1:bigR))
+		
+		list(
+			bdate = this_bdate,
+			factor_weights_df = factorWeightsDf,
+			scree_df = screeDf,
+			scree_plot = screePlot,
+			big_r = bigR,
+			pca_input_df = xDf,
+			z_df = zDf,
+			z_plots = zPlots
 		)
+	})
+	
+	
 
-	screePlot =
-		screeDf %>%
-		ggplot(.) +
-		geom_col(aes(x = factors, y = cum_pct_of_total, fill = factors)) +
-		# geom_col(aes(x = factors, y = pct_of_total)) +
-		labs(title = 'Percent of Variance Explained', x = 'Factors (R)', y = 'Cumulative % of Total Variance Explained', fill = NULL) +
-		ggthemes::theme_fivethirtyeight()
+	for (x in results) {
+		model[[as.character(x$bdate)]]$factor_weights_df <<- x$factor_weights_df
+		model[[as.character(x$bdate)]]$scree_df <<- x$scree_df
+		model[[as.character(x$bdate)]]$scree_plot <<- x$scree_plot
+		model[[as.character(x$bdate)]]$big_r <<- x$big_r
+		model[[as.character(x$bdate)]]$pca_input_df <<- x$pca_input_df
+		model[[as.character(x$bdate)]]$z_df <<- x$z_df
+		model[[as.character(x$bdate)]]$z_plots <<- x$z_plots
+	}
+})
 
+## 3. Run as VAR(1) -----------------------------------------------------------------
+local({
+	
+	results = lapply(bdates, function(this_bdate) {
+		
+		m = model[[as.character(this_bdate)]]
+		
+		input_df = na.omit(inner_join(m$z_df, add_lagged_columns(m$z_df, max_lag = 1), by = 'date'))
 
-	bigR =
-		screeDf %>%
-		dplyr::filter(., ic1 == min(ic1)) %>%
-		.$factors + 2
-	# ((
-	# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
-	#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
-	# 	)/2) %>%
-	# round(., digits = 0)
+		y_mat = input_df %>% select(., -contains('.l'), -date) %>% as.matrix(.)
+		x_df = input_df %>% select(., contains('.l')) %>% bind_cols(constant = 1, .)
+			
+		coef_df =
+			lm(y_mat ~ . - 1, data = x_df) %>%
+			coef(.) %>%
+			as.data.frame(.) %>%
+			rownames_to_column(., 'coefname') %>%
+			as_tibble(.) 
+			
+		gof_df =
+			lm(y_mat ~ . - 1, x_df) %>%
+			resid(.) %>%
+			as.data.frame(.) %>%
+			as_tibble(.) %>%
+			pivot_longer(., everything(), names_to = 'varname') %>%
+			group_by(., varname) %>%
+			summarize(., MAE = mean(abs(value)), MSE = mean(value^2))
+			
+		resid_plot =
+			lm(y_mat ~ . - 1, x_df) %>%
+			resid(.) %>%
+			as.data.frame(.) %>%
+			as_tibble(.) %>%
+			bind_cols(date = input_df$date, .) %>%
+			pivot_longer(., -date) %>%
+			ggplot(.) + 	
+			geom_line(aes(x = date, y = value, group = name, color = name), size = 1) +
+			labs(title = 'Residuals plot for PCA factors', x = NULL, y = NULL, color = NULL)
 
-	zDf =
-		xDf[, 'date'] %>%
-		dplyr::bind_cols(
-			.,
-			fHat[, 1:bigR] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:bigR))
-		)
+		fitted_plots =
+			lm(y_mat ~ . - 1, data = x_df) %>%
+			fitted(.) %>%
+			as_tibble(.) %>%
+			bind_cols(date = input_df$date, ., type = 'Fitted Values') %>%
+			bind_rows(., m$z_df %>% dplyr::mutate(., type = 'Data')) %>%
+			pivot_longer(., -c('type', 'date')) %>% 
+			as.data.table(.) %>%
+			split(., by = 'name') %>%
+			imap(., function(x, i)
+				ggplot(x) +
+					geom_line(
+						aes(x = date, y = value, group = type, linetype = type, color = type),
+						size = 1, alpha = 1.0
+					) +
+					labs(
+						x = NULL, y = NULL, color = NULL, linetype = NULL,
+						title = paste0('Fitted values vs actual for factor ', i)
+					) +
+					scale_x_date(date_breaks = '1 year', date_labels = '%Y') +
+					ggthemes::theme_fivethirtyeight()
+				)
+			
+			b_mat = coef_df %>% filter(., coefname != 'constant') %>% select(., -coefname) %>% t(.)
+			c_mat = coef_df %>% filter(., coefname == 'constant') %>% select(., -coefname) %>% t(.)
+			q_mat =
+				lm(y_mat ~ . - 1, data = x_df) %>%
+				residuals(.) %>% 
+				as_tibble(.) %>%
+				purrr::transpose(.) %>%
+				lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
+				{reduce(., function(x, y) x + y)/length(.)}
+			
+			list(
+				bdate = this_bdate,
+				var_fitted_plots = fitted_plots,
+				var_resid_plots = resid_plot,
+				var_gof_df = gof_df,
+				var_coef_df = coef_df,
+				q_mat = q_mat,
+				b_mat = b_mat,
+				c_mat = c_mat
+			)
+		})
+	
+	for (x in results) {
+		model[[as.character(x$bdate)]]$var_fitted_plots <<- x$var_fitted_plots
+		model[[as.character(x$bdate)]]$var_resid_plots <<- x$var_resid_plots
+		model[[as.character(x$bdate)]]$var_gof_df <<- x$var_gof_df
+		model[[as.character(x$bdate)]]$var_coef_df <<- x$var_coef_df
+		model[[as.character(x$bdate)]]$q_mat <<- x$q_mat
+		model[[as.character(x$bdate)]]$b_mat <<- x$b_mat
+		model[[as.character(x$bdate)]]$c_mat <<- x$c_mat
+	}
+})
 
-
-	zPlots =
-		purrr::imap(colnames(zDf) %>% .[. != 'date'], function(x, i)
-			dplyr::select(zDf, all_of(c('date', x))) %>%
-				setNames(., c('date', 'value')) %>%
-				ggplot() +
+## 4. Run DFM on PCA Monthly Vars -----------------------------------------------------------------
+local({
+	
+	yMat = ef$nc$pcaInputDf %>% dplyr::select(., -date) %>% as.matrix(.)
+	xDf = ef$nc$zDf %>% dplyr::select(., -date) %>% dplyr::bind_cols(constant = 1, .)
+	
+	coefDf =
+		lm(yMat ~ . - 1, xDf) %>%
+		coef(.) %>%	
+		as.data.frame(.) %>%
+		rownames_to_column(., 'coefname') %>%
+		as_tibble(.)
+	
+	
+	fittedPlots =
+		lm(yMat ~ . - 1, xDf) %>%
+		fitted(.) %>%
+		as_tibble(.) %>%
+		dplyr::bind_cols(date = ef$nc$zDf$date, ., type = 'Fitted Values') %>%
+		dplyr::bind_rows(., ef$nc$pcaInputDf %>% dplyr::mutate(., type = 'Data')) %>%
+		tidyr::pivot_longer(., -c('type', 'date')) %>%
+		as.data.table(.) %>%
+		split(., by = 'name') %>%
+		purrr::imap(., function(x, i)
+			ggplot(x) +
 				geom_line(
-					aes(x = date, y = value),
-					color = hcl(h = seq(15, 375, length = bigR + 1), l = 65, c = 100)[i]
+					aes(x = date, y = value, group = type, linetype = type, color = type),
+					size = 1, alpha = 1.0
 				) +
-				labs(x = NULL, y = NULL, title = paste0('Estimated PCA Factor ', str_sub(x, -1), ' Plot')) +
-				ggthemes::theme_fivethirtyeight() +
-				scale_x_date(date_breaks = '1 year', date_labels = '%Y')
+				labs(
+					x = NULL, y = NULL, color = NULL, linetype = NULL,
+					title = paste0('Fitted values vs actual for factor ', i)
+				) +
+				scale_x_date(date_breaks = '1 year', date_labels = '%Y') +
+				ggthemes::theme_fivethirtyeight()
 		)
-
-	factorWeightsDf =
-		lambdaHat %>%
+	
+	
+	gofDf =
+		lm(yMat ~ . - 1, xDf) %>%
+		resid(.) %>%
 		as.data.frame(.) %>%
 		as_tibble(.) %>%
-		setNames(., paste0('f', str_pad(1:ncol(.), pad = '0', 1))) %>%
-		dplyr::bind_cols(weight = colnames(xMat), .) %>%
-		tidyr::pivot_longer(., -weight, names_to = 'varname') %>%
-		dplyr::group_by(varname) %>%
-		dplyr::arrange(., varname, desc(abs(value))) %>%
-		dplyr::mutate(., order = 1:n(), valFormat = paste0(weight, ' (', round(value, 2), ')')) %>%
-		dplyr::ungroup(.) %>%
-		dplyr::select(., -value, -weight) %>%
-		tidyr::pivot_wider(., names_from = varname, values_from = valFormat) %>%
-		dplyr::arrange(., order) %>%
-		dplyr::select(., -order) %>%
-		dplyr::select(., paste0('f', 1:bigR))
-
-
-	ef$nc$factorWeightsDf <<- factorWeightsDf
-	ef$nc$screeDf <<- screeDf
-	ef$nc$screePlot <<- screePlot
-	ef$nc$bigR <<- bigR
-	ef$nc$pcaInputDf <<- xDf
-	ef$nc$zDf <<- zDf
-	ef$nc$zPlots <<- zPlots
+		tidyr::pivot_longer(., everything(), names_to = 'varname') %>%
+		dplyr::group_by(., varname) %>%
+		dplyr::summarize(., MAE = mean(abs(value)), MSE = mean(value^2))
+	
+	
+	aMat = coefDf %>% dplyr::filter(., coefname != 'constant') %>% dplyr::select(., -coefname) %>% t(.)
+	dMat = coefDf %>% dplyr::filter(., coefname == 'constant') %>% dplyr::select(., -coefname) %>% t(.)
+	
+	rMat0 =
+		lm(yMat ~ . - 1, data = xDf) %>%
+		residuals(.) %>% 
+		as_tibble(.) %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
+		{purrr::reduce(., function(x, y) x + y)/length(.)}
+	
+	rMatDiag = tibble(varname = ef$nc$pcaVarnames, variance = diag(rMat0))
+	
+	
+	rMats =
+		lapply(ef$nc$bigTauDates, function(d)
+			sapply(ef$nc$pcaVarnames, function(v)
+				ef$h$m$st %>%
+					dplyr::filter(., date == (d)) %>%
+					.[[v]] %>% 
+					{if (is.na(.)) 1e20 else dplyr::filter(rMatDiag, varname == v)$variance}
+			) %>%
+				diag(.)
+		) %>%
+		c(lapply(1:length(ef$nc$bigTDates), function(x) rMat0), .)
+	
+	
+	ef$nc$dfmGofDf <<- gofDf
+	ef$nc$dfmCoefDf <<- coefDf
+	ef$nc$dfmFittedPlots <<- fittedPlots
+	ef$nc$rMats <<- rMats
+	ef$nc$aMat <<- aMat
+	ef$nc$dMat <<- dMat
 })
 
 
+local({
+	
+	bMat = ef$nc$bMat
+	cMat = ef$nc$cMat
+	aMat = ef$nc$aMat
+	dMat = ef$nc$dMat
+	rMats = ef$nc$rMats
+	qMat = ef$nc$qMat
+	yMats =
+		dplyr::bind_rows(
+			ef$nc$pcaInputDf,
+			ef$h$m$st %>%
+				dplyr::filter(., date %in% ef$nc$bigTauDates) %>%
+				dplyr::select(., date, ef$nc$pcaVarnames)
+		) %>%
+		dplyr::mutate(., across(-date, function(x) ifelse(is.na(x), 0, x))) %>%
+		dplyr::select(., -date) %>%
+		purrr::transpose(.) %>%
+		lapply(., function(x) matrix(unlist(x), ncol = 1))
+	
+	z0Cond0 = matrix(rep(0, ef$nc$bigR), ncol = 1)
+	sigmaZ0Cond0 = matrix(rep(0, ef$nc$bigR^2), ncol = ef$nc$bigR)
+	
+	zTCondTMinusOne = list()
+	zTCondT = list()
+	
+	sigmaZTCondTMinusOne = list()
+	sigmaZTCondT = list()
+	
+	yTCondTMinusOne = list()
+	sigmaYTCondTMinusOne = list()
+	
+	pT = list()
+	
+	for (t in 1:length(c(ef$nc$bigTDates, ef$nc$bigTauDates))) {
+		# message(t)
+		# Prediction Step
+		zTCondTMinusOne[[t]] = bMat %*% {if (t == 1) z0Cond0 else zTCondT[[t-1]]} + cMat
+		sigmaZTCondTMinusOne[[t]] = bMat %*% {if (t == 1) sigmaZ0Cond0 else sigmaZTCondT[[t-1]]} + qMat
+		yTCondTMinusOne[[t]] = aMat %*% zTCondTMinusOne[[t]] + dMat
+		sigmaYTCondTMinusOne[[t]] = aMat %*% sigmaZTCondTMinusOne[[t]] %*% t(aMat) + rMats[[t]]
+		
+		# Correction Step
+		pT[[t]] = sigmaZTCondTMinusOne[[t]] %*% t(aMat) %*%
+			{
+				if (t %in% 1:length(ef$nc$bigTDates)) solve(sigmaYTCondTMinusOne[[t]])
+				else chol2inv(chol(sigmaYTCondTMinusOne[[t]]))
+			}
+		zTCondT[[t]] = zTCondTMinusOne[[t]] + pT[[t]] %*% (yMats[[t]] - yTCondTMinusOne[[t]])
+		sigmaZTCondT[[t]] = sigmaZTCondTMinusOne[[t]] - (pT[[t]] %*% sigmaYTCondTMinusOne[[t]] %*% t(pT[[t]]))
+	}
+	
+	
+	kFitted =
+		zTCondT %>%
+		purrr::map_dfr(., function(x)
+			as.data.frame(x) %>% t(.) %>% as_tibble(.)
+		) %>%
+		dplyr::bind_cols(date = c(ef$nc$bigTDates, ef$nc$bigTauDates), .) 
+	
+	
+	## Smoothing step
+	zTCondBigTSmooth = list()
+	sigmaZTCondBigTSmooth = list()
+	sT = list()
+	
+	for (t in (length(zTCondT) - 1): 1) {
+		# message(t)
+		sT[[t]] = sigmaZTCondT[[t]] %*% t(bMat) %*% solve(sigmaZTCondTMinusOne[[t + 1]])
+		zTCondBigTSmooth[[t]] = zTCondT[[t]] + sT[[t]] %*% 
+			({if (t == length(zTCondT) - 1) zTCondT[[t + 1]] else zTCondBigTSmooth[[t + 1]]} - zTCondTMinusOne[[t + 1]])
+		sigmaZTCondBigTSmooth[[t]] = sigmaZTCondT[[t]] - sT[[t]] %*%
+			(sigmaZTCondTMinusOne[[t + 1]] -
+			 	{if (t == length(zTCondT) - 1) sigmaZTCondT[[t + 1]] else sigmaZTCondBigTSmooth[[t + 1]]}
+			) %*% t(sT[[t]])
+	}
+	
+	kSmooth =
+		zTCondBigTSmooth %>%
+		purrr::map_dfr(., function(x)
+			as.data.frame(x) %>% t(.) %>% as_tibble(.)
+		) %>%
+		dplyr::bind_cols(date = c(ef$nc$bigTDates, ef$nc$bigTauDates) %>% .[1:(length(.) - 1)], .) 
+	
+	
+	
+	
+	## Forecasting step
+	zTCondBigT = list()
+	sigmaZTCondBigT = list()
+	yTCondBigT = list()
+	sigmaYTCondBigT = list()
+	
+	for (j in 1:length(ef$nc$bigTStarDates)) {
+		zTCondBigT[[j]] = bMat %*% {if (j == 1) zTCondT[[length(zTCondT)]] else zTCondBigT[[j - 1]]} + cMat
+		sigmaZTCondBigT[[j]] = bMat %*% {if (j == 1) sigmaZTCondT[[length(sigmaZTCondT)]] else sigmaZTCondBigT[[j - 1]]} + qMat
+		yTCondBigT[[j]] = aMat %*% zTCondBigT[[j]] + dMat
+		sigmaYTCondBigT[[j]] = aMat %*% sigmaZTCondBigT[[j]] %*% t(aMat) + rMats[[1]]
+	}
+	
+	kForecast =
+		zTCondBigT %>%
+		purrr::map_dfr(., function(x)
+			as.data.frame(x) %>% t(.) %>% as_tibble(.)
+		) %>%
+		dplyr::bind_cols(date = ef$nc$bigTStarDates, .)
+	
+	
+	
+	# Plot and Cleaning
+	kfPlots =
+		lapply(colnames(ef$nc$zDf) %>% .[. != 'date'], function(.varname)
+			dplyr::bind_rows(
+				dplyr::mutate(ef$nc$zDf, type = 'Data'),
+				dplyr::mutate(kFitted, type = 'Kalman Filtered'),
+				dplyr::mutate(kForecast, type = 'Forecast'),
+				dplyr::mutate(kSmooth, type = 'Kalman Smoothed'),
+			) %>%
+				tidyr::pivot_longer(., -c('date', 'type'), names_to = 'varname') %>%
+				dplyr::filter(., varname == .varname) %>%
+				ggplot(.) +
+				geom_line(aes(x = date, y = value, color = type), size = 1) + 
+				labs(x = NULL, y = NULL, color = NULL, title = paste0('Kalman smoothed values for ', .varname)) +
+				scale_x_date(date_breaks = '1 year', date_labels = '%Y') +
+				ggthemes::theme_fivethirtyeight()
+		)
+	
+	
+	fDf =
+		dplyr::bind_rows(
+			kSmooth,
+			tail(kFitted, 1),
+			kForecast %>% dplyr::mutate(., f1 = mean(dplyr::filter(ef$nc$zDf, date < '2020-03-01')$f1))
+		)
+	
+	yDf =
+		yTCondBigT %>%
+		purrr::map_dfr(., function(x) as_tibble(t(as.data.frame(x)))) %>%
+		dplyr::bind_cols(date = ef$nc$bigTStarDates, .)
+	
+	kfDf = yDf
+	# yDf %>%
+	# dplyr::select(
+	# 	.,
+	# 	date#,
+	# 	#all_of(dplyr::filter(ef$paramsDf, nowcast == 'kf')$varname)
+	# 	)
+	
+	ef$nc$fDf <<- fDf
+	ef$nc$kfPlots <<- kfPlots
+	ef$nc$yDf <<- yDf
+	ef$nc$kfDf <<- kfDf
+})
 
 
