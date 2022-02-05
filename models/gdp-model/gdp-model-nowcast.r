@@ -39,6 +39,7 @@ db = dbConnect(
 releases = list()
 hist = list()
 model = list()
+models = list()
 
 ## Load Variable Defs ----------------------------------------------------------
 variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'gdp-model-inputs')
@@ -52,7 +53,6 @@ bdates = c(
 	seq(as_date('2016-04-01'), add_with_rollback(today() - days(180), months(-1)), by = '1 month') %>%
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
 	) %>% sort(.)
-
 
 # Release Data ----------------------------------------------------------
 
@@ -532,7 +532,7 @@ local({
 ## 1. Dates -----------------------------------------------------------------
 local({
 
-	quarters_forward = 2
+	quarters_forward = 4
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
 	results = lapply(bdates, function(this_bdate) {
@@ -588,7 +588,7 @@ local({
 	
 	
 	for (x in results) {
-		model[[as.character(x$bdate)]] <<- x
+		models[[as.character(x$bdate)]] <<- x
 	}
 	model$quarters_forward <<- quarters_forward
 	model$pca_varnames <<- pca_varnames
@@ -599,8 +599,8 @@ local({
 local({
 	
 	results = lapply(bdates, function(this_bdate) {
-		
-		m = model[[as.character(this_bdate)]]
+
+		m = models[[as.character(this_bdate)]]
 		
 		xDf = filter(m$pca_variables_df, date %in% m$big_t_dates)
 	
@@ -726,13 +726,13 @@ local({
 	
 
 	for (x in results) {
-		model[[as.character(x$bdate)]]$factor_weights_df <<- x$factor_weights_df
-		model[[as.character(x$bdate)]]$scree_df <<- x$scree_df
-		model[[as.character(x$bdate)]]$scree_plot <<- x$scree_plot
-		model[[as.character(x$bdate)]]$big_r <<- x$big_r
-		model[[as.character(x$bdate)]]$pca_input_df <<- x$pca_input_df
-		model[[as.character(x$bdate)]]$z_df <<- x$z_df
-		model[[as.character(x$bdate)]]$z_plots <<- x$z_plots
+		models[[as.character(x$bdate)]]$factor_weights_df <<- x$factor_weights_df
+		models[[as.character(x$bdate)]]$scree_df <<- x$scree_df
+		models[[as.character(x$bdate)]]$scree_plot <<- x$scree_plot
+		models[[as.character(x$bdate)]]$big_r <<- x$big_r
+		models[[as.character(x$bdate)]]$pca_input_df <<- x$pca_input_df
+		models[[as.character(x$bdate)]]$z_df <<- x$z_df
+		models[[as.character(x$bdate)]]$z_plots <<- x$z_plots
 	}
 })
 
@@ -741,7 +741,7 @@ local({
 	
 	results = lapply(bdates, function(this_bdate) {
 		
-		m = model[[as.character(this_bdate)]]
+		m = models[[as.character(this_bdate)]]
 		
 		input_df = na.omit(inner_join(m$z_df, add_lagged_columns(m$z_df, max_lag = 1), by = 'date'))
 
@@ -821,252 +821,276 @@ local({
 		})
 	
 	for (x in results) {
-		model[[as.character(x$bdate)]]$var_fitted_plots <<- x$var_fitted_plots
-		model[[as.character(x$bdate)]]$var_resid_plots <<- x$var_resid_plots
-		model[[as.character(x$bdate)]]$var_gof_df <<- x$var_gof_df
-		model[[as.character(x$bdate)]]$var_coef_df <<- x$var_coef_df
-		model[[as.character(x$bdate)]]$q_mat <<- x$q_mat
-		model[[as.character(x$bdate)]]$b_mat <<- x$b_mat
-		model[[as.character(x$bdate)]]$c_mat <<- x$c_mat
+		models[[as.character(x$bdate)]]$var_fitted_plots <<- x$var_fitted_plots
+		models[[as.character(x$bdate)]]$var_resid_plots <<- x$var_resid_plots
+		models[[as.character(x$bdate)]]$var_gof_df <<- x$var_gof_df
+		models[[as.character(x$bdate)]]$var_coef_df <<- x$var_coef_df
+		models[[as.character(x$bdate)]]$q_mat <<- x$q_mat
+		models[[as.character(x$bdate)]]$b_mat <<- x$b_mat
+		models[[as.character(x$bdate)]]$c_mat <<- x$c_mat
 	}
 })
 
 ## 4. Run DFM on PCA Monthly Vars -----------------------------------------------------------------
 local({
 	
-	yMat = ef$nc$pcaInputDf %>% dplyr::select(., -date) %>% as.matrix(.)
-	xDf = ef$nc$zDf %>% dplyr::select(., -date) %>% dplyr::bind_cols(constant = 1, .)
-	
-	coefDf =
-		lm(yMat ~ . - 1, xDf) %>%
-		coef(.) %>%	
-		as.data.frame(.) %>%
-		rownames_to_column(., 'coefname') %>%
-		as_tibble(.)
-	
-	
-	fittedPlots =
-		lm(yMat ~ . - 1, xDf) %>%
-		fitted(.) %>%
-		as_tibble(.) %>%
-		dplyr::bind_cols(date = ef$nc$zDf$date, ., type = 'Fitted Values') %>%
-		dplyr::bind_rows(., ef$nc$pcaInputDf %>% dplyr::mutate(., type = 'Data')) %>%
-		tidyr::pivot_longer(., -c('type', 'date')) %>%
-		as.data.table(.) %>%
-		split(., by = 'name') %>%
-		purrr::imap(., function(x, i)
-			ggplot(x) +
-				geom_line(
-					aes(x = date, y = value, group = type, linetype = type, color = type),
-					size = 1, alpha = 1.0
-				) +
-				labs(
-					x = NULL, y = NULL, color = NULL, linetype = NULL,
-					title = paste0('Fitted values vs actual for factor ', i)
-				) +
-				scale_x_date(date_breaks = '1 year', date_labels = '%Y') +
-				ggthemes::theme_fivethirtyeight()
-		)
-	
-	
-	gofDf =
-		lm(yMat ~ . - 1, xDf) %>%
-		resid(.) %>%
-		as.data.frame(.) %>%
-		as_tibble(.) %>%
-		tidyr::pivot_longer(., everything(), names_to = 'varname') %>%
-		dplyr::group_by(., varname) %>%
-		dplyr::summarize(., MAE = mean(abs(value)), MSE = mean(value^2))
-	
-	
-	aMat = coefDf %>% dplyr::filter(., coefname != 'constant') %>% dplyr::select(., -coefname) %>% t(.)
-	dMat = coefDf %>% dplyr::filter(., coefname == 'constant') %>% dplyr::select(., -coefname) %>% t(.)
-	
-	rMat0 =
-		lm(yMat ~ . - 1, data = xDf) %>%
-		residuals(.) %>% 
-		as_tibble(.) %>%
-		purrr::transpose(.) %>%
-		lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
-		{purrr::reduce(., function(x, y) x + y)/length(.)}
-	
-	rMatDiag = tibble(varname = ef$nc$pcaVarnames, variance = diag(rMat0))
-	
-	
-	rMats =
-		lapply(ef$nc$bigTauDates, function(d)
-			sapply(ef$nc$pcaVarnames, function(v)
-				ef$h$m$st %>%
-					dplyr::filter(., date == (d)) %>%
-					.[[v]] %>% 
-					{if (is.na(.)) 1e20 else dplyr::filter(rMatDiag, varname == v)$variance}
+	results = lapply(bdates, function(this_bdate) {
+		
+		m = models[[as.character(this_bdate)]]
+		
+		y_mat = as.matrix(select(m$pca_input_df, -date))
+		x_df = bind_cols(constant = 1, select(m$z_df, -date))
+		
+		coef_df =
+			lm(y_mat ~ . - 1, x_df) %>%
+			coef(.) %>%	
+			as.data.frame(.) %>%
+			rownames_to_column(., 'coefname') %>%
+			as_tibble(.)
+		
+		
+		fitted_plots =
+			lm(y_mat ~ . - 1, x_df) %>%
+			fitted(.) %>%
+			as_tibble(.) %>%
+			bind_cols(date = m$z_df$date, ., type = 'Fitted Values') %>%
+			bind_rows(., mutate(m$pca_input_df, type = 'Data')) %>%
+			pivot_longer(., -c('type', 'date')) %>%
+			as.data.table(.) %>%
+			split(., by = 'name') %>%
+			purrr::imap(., function(x, i)
+				ggplot(x) +
+					geom_line(
+						aes(x = date, y = value, group = type, linetype = type, color = type),
+						size = 1, alpha = 1.0
+					) +
+					labs(
+						x = NULL, y = NULL, color = NULL, linetype = NULL,
+						title = paste0('Fitted values vs actual for factor ', i)
+					) +
+					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
+			)
+		
+		gof_df =
+			lm(y_mat ~ . - 1, x_df) %>%
+			resid(.) %>%
+			as.data.frame(.) %>%
+			as_tibble(.) %>%
+			pivot_longer(., everything(), names_to = 'varname') %>%
+			group_by(., varname) %>%
+			summarize(., MAE = mean(abs(value)), MSE = mean(value^2))
+		
+		
+		a_mat = coef_df %>% filter(., coefname != 'constant') %>% select(., -coefname) %>% t(.)
+		d_mat = coef_df %>% filter(., coefname == 'constant') %>% select(., -coefname) %>% t(.)
+		
+		r_mat_0 =
+			lm(y_mat ~ . - 1, data = x_df) %>%
+			residuals(.) %>% 
+			as_tibble(.) %>%
+			purrr::transpose(.) %>%
+			lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
+			{purrr::reduce(., function(x, y) x + y)/length(.)}
+		
+		r_mat_diag = tibble(varname = model$pca_varnames, variance = diag(r_mat_0))
+		
+		r_mats =
+			lapply(m$big_tau_dates, function(d)
+				sapply(model$pca_varnames, function(v)
+					hist$wide$m$st[[as.character(this_bdate)]] %>%
+						filter(., date == (d)) %>%
+						.[[v]] %>% 
+						{if (is.na(.)) 1e20 else filter(r_mat_diag, varname == v)$variance}
+					) %>%
+					diag(.)
 			) %>%
-				diag(.)
-		) %>%
-		c(lapply(1:length(ef$nc$bigTDates), function(x) rMat0), .)
+			c(lapply(1:length(m$big_t_dates), function(x) r_mat_0), .)
+		
+		list(
+			bdates = this_bdate,
+			dfm_gof_df = gof_df,
+			dfm_coef_df = coef_df,
+			dfm_fitted_plots = fitted_plots,
+			r_mats = r_mats,
+			a_mat = a_mat,
+			d_mat = d_mat
+		)
+	})
 	
 	
-	ef$nc$dfmGofDf <<- gofDf
-	ef$nc$dfmCoefDf <<- coefDf
-	ef$nc$dfmFittedPlots <<- fittedPlots
-	ef$nc$rMats <<- rMats
-	ef$nc$aMat <<- aMat
-	ef$nc$dMat <<- dMat
+	
+	for (x in results) {
+		models[[as.character(x$bdate)]]$dfm_gof_df <<- x$dfm_gof_df
+		models[[as.character(x$bdate)]]$dfm_coef_df <<- x$dfm_coef_df
+		models[[as.character(x$bdate)]]$dfm_fitted_plots <<- x$dfm_fitted_plots
+		models[[as.character(x$bdate)]]$r_mats <<- x$r_mats
+		models[[as.character(x$bdate)]]$a_mat <<- x$a_mat
+		models[[as.character(x$bdate)]]$d_mat <<- x$d_mat
+	}
 })
 
 
+
+## 5. Kalman Filter on State Space Obs -----------------------------------------------------------------
 local({
-	
-	bMat = ef$nc$bMat
-	cMat = ef$nc$cMat
-	aMat = ef$nc$aMat
-	dMat = ef$nc$dMat
-	rMats = ef$nc$rMats
-	qMat = ef$nc$qMat
-	yMats =
-		dplyr::bind_rows(
-			ef$nc$pcaInputDf,
-			ef$h$m$st %>%
-				dplyr::filter(., date %in% ef$nc$bigTauDates) %>%
-				dplyr::select(., date, ef$nc$pcaVarnames)
-		) %>%
-		dplyr::mutate(., across(-date, function(x) ifelse(is.na(x), 0, x))) %>%
-		dplyr::select(., -date) %>%
-		purrr::transpose(.) %>%
-		lapply(., function(x) matrix(unlist(x), ncol = 1))
-	
-	z0Cond0 = matrix(rep(0, ef$nc$bigR), ncol = 1)
-	sigmaZ0Cond0 = matrix(rep(0, ef$nc$bigR^2), ncol = ef$nc$bigR)
-	
-	zTCondTMinusOne = list()
-	zTCondT = list()
-	
-	sigmaZTCondTMinusOne = list()
-	sigmaZTCondT = list()
-	
-	yTCondTMinusOne = list()
-	sigmaYTCondTMinusOne = list()
-	
-	pT = list()
-	
-	for (t in 1:length(c(ef$nc$bigTDates, ef$nc$bigTauDates))) {
-		# message(t)
-		# Prediction Step
-		zTCondTMinusOne[[t]] = bMat %*% {if (t == 1) z0Cond0 else zTCondT[[t-1]]} + cMat
-		sigmaZTCondTMinusOne[[t]] = bMat %*% {if (t == 1) sigmaZ0Cond0 else sigmaZTCondT[[t-1]]} + qMat
-		yTCondTMinusOne[[t]] = aMat %*% zTCondTMinusOne[[t]] + dMat
-		sigmaYTCondTMinusOne[[t]] = aMat %*% sigmaZTCondTMinusOne[[t]] %*% t(aMat) + rMats[[t]]
+
+	results = lapply(bdates, function(this_bdate) {
 		
-		# Correction Step
-		pT[[t]] = sigmaZTCondTMinusOne[[t]] %*% t(aMat) %*%
-			{
-				if (t %in% 1:length(ef$nc$bigTDates)) solve(sigmaYTCondTMinusOne[[t]])
-				else chol2inv(chol(sigmaYTCondTMinusOne[[t]]))
-			}
-		zTCondT[[t]] = zTCondTMinusOne[[t]] + pT[[t]] %*% (yMats[[t]] - yTCondTMinusOne[[t]])
-		sigmaZTCondT[[t]] = sigmaZTCondTMinusOne[[t]] - (pT[[t]] %*% sigmaYTCondTMinusOne[[t]] %*% t(pT[[t]]))
-	}
-	
-	
-	kFitted =
-		zTCondT %>%
-		purrr::map_dfr(., function(x)
-			as.data.frame(x) %>% t(.) %>% as_tibble(.)
-		) %>%
-		dplyr::bind_cols(date = c(ef$nc$bigTDates, ef$nc$bigTauDates), .) 
-	
-	
-	## Smoothing step
-	zTCondBigTSmooth = list()
-	sigmaZTCondBigTSmooth = list()
-	sT = list()
-	
-	for (t in (length(zTCondT) - 1): 1) {
-		# message(t)
-		sT[[t]] = sigmaZTCondT[[t]] %*% t(bMat) %*% solve(sigmaZTCondTMinusOne[[t + 1]])
-		zTCondBigTSmooth[[t]] = zTCondT[[t]] + sT[[t]] %*% 
-			({if (t == length(zTCondT) - 1) zTCondT[[t + 1]] else zTCondBigTSmooth[[t + 1]]} - zTCondTMinusOne[[t + 1]])
-		sigmaZTCondBigTSmooth[[t]] = sigmaZTCondT[[t]] - sT[[t]] %*%
-			(sigmaZTCondTMinusOne[[t + 1]] -
-			 	{if (t == length(zTCondT) - 1) sigmaZTCondT[[t + 1]] else sigmaZTCondBigTSmooth[[t + 1]]}
-			) %*% t(sT[[t]])
-	}
-	
-	kSmooth =
-		zTCondBigTSmooth %>%
-		purrr::map_dfr(., function(x)
-			as.data.frame(x) %>% t(.) %>% as_tibble(.)
-		) %>%
-		dplyr::bind_cols(date = c(ef$nc$bigTDates, ef$nc$bigTauDates) %>% .[1:(length(.) - 1)], .) 
-	
-	
-	
-	
-	## Forecasting step
-	zTCondBigT = list()
-	sigmaZTCondBigT = list()
-	yTCondBigT = list()
-	sigmaYTCondBigT = list()
-	
-	for (j in 1:length(ef$nc$bigTStarDates)) {
-		zTCondBigT[[j]] = bMat %*% {if (j == 1) zTCondT[[length(zTCondT)]] else zTCondBigT[[j - 1]]} + cMat
-		sigmaZTCondBigT[[j]] = bMat %*% {if (j == 1) sigmaZTCondT[[length(sigmaZTCondT)]] else sigmaZTCondBigT[[j - 1]]} + qMat
-		yTCondBigT[[j]] = aMat %*% zTCondBigT[[j]] + dMat
-		sigmaYTCondBigT[[j]] = aMat %*% sigmaZTCondBigT[[j]] %*% t(aMat) + rMats[[1]]
-	}
-	
-	kForecast =
-		zTCondBigT %>%
-		purrr::map_dfr(., function(x)
-			as.data.frame(x) %>% t(.) %>% as_tibble(.)
-		) %>%
-		dplyr::bind_cols(date = ef$nc$bigTStarDates, .)
-	
-	
-	
-	# Plot and Cleaning
-	kfPlots =
-		lapply(colnames(ef$nc$zDf) %>% .[. != 'date'], function(.varname)
-			dplyr::bind_rows(
-				dplyr::mutate(ef$nc$zDf, type = 'Data'),
-				dplyr::mutate(kFitted, type = 'Kalman Filtered'),
-				dplyr::mutate(kForecast, type = 'Forecast'),
-				dplyr::mutate(kSmooth, type = 'Kalman Smoothed'),
+		m = models[[as.character(this_bdate)]]
+		
+		b_mat = m$b_mat
+		c_mat = m$c_mat
+		a_mat = m$a_mat
+		d_mat = m$d_mat
+		r_mats = m$r_mats
+		q_mat = m$q_mat
+		y_mats =
+			bind_rows(
+				m$pca_input_df,
+				hist$wide$m$st[[as.character(this_bdate)]] %>%
+					filter(., date %in% m$big_tau_dates) %>%
+					select(., date, model$pca_varnames)
 			) %>%
-				tidyr::pivot_longer(., -c('date', 'type'), names_to = 'varname') %>%
-				dplyr::filter(., varname == .varname) %>%
-				ggplot(.) +
-				geom_line(aes(x = date, y = value, color = type), size = 1) + 
-				labs(x = NULL, y = NULL, color = NULL, title = paste0('Kalman smoothed values for ', .varname)) +
-				scale_x_date(date_breaks = '1 year', date_labels = '%Y') +
-				ggthemes::theme_fivethirtyeight()
-		)
-	
-	
-	fDf =
-		dplyr::bind_rows(
+			mutate(., across(-date, function(x) ifelse(is.na(x), 0, x))) %>%
+			select(., -date) %>%
+			purrr::transpose(.) %>%
+			lapply(., function(x) matrix(unlist(x), ncol = 1))
+		
+		z0Cond0 = matrix(rep(0, m$big_r), ncol = 1)
+		sigmaZ0Cond0 = matrix(rep(0, m$big_r^2), ncol = m$big_r)
+		
+		zTCondTMinusOne = list()
+		zTCondT = list()
+		
+		sigmaZTCondTMinusOne = list()
+		sigmaZTCondT = list()
+		
+		yTCondTMinusOne = list()
+		sigmaYTCondTMinusOne = list()
+		
+		pT = list()
+		
+		## Filter Step
+		for (t in 1:length(c(m$big_t_dates, m$big_tau_dates))) {
+			# message(t)
+			# Prediction Step
+			zTCondTMinusOne[[t]] = b_mat %*% {if (t == 1) z0Cond0 else zTCondT[[t-1]]} + c_mat
+			sigmaZTCondTMinusOne[[t]] = b_mat %*% {if (t == 1) sigmaZ0Cond0 else sigmaZTCondT[[t-1]]} + q_mat
+			yTCondTMinusOne[[t]] = a_mat %*% zTCondTMinusOne[[t]] + d_mat
+			sigmaYTCondTMinusOne[[t]] = a_mat %*% sigmaZTCondTMinusOne[[t]] %*% t(a_mat) + r_mats[[t]]
+			
+			# Correction Step
+			pT[[t]] = sigmaZTCondTMinusOne[[t]] %*% t(a_mat) %*%
+				{
+					if (t %in% 1:length(m$big_t_dates)) solve(sigmaYTCondTMinusOne[[t]])
+					else chol2inv(chol(sigmaYTCondTMinusOne[[t]]))
+				}
+			zTCondT[[t]] = zTCondTMinusOne[[t]] + pT[[t]] %*% (y_mats[[t]] - yTCondTMinusOne[[t]])
+			sigmaZTCondT[[t]] = sigmaZTCondTMinusOne[[t]] - (pT[[t]] %*% sigmaYTCondTMinusOne[[t]] %*% t(pT[[t]]))
+		}
+		
+		
+		kFitted =
+			zTCondT %>%
+			purrr::map_dfr(., function(x)
+				as.data.frame(x) %>% t(.) %>% as_tibble(.)
+			) %>%
+			bind_cols(date = c(m$big_t_dates, m$big_tau_dates), .) 
+		
+		
+		## Smoothing step
+		zTCondBigTSmooth = list()
+		sigmaZTCondBigTSmooth = list()
+		sT = list()
+		
+		for (t in (length(zTCondT) - 1): 1) {
+			# message(t)
+			sT[[t]] = sigmaZTCondT[[t]] %*% t(b_mat) %*% solve(sigmaZTCondTMinusOne[[t + 1]])
+			zTCondBigTSmooth[[t]] = zTCondT[[t]] + sT[[t]] %*% 
+				({if (t == length(zTCondT) - 1) zTCondT[[t + 1]] else zTCondBigTSmooth[[t + 1]]} - zTCondTMinusOne[[t + 1]])
+			sigmaZTCondBigTSmooth[[t]] = sigmaZTCondT[[t]] - sT[[t]] %*%
+				(sigmaZTCondTMinusOne[[t + 1]] -
+				 	{if (t == length(zTCondT) - 1) sigmaZTCondT[[t + 1]] else sigmaZTCondBigTSmooth[[t + 1]]}
+				) %*% t(sT[[t]])
+		}
+		
+		kSmooth =
+			zTCondBigTSmooth %>%
+			map_dfr(., function(x)
+				as.data.frame(x) %>% t(.) %>% as_tibble(.)
+			) %>%
+			bind_cols(date = c(m$big_t_dates, m$big_tau_dates) %>% .[1:(length(.) - 1)], .) 
+		
+		
+		
+		## Forecasting step
+		zTCondBigT = list()
+		sigmaZTCondBigT = list()
+		yTCondBigT = list()
+		sigmaYTCondBigT = list()
+		
+		for (j in 1:length(m$big_tstar_dates)) {
+			zTCondBigT[[j]] = b_mat %*% {if (j == 1) zTCondT[[length(zTCondT)]] else zTCondBigT[[j - 1]]} + c_mat
+			sigmaZTCondBigT[[j]] = b_mat %*% {if (j == 1) sigmaZTCondT[[length(sigmaZTCondT)]] else sigmaZTCondBigT[[j - 1]]} + q_mat
+			yTCondBigT[[j]] = a_mat %*% zTCondBigT[[j]] + d_mat
+			sigmaYTCondBigT[[j]] = a_mat %*% sigmaZTCondBigT[[j]] %*% t(a_mat) + r_mats[[1]]
+		}
+		
+		kForecast =
+			zTCondBigT %>%
+			map_dfr(., function(x)
+				as.data.frame(x) %>% t(.) %>% as_tibble(.)
+			) %>%
+			bind_cols(date = m$big_tstar_dates, .)
+		
+		
+		
+		## Plot and Cleaning
+		kf_plots =
+			lapply(colnames(m$z_df) %>% .[. != 'date'], function(.varname)
+				bind_rows(
+					mutate(m$z_df, type = 'Data'),
+					mutate(kFitted, type = 'Kalman Filtered'),
+					mutate(kForecast, type = 'Forecast'),
+					mutate(kSmooth, type = 'Kalman Smoothed'),
+				) %>%
+					pivot_longer(., -c('date', 'type'), names_to = 'varname') %>%
+					filter(., varname == .varname) %>%
+					ggplot(.) +
+					geom_line(aes(x = date, y = value, color = type), size = 1) + 
+					labs(x = NULL, y = NULL, color = NULL, title = paste0('Kalman smoothed values for ', .varname)) +
+					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
+			)
+		
+		
+		f_df = bind_rows(
 			kSmooth,
 			tail(kFitted, 1),
-			kForecast %>% dplyr::mutate(., f1 = mean(dplyr::filter(ef$nc$zDf, date < '2020-03-01')$f1))
-		)
+			kForecast %>% mutate(., f1 = mean(filter(m$z_df, date < '2020-03-01')$f1))
+			)
+		
+		y_df =
+			yTCondBigT %>%
+			map_dfr(., function(x) as_tibble(t(as.data.frame(x)))) %>%
+			bind_cols(date = m$big_tstar_dates, .)
+		
+		kf_df = y_df
+		
+		list(
+			bdates = this_bdate,
+			f_df = f_df,
+			kf_plots = kf_plots,
+			y_df = y_df,
+			kf_df = kf_df
+			)
+	})
 	
-	yDf =
-		yTCondBigT %>%
-		purrr::map_dfr(., function(x) as_tibble(t(as.data.frame(x)))) %>%
-		dplyr::bind_cols(date = ef$nc$bigTStarDates, .)
-	
-	kfDf = yDf
-	# yDf %>%
-	# dplyr::select(
-	# 	.,
-	# 	date#,
-	# 	#all_of(dplyr::filter(ef$paramsDf, nowcast == 'kf')$varname)
-	# 	)
-	
-	ef$nc$fDf <<- fDf
-	ef$nc$kfPlots <<- kfPlots
-	ef$nc$yDf <<- yDf
-	ef$nc$kfDf <<- kfDf
+	for (x in results) {
+		models[[as.character(x$bdate)]]$f_df <<- x$f_df
+		models[[as.character(x$bdate)]]$kf_plots <<- x$kf_plots
+		models[[as.character(x$bdate)]]$y_df <<- x$y_df
+		models[[as.character(x$bdate)]]$kf_df <<- x$kf_df
+	}
 })
 
 
