@@ -1108,13 +1108,10 @@ local({
 	ar_lags = 2 # Lag can be included from 1-4
 
 	# As of 2/6/22 
-	# Single core takes about 15s per date for ar_lags = 1
-	# 4s per date for ar_lags = 0
-	
+	# Single core takes about 1s per date for ar_lags = 2
 	results = lapply(bdates, function(this_bdate) {
 		
 		message(str_glue('... Forecasting {this_bdate}'))
-		
 		m = models[[as.character(this_bdate)]]
 
 		# Only include variables which are available at that date
@@ -1165,29 +1162,34 @@ local({
 			b_mat =
 				coef_df[coefname %chin% factor_vars]$value %>%
 				matrix(., nrow = 1) %>%
-				rbind(., matrix(rep(0, (ar_lags - 1) * length(factor_vars)), ncol = length(factor_vars)))
+				{
+					if (ar_lags == 0) .
+					else rbind(., matrix(rep(0, (ar_lags - 1) * length(factor_vars)), ncol = length(factor_vars)))
+					}
 			
 			# Initialize constant matrix
-			c_mat = matrix(c(coef_df[coefname == 'constant']$value, rep(0, ar_lags - 1)), ncol = 1)
+			c_mat = 
+				c(coef_df[coefname == 'constant']$value, {if (ar_lags == 0) NULL else rep(0, ar_lags - 1)}) %>%
+				matrix(., ncol = 1)
 			
 			# Lag weighted matrix
 			a_mat =
 				matrix(coef_df[coefname %chin% lag_vars][order(coefname)]$value, nrow = 1) %>%
-				rbind(., cbind(diag(1, ar_lags - 1), matrix(rep(0, ar_lags - 1), ncol = 1)))
+				{
+					if (ar_lags == 0) .
+					else rbind(., cbind(diag(1, ar_lags - 1), matrix(rep(0, ar_lags - 1), ncol = 1)))
+				}
 			
 			forecast_dates = tail(seq(tail(input_df$date, 1), tail(m$big_tstar_dates, 1), by = '1 month'), -1)
 			
-			resmats = purrr::accumulate(1:length(forecast_dates), function(accum, i) 
-				c_mat + a_mat %*% accum + b_mat %*% f_mats[[i]],
+			purrr::accumulate(1:length(forecast_dates), function(accum, i)
+				c_mat + {if (ar_lags == 0) 0 else a_mat %*% accum} + b_mat %*% f_mats[[i]],
 				.init = y_0
 				) %>%
 				.[2:length(.)] %>%
 				sapply(., function(x) matrix(x, ncol = 1)[[1, 1]]) %>%
 				tibble(date = forecast_dates, varname = .varname, value = .)
 			
-			# message('varnames: ', as.numeric(difftime(now(), t0), units = 'secs'))
-			
-			return(resmats)
 			}) %>%
 			bind_rows(.) %>%
 			pivot_wider(., id_cols = 'date', names_from = varname, values_from = value) %>%
