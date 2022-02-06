@@ -6,6 +6,7 @@
 JOB_NAME = 'GDP-MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
+START_TIME = Sys.time()
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -59,7 +60,7 @@ bdates = c(
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
 
-	message('*** Getting Releases History')
+	message(str_glue('*** Getting Releases History: {round(as.numeric(difftime(now(), START_TIME)))} min'))
 
 	fred_releases =
 		variable_params %>%
@@ -1104,7 +1105,7 @@ local({
 	message('*** Forecasting Monthly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
-	ar_lags = 0 # Lag can be included from 1-4
+	ar_lags = 2 # Lag can be included from 1-4
 
 	# As of 2/6/22 
 	# Single core takes about 15s per date for ar_lags = 1
@@ -1122,10 +1123,244 @@ local({
 			select(., all_of(c('date', dfm_varnames[dfm_varnames %in% colnames(.)]))) %>%
 			# Add lags & inner join F
 			{if (ar_lags > 0) bind_cols(., select(add_lagged_columns(., max_lag = ar_lags), -date)) else .} %>%
-			inner_join(., m$f_df, by = 'date')
+			inner_join(., m$f_df, by = 'date') %>%
+			as.data.table(.)
 		
 		vars_to_forecast = colnames(stat_df) %>% keep(., ~ . %in% dfm_varnames)
+		factor_vars = paste0('f', 1:m$big_r)
+
+		dfm_df = lapply(vars_to_forecast, function(.varname) {
 			
+			# message(.varname)
+			lag_vars = {if (ar_lags == 0) NULL else paste0(.varname, '.l', 1:ar_lags)}
+			t0 = now()
+			
+			# Get inputs - include all historical data
+			input_df =
+				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
+				na.omit(.)
+
+			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
+			x_mat = input_df[, c(factor_vars, lag_vars), with = F][, constant := 1] %>% as.matrix(.)
+			
+			coef_df =
+				(solve(t(x_mat) %*% x_mat) %*% (t(x_mat) %*% y_mat)) %>%
+				as.data.table(.) %>%
+				.[, coefname := c(factor_vars, lag_vars, 'constant')] %>%
+				set_names(., c('value', 'coefname'))
+			
+			# Initialize lag Y_0 matrix
+			y_0 =
+				stat_df[order(-date)][date <= tail(input_df$date, 1), .varname, with = F] %>%
+				head(., ar_lags) %>%
+				as.matrix(., ncol = 1) 
+			
+			# Initialize factor matrix
+			f_mats =
+				as.data.table(m$f_df)[date > tail(input_df$date, 1), !'date'] %>%
+				split(., 1:nrow(.)) %>%
+				lapply(., function(x) t(x))
+			
+			# Initialize factor loadings matrix
+			b_mat =
+				coef_df[coefname %chin% factor_vars]$value %>%
+				matrix(., nrow = 1) %>%
+				rbind(., matrix(rep(0, (ar_lags - 1) * length(factor_vars)), ncol = length(factor_vars)))
+			
+			# Initialize constant matrix
+			c_mat = matrix(c(coef_df[coefname == 'constant']$value, rep(0, ar_lags - 1)), ncol = 1)
+			
+			# Lag weighted matrix
+			a_mat =
+				matrix(coef_df[coefname %chin% lag_vars][order(coefname)]$value, nrow = 1) %>%
+				rbind(., cbind(diag(1, ar_lags - 1), matrix(rep(0, ar_lags - 1), ncol = 1)))
+			
+			forecast_dates = tail(seq(tail(input_df$date, 1), tail(m$big_tstar_dates, 1), by = '1 month'), -1)
+			
+			resmats = purrr::accumulate(1:length(forecast_dates), function(accum, i) 
+				c_mat + a_mat %*% accum + b_mat %*% f_mats[[i]],
+				.init = y_0
+				) %>%
+				.[2:length(.)] %>%
+				sapply(., function(x) matrix(x, ncol = 1)[[1, 1]]) %>%
+				tibble(date = forecast_dates, varname = .varname, value = .)
+			
+			# message('varnames: ', as.numeric(difftime(now(), t0), units = 'secs'))
+			
+			return(resmats)
+			}) %>%
+			bind_rows(.) %>%
+			pivot_wider(., id_cols = 'date', names_from = varname, values_from = value) %>%
+			arrange(., date)
+
+		list(
+			bdate = this_bdate,
+			dfm_m_df = dfm_df
+		)
+	})
+	
+	for (x in results) {
+		models[[as.character(x$bdate)]]$dfm_m_df <<- x$dfm_m_df
+	}
+})
+
+
+## 1. Monthly Variables  -----------------------------------------------------------------
+#' TBD: Forecast by rewriting to VAR(p)
+#' y_{t+s} = A^s*Y_t + sum^{s-1}_{j=0} (A^j (BF_{t+j} + C))
+local({
+	
+	message('*** Forecasting Monthly Variables')
+	
+	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
+	ar_lags = 2 # Lag can be included from 1-4
+	
+	
+	results = lapply(bdates, function(this_bdate) {
+		
+		message(str_glue('... Forecasting {this_bdate}'))
+		
+		m = models[[as.character(this_bdate)]]
+
+		t0 = now()
+		# Only include variables which are available at that date
+		stat_df =
+			hist$wide$m$st[[as.character(this_bdate)]] %>%
+			select(., all_of(c('date', dfm_varnames[dfm_varnames %in% colnames(.)]))) %>%
+			# Add lags & inner join F
+			{if (ar_lags > 0) bind_cols(., select(add_lagged_columns(., max_lag = ar_lags), -date)) else .} %>%
+			inner_join(., m$f_df, by = 'date') %>%
+			arrange(., date) %>%
+			as.data.table(.)
+		message('stat_df: ', as.numeric(difftime(now(), t0), units = 'secs'))
+		
+		vars_to_forecast = colnames(stat_df) %>% keep(., ~ . %in% dfm_varnames)
+		factor_vars = paste0('f', 1:m$big_r)
+		lag_vars = {if (ar_lags > 0) sort(paste0(vars_to_forecast, '.l', 1:ar_lags)) else NULL}
+		message('varnames: ', as.numeric(difftime(now(), t0), units = 'secs'))
+		
+		# Regressions
+		tz = now()
+		coefs = lapply(vars_to_forecast, function(.varname) {
+			
+			input_df = na.omit(stat_df[, c('date', .varname, factor_vars, paste0(.varname, '.l', 1:ar_lags)), with = F])
+
+			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
+			x_mat =
+				input_df[, c(factor_vars,  paste0(.varname, '.l', 1:ar_lags)), with = F] %>%
+				.[, constant := 1] %>%
+				as.matrix(.)
+			
+			(solve(t(x_mat) %*% x_mat) %*% (t(x_mat) %*% y_mat)) %>%
+				as.data.table(.) %>%
+				setnames(., .varname, 'value') %>%
+				.[, c('varname', 'coefname') :=
+						list(.varname, c(factor_vars, paste0(.varname, '.l', 1:ar_lags), 'constant'))
+					] 
+			}) %>%
+			rbindlist(.)
+		message('varnames: ', as.numeric(difftime(now(), tz), units = 'secs'))
+		
+		# Split data by last data date - forecast each group separately as a VAR(1)
+		last_data_date_split =
+			stat_df %>%
+			select(., date, )
+			pivot_longer(., -'date', names_to = 'varname', values_to = 'value', values_drop_na = T) %>%
+			group_by(., varname) %>%
+			summarize(., last_data_date = max(date)) %>%
+			group_by(., last_data_date) %>%
+			summarize(., varnames = list(varname)) %>%
+			purrr::transpose(.)
+		message('last_data_date_split: ', as.numeric(difftime(now(), t0), units = 'secs'))
+		
+		dfm_df = lapply(last_data_date_split, function(split) {
+			
+			tz = now()
+			message('split start: ', as.numeric(difftime(now(), t0), units = 'secs'))
+
+			# Let M := number of y covs to predict, L := number of lags
+			# Get matrix ML x 1 			
+			# t(var1_lag1 var2_lag1 var1_lag2 var2_lag2 ...)
+			big_m = length(split$varnames)
+			big_l = ar_lags
+			
+			y_0 =
+				stat_df[order(-date)][date <= split$last_data_date, sort(split$varnames), with = F] %>%
+				head(., big_l) %>%
+				t(.) %>%
+				matrix(., ncol = 1)
+			
+			# Create F matrices
+			f_mats =
+				as.data.table(m$f_df)[date > split$last_data_date, !'date'] %>%
+				split(., 1:nrow(.)) %>%
+				lapply(., function(x) t(x))
+			
+			b_mat =
+				dcast(coefs[varname %in% split$varnames & coefname %in% factor_vars], varname ~ coefname) %>%
+				.[order(varname), !'varname'] %>%
+				as.matrix(.) %>%
+				rbind(
+					.,
+					matrix(rep(0, big_m * (big_l - 1) * length(factor_vars)), ncol = length(factor_vars))
+					)
+			
+			c_mat =
+				dcast(coefs[varname %in% split$varnames & coefname == 'constant'], varname ~ coefname) %>%
+				.[order(varname), !'varname']  %>% 
+				as.matrix(.) %>%
+				rbind(., matrix(rep(0, ((big_m - 1) * big_l)), ncol = 1))
+
+			a_mat =
+				
+			
+			input_df =
+				stat_df %>% 
+				select(., all_of(
+					c('date', .varname, paste0('f', 1:m$big_r)) %>% 
+						{if (ar_lags > 0) c(., paste0(.varname, '.l', 1:ar_lags)) else .}
+				)) %>%
+				na.omit(.)
+			
+			# Initialize forecast w/ dates
+			forecast_df_0 =
+				# Initialize 4 periods ago
+				tibble(
+					date = seq(from = head(tail(input_df$date, 4), 1), to = tail(m$big_tstar_dates, 1), by = '1 month')
+				) %>%
+				# Deselect to include correct number of lags
+				.[(5 - ar_lags):nrow(.), ] %>%
+				# Bind in varname 
+				left_join(., select(input_df, all_of(c('date', .varname))), by = 'date') %>%
+				# Bind in factor forecasts
+				left_join(., m$f_df, by = 'date') %>%
+				mutate(., constant = 1)
+			
+			purrr::reduce((ar_lags + 1):nrow(forecast_df_0), function(accum, x) {
+				accum[x, .varname] =
+					accum %>%
+					{
+						if (ar_lags == 0) .
+						else bind_cols(., select(add_lagged_columns(., max_lag = ar_lags), -date))
+					} %>%
+					.[x, ] %>%
+					select(., coef_df$coefname) %>%
+					matrix(., ncol = 1) %>%
+					{matrix(coef_df$value, nrow = 1) %*% as.numeric(.)}
+				return(accum)
+			},
+			.init = forecast_df_0
+			) %>%
+				.[(ar_lags + 1):nrow(.),] %>%
+				select(., all_of(c('date', .varname)))
+			
+		})
+		message('final: ', as.numeric(difftime(now(), t0), units = 'secs'))
+		
+		
+		
+		
+		
 		dfm_df = lapply(vars_to_forecast, function(.varname) {
 			
 			# Get inputs - include all historical data
@@ -1134,7 +1369,7 @@ local({
 				select(., all_of(
 					c('date', .varname, paste0('f', 1:m$big_r)) %>% 
 						{if (ar_lags > 0) c(., paste0(.varname, '.l', 1:ar_lags)) else .}
-					)) %>%
+				)) %>%
 				na.omit(.)
 			
 			y_mat = select(input_df, all_of(.varname)) %>% as.matrix(.)
@@ -1159,7 +1394,7 @@ local({
 				# Bind in factor forecasts
 				left_join(., m$f_df, by = 'date') %>%
 				mutate(., constant = 1)
-
+			
 			purrr::reduce((ar_lags + 1):nrow(forecast_df_0), function(accum, x) {
 				accum[x, .varname] =
 					accum %>%
@@ -1172,13 +1407,13 @@ local({
 					matrix(., ncol = 1) %>%
 					{matrix(coef_df$value, nrow = 1) %*% as.numeric(.)}
 				return(accum)
-				},
-				.init = forecast_df_0
-				) %>%
+			},
+			.init = forecast_df_0
+			) %>%
 				.[(ar_lags + 1):nrow(.),] %>%
 				select(., all_of(c('date', .varname)))
 			
-			}) %>%
+		}) %>%
 			keep(., ~ is_tibble(.)) %>%
 			reduce(., function(accum, x) full_join(accum, x, by = 'date')) %>%
 			arrange(., date)
