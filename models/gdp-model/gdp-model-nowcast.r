@@ -527,7 +527,7 @@ local({
 	hist$wide_last <<- wide_last
 })
 
-# Nowcast -----------------------------------------------------------------
+# State-Space Model -----------------------------------------------------------------
 
 ## 1. Dates -----------------------------------------------------------------
 local({
@@ -1093,4 +1093,89 @@ local({
 	}
 })
 
+
+# Nowcast  -----------------------------------------------------------------
+
+## 1. Monthly Variables  -----------------------------------------------------------------
+local({
+	
+	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
+	ar_lags = 3 # Lag can be included from 1-4
+	
+	results = lapply(bdates, function(this_bdate) {
+		
+		message(this_bdate)
+		m = models[[as.character(this_bdate)]]
+		
+		stat_df = hist$wide$m$st[[as.character(this_bdate)]]
+		
+		dfm_df = lapply(dfm_varnames, function(.varname) {
+			
+			# Don't return if varname not in this date 
+			if (!.varname %in% colnames(stat_df)) return(NA)
+			
+			# Get inputs - include all historical data
+			input_df =
+				select(stat_df, date, all_of(.varname)) %>%
+				{if (ar_lags > 0) inner_join(., add_lagged_columns(., max_lag = ar_lags), by = 'date') else .} %>%
+				inner_join(., m$f_df, by = 'date') %>%
+				na.omit(.)
+			
+			y_mat = select(input_df, all_of(.varname)) %>% as.matrix(.)
+			x_df = select(input_df, -date, -all_of(.varname)) %>% mutate(., constant = 1)
+			
+			coef_df =
+				lm(y_mat ~ . - 1, x_df)$coef %>%
+				as.data.frame(.) %>%
+				rownames_to_column(., 'coefname') %>%
+				as_tibble(.) %>%
+				set_names(., c('coefname', 'value'))
+			
+			# Initialize forecast w/ dates
+			forecast_df_0 =
+				# Initialize 4 periods ago
+				tibble(
+					date = seq(from = head(tail(input_df$date, 4), 1), to = tail(m$big_tstar_dates, 1), by = '1 month')
+				) %>%
+				# Deselect to include correct number of lags
+				.[(5 - ar_lags):nrow(.), ] %>%
+				# Bind in varname 
+				left_join(., input_df[, c('date', .varname)], by = 'date') %>%
+				# Bind in factor forecasts
+				left_join(., m$f_df, by = 'date') %>%
+				bind_cols(., constant = 1)
+
+
+			forecast_df =
+				purrr::reduce((ar_lags + 1):nrow(forecast_df_0), function(accum, x) {
+					accum[x, .varname] =
+						accum %>%
+						{
+							if (ar_lags == 0) .
+							else left_join(., add_lagged_columns(., max_lag = ar_lags), by = 'date')
+							} %>%
+						.[x, ] %>%
+						select(., coef_df$coefname) %>%
+						matrix(., ncol = 1) %>%
+						{matrix(coef_df$value, nrow = 1) %*% as.numeric(.)}
+					return(accum)
+				}, .init = forecast_df_0) %>%
+				.[(ar_lags + 1):nrow(.),] %>%
+				select(., all_of(c('date', .varname)))
+				
+				return(forecast_df)
+			}) %>%
+			keep(., ~ is_tibble(.)) %>%
+			reduce(., function(accum, x) full_join(accum, x, by = 'date')) %>%
+			arrange(., date)
+		
+		list(
+			bdate = this_bdate,
+			dfm_m_df = dfm_df
+			)
+	})
+	
+	
+	ef$nc$dfmMDf <<- dfmMDf	
+})
 
