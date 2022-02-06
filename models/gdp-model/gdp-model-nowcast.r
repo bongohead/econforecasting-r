@@ -1104,36 +1104,37 @@ local({
 	message('*** Forecasting Monthly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
-	ar_lags = 1 # Lag can be included from 1-4
+	ar_lags = 0 # Lag can be included from 1-4
 
+	# As of 2/6/22 
+	# Single core takes about 15s per date for ar_lags = 1
+	# 4s per date for ar_lags = 0
+	
 	results = lapply(bdates, function(this_bdate) {
 		
 		message(str_glue('... Forecasting {this_bdate}'))
 		
 		m = models[[as.character(this_bdate)]]
-		f_df = as.data.table(m$f_df)
-		
+
 		# Only include variables which are available at that date
 		stat_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
 			select(., all_of(c('date', dfm_varnames[dfm_varnames %in% colnames(.)]))) %>%
-			as.data.table(.) %>%
 			# Add lags & inner join F
 			{if (ar_lags > 0) bind_cols(., select(add_lagged_columns(., max_lag = ar_lags), -date)) else .} %>%
-			merge(., f_df, by = 'date')
+			inner_join(., m$f_df, by = 'date')
+		
+		vars_to_forecast = colnames(stat_df) %>% keep(., ~ . %in% dfm_varnames)
 			
-		dfm_df = lapply(colnames(stat_df)[colnames(stat_df) != 'date'], function(.varname) {
+		dfm_df = lapply(vars_to_forecast, function(.varname) {
 			
 			# Get inputs - include all historical data
 			input_df =
 				stat_df %>% 
-				select(
-					.,
-					all_of(c(
-						'date',
-						.varname, {if (ar_lags > 0) paste0(.varname, '.l', 1:ar_lags) else NA},
-						paste0('f', 1:m$big_r)
-						))) %>%
+				select(., all_of(
+					c('date', .varname, paste0('f', 1:m$big_r)) %>% 
+						{if (ar_lags > 0) c(., paste0(.varname, '.l', 1:ar_lags)) else .}
+					)) %>%
 				na.omit(.)
 			
 			y_mat = select(input_df, all_of(.varname)) %>% as.matrix(.)
@@ -1148,16 +1149,16 @@ local({
 			# Initialize forecast w/ dates
 			forecast_df_0 =
 				# Initialize 4 periods ago
-				data.table(
+				tibble(
 					date = seq(from = head(tail(input_df$date, 4), 1), to = tail(m$big_tstar_dates, 1), by = '1 month')
 				) %>%
 				# Deselect to include correct number of lags
 				.[(5 - ar_lags):nrow(.), ] %>%
 				# Bind in varname 
-				merge(., select(input_df, all_of(c('date', .varname))), by = 'date', all.x = T) %>%
+				left_join(., select(input_df, all_of(c('date', .varname))), by = 'date') %>%
 				# Bind in factor forecasts
-				merge(., f_df, by = 'date', all.x = T) %>%
-				.[, constant := 1]
+				left_join(., m$f_df, by = 'date') %>%
+				mutate(., constant = 1)
 
 			purrr::reduce((ar_lags + 1):nrow(forecast_df_0), function(accum, x) {
 				accum[x, .varname] =
@@ -1178,9 +1179,8 @@ local({
 				select(., all_of(c('date', .varname)))
 			
 			}) %>%
-			keep(., ~ is.data.table(.)) %>%
-			reduce(., function(accum, x) merge(accum, x, by = 'date', all = T)) %>%
-			as_tibble(.) %>%
+			keep(., ~ is_tibble(.)) %>%
+			reduce(., function(accum, x) full_join(accum, x, by = 'date')) %>%
 			arrange(., date)
 		
 		list(
@@ -1189,10 +1189,8 @@ local({
 		)
 	})
 	
-	
-	
-
-	
-	ef$nc$dfmMDf <<- dfmMDf	
+	for (x in results) {
+		models[[as.character(x$bdate)]]$dfm_m_df <<- x$dfm_m_df
+	}
 })
 
