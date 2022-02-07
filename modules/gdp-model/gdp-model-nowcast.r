@@ -1210,11 +1210,11 @@ local({
 ## 2. Quarterly Variables (DFM-LASSO)  -----------------------------------------------------------------
 #' Similar to monthly but with no constant
 local({
-	
-	message('*** Forecasting Monthly Variables')
+
+	message('*** Forecasting Quarterly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.q')$varname
-	ar_lags = 1
+	ar_lags = 0
 	
 	results = lapply(bdates, function(this_bdate) {
 		
@@ -1440,7 +1440,9 @@ local({
 				 		}]
 				) %>%
 			rbindlist(.) %>%
-			.[, st := NULL]
+			.[, st := NULL] %>%
+			dcast(., date ~ varname, value.var = 'value', fill = NA) %>%
+			as_tibble(.)
 		
 		q_df =
 			m$dfm_q_df %>%
@@ -1463,9 +1465,11 @@ local({
 							unapchg(value, 4, tail(filter(this_q_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
 						else stop('Error')
 					}]
-			) %>%
+				) %>%
 			rbindlist(.) %>%
-			.[, st := NULL]
+			.[, st := NULL] %>%
+			dcast(., date ~ varname, value.var = 'value', fill = NA) %>%
+			as_tibble(.)
 		
 		list(
 			bdate = this_bdate,
@@ -1475,26 +1479,25 @@ local({
 		})
 	
 	for (x in results) {
-		models[[as.character(x$bdate)]]$pred_m_ut <<- x$m_ut
-		models[[as.character(x$bdate)]]$pred_q_ut <<- x$pred_q_ut
+		models[[as.character(x$bdate)]]$pred_m_ut0 <<- x$m_ut
+		models[[as.character(x$bdate)]]$pred_q_ut0 <<- x$q_ut
 	}
 })
 
 
-## 3. Calculate GDP Nowcast  -----------------------------------------------------------------
+## 4. Calculate GDP Nowcast  -----------------------------------------------------------------
 local({
 	
-	message('*** Forecasting Nowcast Variables')
+	message('*** Adding Calculated Variables')
 	
 	results = lapply(bdates, function(this_bdate) {
 		
 		message(str_glue('... Forecasting {this_bdate}'))
-		
 		m = models[[as.character(this_bdate)]]
 		
-		ut_q_df =
-			ef$ncpred0$q$ut %>%
-			dplyr::transmute(
+		pred_q_ut1 =
+			m$pred_q_ut0 %>%
+			transmute(
 				.,
 				date,
 				govt = govtf + govts,
@@ -1511,17 +1514,120 @@ local({
 				gdp = pce + pdi + nx + govt
 			)
 		
-		mDf =
-			ef$ncpred0$m$ut %>%
-			dplyr::transmute(
+		pred_m_ut1 =
+			m$pred_m_ut0 %>%
+			transmute(
 				.,
 				date,
 				psr = ps/pid
 			)
+		
+		list(
+			bdate = this_bdate,
+			pred_q_ut1 = pred_q_ut1,
+			pred_m_ut1 = pred_m_ut1
+			)
 	})
 	
-	ef$ncpred1$m$ut <<- mDf
-	ef$ncpred1$q$ut <<- qDf
+	for (x in results) {
+		models[[as.character(x$bdate)]]$pred_m_ut1 <<- x$pred_m_ut1
+		models[[as.character(x$bdate)]]$pred_q_ut1 <<- x$pred_q_ut1
+	}
 })
 
+
+## 5. Aggregate & Create Display Formats  -----------------------------------------------------------------
+local({
+	
+	results = lapply(bdates, function(this_bdate) {
+		
+		message(str_glue('... Aggregating {this_bdate}'))
+		m = models[[as.character(this_bdate)]]
+		
+		wide = list()
+		
+		pred_ut = lapply(c('m', 'q') %>% set_names(., .), function(freq)
+			{if (freq == 'm') list(m$pred_m_ut0, m$pred_m_ut1) else list(m$pred_q_ut0, m$pred_q_ut1)} %>%
+				reduce(., function(x, y) full_join(x, y, by = 'date')) %>%
+				arrange(., date)
+			)
+		
+		this_hist = lapply(c('m', 'q') %>% set_names(., .), function(freq)
+			hist$wide[[freq]]$base[[as.character(this_bdate)]] %>%
+				as.data.table(.) %>%
+				melt(., id.vars = 'date', variable.name = 'varname', na.rm = T)
+			)
+		
+		pred_flat = 
+			# Map each frequency x display form combination
+			expand_grid(form = c('d1', 'd2'), freq = c('m', 'q')) %>%
+			purrr::transpose(.) %>%
+			lapply(., function(z) {
+				
+				df =
+					pred_ut[[z$freq]] %>%
+						as.data.table(.) %>%
+						melt(., id.vars = 'date', value.name = 'value', variable.name = 'varname', na.rm = T) %>%
+						merge(
+							.,
+							rename(variable_params[, c('varname', z$form)], 'transform' = z$form),
+							by = 'varname', all.x = T
+							) %>%
+						split(., by = 'varname') %>%
+						lapply(., function(x) {
+							# message(x$varname[[1]])
+							x[order(date)] %>%
+								# Bind historical date
+								rbind(
+									this_hist[[z$freq]][date < .$date[[1]] & varname == .$varname[[1]]] %>%
+										.[, transform := x$transform[[1]]] %>%
+										last(.),
+										.
+									) %>%
+								.[, value := {
+									if (.$transform[[1]] == 'none') NA
+									else if (.$transform[[1]] == 'base') value
+									else if (.$transform[[1]] == 'dlog') dlog(value)
+									else if (.$transform[[1]] == 'diff1') diff1(value)
+									else if (.$transform[[1]] == 'pchg') pchg(value)
+									else if (.$transform[[1]] == 'apchg') apchg(value, 12)
+									else stop('Error')
+								}] %>%
+								tail(., -1)
+						}) %>%
+						rbindlist(.) %>%
+						.[, transform := NULL] %>%
+						na.omit(.)
+				
+				list(
+					df = df,
+					form = z$form,
+					freq = z$freq
+					)
+			}) %>%
+			map_dfr(., function(z) z$df[, c('form', 'freq') := list(z$form, z$freq)])
+			
+		list(
+			bdate = this_bdate,
+			pred_flat = pred_flat
+			)
+		})
+	
+	pred_flat =
+		map_dfr(results, function(z) as_tibble(mutate(z$pred_flat, bdate = z$bdate))) %>%
+		# Varname gets casted as a factor
+		mutate(., varname = as.character(varname))
+	
+	pred_wide =
+		lapply(split(as.data.table(pred_flat), by = 'bdate', keep.by = F), function(x)
+			lapply(split(x, by = 'freq', keep.by = F), function(y)
+				lapply(split(y, by = 'form', keep.by = F), function(z)
+					dcast(z, date ~ varname, value.var = 'value')[order(date)] %>%
+						as_tibble(.)
+					)
+				)
+			)
+	
+	
+})
 
