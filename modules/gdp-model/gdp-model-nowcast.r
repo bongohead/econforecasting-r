@@ -992,7 +992,6 @@ local({
 			sigmaZTCondT[[t]] = sigmaZTCondTMinusOne[[t]] - (pT[[t]] %*% sigmaYTCondTMinusOne[[t]] %*% t(pT[[t]]))
 		}
 		
-		
 		kFitted =
 			zTCondT %>%
 			purrr::map_dfr(., function(x)
@@ -1403,55 +1402,126 @@ local({
 	}
 })
 
+## 3. Detransform ---------------------------------------------------------------
+local({
+	
+	message('*** Reversing Stationary Transformations')
+	
+	# Detransform monthly and quarterly forecasts
+	results = lapply(bdates, function(this_bdate) {
+		
+		message(str_glue('... Detransforming {this_bdate}'))
+		
+		m = models[[as.character(this_bdate)]]
+		
+		this_m_hist = hist$wide$m$base[[as.character(this_bdate)]]
+		this_q_hist = hist$wide$q$base[[as.character(this_bdate)]]
+		
+		m_df =
+			m$dfm_m_df %>%
+			as.data.table(.) %>%
+			melt(., id.vars = 'date', value.name = 'value', variable.name = 'varname', na.rm = T) %>%
+			merge(., variable_params[, c('varname', 'st')], by = 'varname', all.x = T) %>%
+			split(., by = 'varname') %>%
+			lapply(., function(x) 
+				 x[order(date)] %>%
+				 	.[, value := {
+				 		if (.$st[[1]] == 'none') NA
+				 		else if (.$st[[1]] == 'base') value
+				 		else if (.$st[[1]] == 'dlog')
+				 			undlog(value, tail(filter(this_m_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+				 		else if (.$st[[1]] == 'diff1')
+				 			undiff(value, 1, tail(filter(this_m_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+				 		else if (.$st[[1]] == 'pchg')
+				 			unpchg(value, tail(filter(this_m_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+				 		else if (.$st[[1]] == 'apchg')
+				 			unapchg(value, 12, tail(filter(this_m_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+				 		else stop('Error')
+				 		}]
+				) %>%
+			rbindlist(.) %>%
+			.[, st := NULL]
+		
+		q_df =
+			m$dfm_q_df %>%
+			as.data.table(.) %>%
+			melt(., id.vars = 'date', value.name = 'value', variable.name = 'varname', na.rm = T) %>%
+			merge(., variable_params[, c('varname', 'st')], by = 'varname', all.x = T) %>%
+			split(., by = 'varname') %>%
+			lapply(., function(x) 
+				x[order(date)] %>%
+					.[, value := {
+						if (.$st[[1]] == 'none') NA
+						else if (.$st[[1]] == 'base') value
+						else if (.$st[[1]] == 'dlog')
+							undlog(value, tail(filter(this_q_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+						else if (.$st[[1]] == 'diff1')
+							undiff(value, 1, tail(filter(this_q_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+						else if (.$st[[1]] == 'pchg')
+							unpchg(value, tail(filter(this_q_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+						else if (.$st[[1]] == 'apchg')
+							unapchg(value, 4, tail(filter(this_q_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
+						else stop('Error')
+					}]
+			) %>%
+			rbindlist(.) %>%
+			.[, st := NULL]
+		
+		list(
+			bdate = this_bdate,
+			m_ut = m_df,
+			q_ut = q_df
+			)
+		})
+	
+	for (x in results) {
+		models[[as.character(x$bdate)]]$pred_m_ut <<- x$m_ut
+		models[[as.character(x$bdate)]]$pred_q_ut <<- x$pred_q_ut
+	}
+})
+
+
 ## 3. Calculate GDP Nowcast  -----------------------------------------------------------------
 local({
 	
-	qDf =
-		ef$ncpred0$q$ut %>%
-		dplyr::transmute(
-			.,
-			date,
-			govt = govtf + govts,
-			ex = exg + exs,
-			im = img + ims,
-			nx = ex - im,
-			pdin = pdinstruct + pdinequip + pdinip,
-			pdi = pdin + pdir + pceschange,
-			pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit,
-			pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother,
-			pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother,
-			pceg = pcegn + pcegd,
-			pce = pceg + pces,
-			gdp = pce + pdi + nx + govt
-		)
+	message('*** Forecasting Nowcast Variables')
 	
-	mDf =
-		ef$ncpred0$m$ut %>%
-		dplyr::transmute(
-			.,
-			date,
-			psr = ps/pid
-		)
+	results = lapply(bdates, function(this_bdate) {
+		
+		message(str_glue('... Forecasting {this_bdate}'))
+		
+		m = models[[as.character(this_bdate)]]
+		
+		ut_q_df =
+			ef$ncpred0$q$ut %>%
+			dplyr::transmute(
+				.,
+				date,
+				govt = govtf + govts,
+				ex = exg + exs,
+				im = img + ims,
+				nx = ex - im,
+				pdin = pdinstruct + pdinequip + pdinip,
+				pdi = pdin + pdir + pceschange,
+				pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit,
+				pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother,
+				pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother,
+				pceg = pcegn + pcegd,
+				pce = pceg + pces,
+				gdp = pce + pdi + nx + govt
+			)
+		
+		mDf =
+			ef$ncpred0$m$ut %>%
+			dplyr::transmute(
+				.,
+				date,
+				psr = ps/pid
+			)
+	})
 	
 	ef$ncpred1$m$ut <<- mDf
 	ef$ncpred1$q$ut <<- qDf
 })
 
-## Aggregate ---------------------------------------------------------------
-local({
-	
-	mDf =
-		list(ef$nc$dfmMDf, ef$nc$cmefiDf) %>%
-		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-		dplyr::arrange(., date)
-	
-	qDf =
-		list(ef$nc$dfmQDf) %>%
-		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
-		dplyr::arrange(., date)
-	
-	
-	ef$ncpred0$m$st <<- mDf
-	ef$ncpred0$q$st <<- qDf
-})
 
