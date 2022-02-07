@@ -668,7 +668,7 @@ local({
 		bigR =
 			screeDf %>%
 			dplyr::filter(., ic1 == min(ic1)) %>%
-			.$factors #+ 2
+			.$factors + 0#+ 2
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -746,7 +746,6 @@ local({
 	
 	results = lapply(bdates, function(this_bdate) {
 		
-		message(this_bdate)
 		m = models[[as.character(this_bdate)]]
 		
 		input_df = na.omit(inner_join(m$z_df, add_lagged_columns(m$z_df, max_lag = 1), by = 'date'))
@@ -759,7 +758,8 @@ local({
 			coef(.) %>%
 			as.data.frame(.) %>%
 			rownames_to_column(., 'coefname') %>%
-			as_tibble(.) 
+			as_tibble(.) %>%
+			set_names(., c('coefname', paste0('f', 1:m$big_r)))
 			
 		gof_df =
 			lm(y_mat ~ . - 1, x_df) %>%
@@ -1546,8 +1546,6 @@ local({
 		
 		message(str_glue('... Aggregating {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
-		
-		wide = list()
 		
 		pred_ut = lapply(c('m', 'q') %>% set_names(., .), function(freq)
 			{if (freq == 'm') list(m$pred_m_ut0, m$pred_m_ut1) else list(m$pred_q_ut0, m$pred_q_ut1)} %>%
