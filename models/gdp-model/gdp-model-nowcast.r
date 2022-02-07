@@ -26,6 +26,7 @@ library(DBI)
 library(econforecasting)
 library(lubridate)
 library(jsonlite)
+library(glmnet)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
@@ -1099,7 +1100,7 @@ local({
 
 # Nowcast  -----------------------------------------------------------------
 
-## 1. Monthly Variables  -----------------------------------------------------------------
+## 1. Monthly Variables (DFM-AR)  -----------------------------------------------------------------
 #' TBD: Forecast by rewriting to VAR(p)
 #' y_{t+s} = A^s*Y_t + sum^{s-1}_{j=0} (A^j (BF_{t+j} + C))
 local({
@@ -1107,7 +1108,7 @@ local({
 	message('*** Forecasting Monthly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
-	ar_lags = 0 # Lag can be included from 1-4
+	ar_lags = 1 # Lag can be included from 1-4
 
 	# As of 2/6/22 
 	# Single core takes about 1s per date for ar_lags = 2
@@ -1132,8 +1133,7 @@ local({
 			
 			# message(.varname)
 			lag_vars = {if (ar_lags == 0) NULL else paste0(.varname, '.l', 1:ar_lags)}
-			t0 = now()
-			
+
 			# Get inputs - include all historical data
 			input_df =
 				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
@@ -1208,161 +1208,199 @@ local({
 	}
 })
 
-## 2. Quarterly Variables (LASSO)  -----------------------------------------------------------------
+## 2. Quarterly Variables (DFM-LASSO)  -----------------------------------------------------------------
+#' Similar to monthly but with no constant
 local({
 	
 	message('*** Forecasting Monthly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.q')$varname
+	ar_lags = 1
 	
 	results = lapply(bdates, function(this_bdate) {
 		
-		fDf =
-			ef$nc$fDf %>%
-			tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-			dplyr::mutate(
-				.,
-				q = econforecasting::strdateToDate(paste0(lubridate::year(date), 'Q', lubridate::quarter(date)))
-			) %>%
-			dplyr::select(., -date) %>%
-			dplyr::group_by(., varname, q) %>%
-			dplyr::summarize(., value = mean(value)) %>%
-			tidyr::pivot_wider(., names_from = varname, values_from = value) %>%
-			dplyr::rename(., date = q)
+		message(str_glue('... Forecasting {this_bdate}'))
 		
+		m = models[[as.character(this_bdate)]]
 		
-		dfmRes =
-			lapply(dfmVarnames %>% setNames(., .), function(.varname) {
+		q_f_df =
+			m$f_df %>%
+			pivot_longer(., -date, names_to = 'varname') %>%
+			mutate(., q = floor_date(date, 'quarters')) %>%
+			select(., -date) %>%
+			group_by(., varname, q) %>%
+			summarize(., value = mean(value), .groups = 'drop') %>%
+			pivot_wider(., names_from = varname, values_from = value) %>%
+			rename(., date = q)
+		
+		# Only include variables which are available at that date
+		stat_df =
+			hist$wide$q$st[[as.character(this_bdate)]] %>%
+			select(., all_of(c('date', dfm_varnames[dfm_varnames %in% colnames(.)]))) %>%
+			# Add lags & inner join F
+			{if (ar_lags > 0) bind_cols(., select(add_lagged_columns(., max_lag = ar_lags), -date)) else .} %>%
+			inner_join(., q_f_df, by = 'date') %>%
+			as.data.table(.)
+		
+		vars_to_forecast = colnames(stat_df) %>% keep(., ~ . %in% dfm_varnames)
+		factor_vars = paste0('f', 1:m$big_r)
+		
+		dfm_results = lapply(dfm_varnames %>% set_names(., .), function(.varname) {
+		
+			lag_vars = {if (ar_lags == 0) NULL else paste0(.varname, '.l', 1:ar_lags)}
 			
-				inputDf =
-					dplyr::inner_join(
-						fDf,
-						dplyr::select(ef$h$q$st, date, all_of(.varname)) %>%
-							econforecasting::addLags(., 1, .zero = TRUE),
-						by = 'date'
-					) %>%
-					na.omit(.)
-				
-				yMat = dplyr::select(inputDf, all_of(.varname)) %>% as.matrix(.)
-				xDf = dplyr::select(inputDf, -date, -all_of(.varname)) %>% dplyr::mutate(., constant = 1)
-				
-				glmResult = lapply(c(1), function(.alpha) {
-					cv =
-						glmnet::cv.glmnet(
-							x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
-							y = yMat,
-							deviance = 'mae',
-							alpha = .alpha,
-							intercept = TRUE
-						)
-					tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
-						dplyr::mutate(., min_lambda_for_given_alpha = (mae == min(mae))) %>%
-						return(.)
+			# Get inputs - include all historical data
+			input_df =
+				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
+				na.omit(.)
+			
+			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
+			# Don't need to create constant here since glmnet will handle
+			x_mat = input_df[, c(factor_vars, lag_vars), with = F] %>% as.matrix(.)
+			
+			glm_result = lapply(c(1), function(.alpha) {
+				cv = glmnet::cv.glmnet(
+					x = x_mat,
+					y = y_mat,
+					deviance = 'mae',
+					alpha = .alpha,
+					intercept = TRUE
+					)
+				tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
+					mutate(., min_lambda_for_given_alpha = (mae == min(mae))) %>%
+					return(.)
 				}) %>%
-					dplyr::bind_rows(.) %>%
-					dplyr::mutate(., min_overall = (mae == min(mae)))
+				bind_rows(.) %>%
+				mutate(., min_overall = (mae == min(mae)))
 				
-				glmOptim = glmResult %>% dplyr::filter(., min_overall == TRUE)
-				
-				cvPlot =
-					glmResult %>%
-					ggplot(.) +
-					geom_line(aes(x = log(lambda), y = mae, group = alpha, color = alpha)) +
-					geom_point(
-						data = glmResult %>% dplyr::filter(., min_lambda_for_given_alpha == TRUE),
-						aes(x = log(lambda), y = mae), color = 'red'
-					) +
-					geom_point(
-						data = glmResult %>% dplyr::filter(., min_overall == TRUE),
-						aes(x = log(lambda), y = mae), color = 'green'
-					) +
-					labs(
-						x = 'log(Lambda)', y = 'MAE', color = 'alpha',
-						title = 'Elastic Net Hyperparameter Fit',
-						subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
-						Green = MAE Minimizing (Lambda, Alpha) Pair'
-					)
-				
-				
-				glmObj =
-					glmnet::glmnet(
-						x = xDf %>% dplyr::select(., -constant) %>% as.matrix(.),
-						y = yMat,
-						alpha = glmOptim$alpha,
-						lambda = glmOptim$lambda
-					)
-				
-				coefMat = glmObj %>% coef(.) %>% as.matrix(.)
-				
-				coefDf =
-					coefMat %>%
-					as.data.frame(.) %>%
-					rownames_to_column(., var = 'Covariate') %>%
-					setNames(., c('coefname', 'value')) %>%
-					as_tibble(.) %>%
-					dplyr::mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname))
+			glm_optim = filter(glm_result, min_overall == TRUE)
+
+			cv_plot =
+				glm_result %>%
+				ggplot(.) +
+				geom_line(aes(x = log(lambda), y = mae, group = alpha, color = alpha)) +
+				geom_point(
+					data = glm_result %>% dplyr::filter(., min_lambda_for_given_alpha == TRUE),
+					aes(x = log(lambda), y = mae), color = 'red'
+				) +
+				geom_point(
+					data = glm_result %>% dplyr::filter(., min_overall == TRUE),
+					aes(x = log(lambda), y = mae), color = 'green'
+				) +
+				labs(
+					x = 'log(Lambda)', y = 'MAE', color = 'alpha',
+					title = 'Elastic Net Hyperparameter Fit',
+					subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
+					Green = MAE Minimizing (Lambda, Alpha) Pair'
+				)
 				
 				
-				# Standard OLS
-				# 		coefDf =
-				# 			lm(yMat ~ . - 1, xDf)$coef %>%
-				#     		as.data.frame(.) %>% rownames_to_column(., 'coefname') %>% as_tibble(.) %>%
-				# 			setNames(., c('coefname', 'value'))
+			glm_obj = glmnet::glmnet(
+					x = x_mat,
+					y = y_mat,
+					alpha = glm_optim$alpha,
+					lambda = glm_optim$lambda
+				)
 				
-				# Forecast dates + last historical date
-				forecastDf0 =
-					tibble(
-						date = seq(from = tail(inputDf$date, 1), to = tail(ef$nc$bigTStarDates, 1), by = '3 months')
-					) %>%
-					dplyr::mutate(., !!.varname := c(tail(inputDf[[.varname]], 1), rep(NA, nrow(.) - 1))) %>%
-					dplyr::left_join(., ef$nc$fDf, by = 'date') %>%
-					dplyr::bind_cols(., constant = 1)
+			coef_mat = glm_obj %>% coef(.) %>% as.matrix(.)
 				
-				forecastDf =
-					purrr::reduce(2:nrow(forecastDf0), function(accum, x) {
-						accum[x, .varname] =
-							accum %>% econforecasting::addLags(., 1, .zero = TRUE) %>%
-							.[x, ] %>%
-							dplyr::select(., coefDf$coefname) %>%
-							matrix(., ncol = 1) %>%
-							{matrix(coefDf$value, nrow = 1) %*% as.numeric(.)}
-						
-						return(accum)
-					}, .init = forecastDf0) %>%
-					.[2:nrow(.), ] %>%
-					dplyr::select(., all_of(c('date', .varname)))
+			coef_df =
+				coef_mat %>%
+				as.data.frame(.) %>%
+				rownames_to_column(., var = 'Covariate') %>%
+				setNames(., c('coefname', 'value')) %>%
+				as_tibble(.) %>%
+				mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname)) %>%
+				as.data.table(.)
 				
-				list(
-					forecastDf = forecastDf,
-					coefDf = coefDf,
-					glmOptim = glmOptim,
-					cvPlot = cvPlot
+			# Standard OLS
+			# 		coefDf =
+			# 			lm(yMat ~ . - 1, xDf)$coef %>%
+			#     		as.data.frame(.) %>% rownames_to_column(., 'coefname') %>% as_tibble(.) %>%
+			# 			setNames(., c('coefname', 'value'))
+			
+			# Initialize lag Y_0 matrix
+			y_0 =
+				stat_df[order(-date)][date <= tail(input_df$date, 1), .varname, with = F] %>%
+				head(., ar_lags) %>%
+				as.matrix(., ncol = 1) 
+			
+			# Initialize factor matrix
+			f_mats =
+				as.data.table(q_f_df)[date > tail(input_df$date, 1), !'date'] %>%
+				split(., 1:nrow(.)) %>%
+				lapply(., function(x) t(x))
+			
+			# Initialize factor loadings matrix
+			b_mat =
+				coef_df[coefname %chin% factor_vars]$value %>%
+				matrix(., nrow = 1) %>%
+				{
+					if (ar_lags == 0) .
+					else rbind(., matrix(rep(0, (ar_lags - 1) * length(factor_vars)), ncol = length(factor_vars)))
+				}
+			
+			# Initialize constant matrix
+			c_mat = 
+				c(coef_df[coefname == 'constant']$value, {if (ar_lags == 0) NULL else rep(0, ar_lags - 1)}) %>%
+				matrix(., ncol = 1)
+			
+			# Lag weighted matrix
+			a_mat =
+				matrix(coef_df[coefname %chin% lag_vars][order(coefname)]$value, nrow = 1) %>%
+				{
+					if (ar_lags == 0) .
+					else rbind(., cbind(diag(1, ar_lags - 1), matrix(rep(0, ar_lags - 1), ncol = 1)))
+				}
+			
+			forecast_dates = tail(seq(tail(input_df$date, 1), tail(m$big_tstar_dates, 1), by = '3 months'), -1)
+			
+			forecast_df =
+				purrr::accumulate(1:length(forecast_dates), function(accum, i)
+					c_mat + {if (ar_lags == 0) 0 else a_mat %*% accum} + b_mat %*% f_mats[[i]],
+					.init = y_0
+				) %>%
+				.[2:length(.)] %>%
+				sapply(., function(x) matrix(x, ncol = 1)[[1, 1]]) %>%
+				tibble(date = forecast_dates, varname = .varname, value = .)
+			
+			list(
+				forecast_df = forecast_df,
+				coef_df = coef_df,
+				glm_optim = glm_optim,
+				cv_plot = cv_plot
 				)
 			})
 		
+		dfm_df =
+			dfm_results %>%
+			map(., ~ .$forecast_df) %>%
+			bind_rows(.) %>%
+			pivot_wider(., id_cols = 'date', names_from = varname, values_from = value) %>%
+			arrange(., date)
 		
-		glmCoefList = purrr::map(dfmRes, ~ .$coefDf) 
+		glm_coef_list = map(dfm_results, ~ .$coef_df) 
 		
-		glmOptimDf =
-			purrr::imap_dfr(dfmRes, function(x, i)
-				x$glmOptim %>% dplyr::bind_cols(varname = i, .)
+		glm_optim_df = imap_dfr(dfm_results, function(x, i) bind_cols(varname = i, x$glm_optim))
+		
+		glm_cv_plots = map(dfm_results, ~ .$cv_plot)
+		
+		list(
+			bdate = this_bdate,
+			glm_coef_list = glm_coef_list,
+			glm_optim_df = glm_optim_df,
+			glm_cv_plots = glm_cv_plots,
+			dfm_q_df = dfm_df
 			)
 		
-		cvPlots = purrr::map(dfmRes, ~ .$cvPlot)
-		
-		dfmDf =
-			dfmRes %>%
-			lapply(., function(x) x$forecastDf) %>%
-			purrr::reduce(., function(accum, x) dplyr::full_join(accum, x, by = 'date')) %>%
-			dplyr::arrange(., date)
-		
-	})
+		})
 	
-	
-	ef$nc$glmCoefQList <<-glmCoefList 
-	ef$nc$glmOptimQDf <<- glmOptimDf
-	ef$nc$cvPlotsQ <<- cvPlots
-	ef$nc$dfmQDf <<- dfmDf
+	for (x in results) {
+		models[[as.character(x$bdate)]]$dfm_q_df <<- x$dfm_q_df
+		models[[as.character(x$bdate)]]$glm_coef_list <<- x$glm_coef_list
+		models[[as.character(x$bdate)]]$glm_optim_df <<- x$glm_optim_df
+		models[[as.character(x$bdate)]]$glm_cv_plots <<- x$glm_cv_plots
+	}
 })
 
 ## 3. Calculate GDP Nowcast  -----------------------------------------------------------------
@@ -1397,5 +1435,23 @@ local({
 	
 	ef$ncpred1$m$ut <<- mDf
 	ef$ncpred1$q$ut <<- qDf
+})
+
+## Aggregate ---------------------------------------------------------------
+local({
+	
+	mDf =
+		list(ef$nc$dfmMDf, ef$nc$cmefiDf) %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+		dplyr::arrange(., date)
+	
+	qDf =
+		list(ef$nc$dfmQDf) %>%
+		purrr::reduce(., function(x, y) dplyr::full_join(x, y, by = 'date')) %>%
+		dplyr::arrange(., date)
+	
+	
+	ef$ncpred0$m$st <<- mDf
+	ef$ncpred0$q$st <<- qDf
 })
 
