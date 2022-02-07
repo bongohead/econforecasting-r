@@ -50,9 +50,9 @@ release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'
 ## Set Backtest Dates  ----------------------------------------------------------
 bdates = c(
 	# Include all days in last 3 months
-	seq(today() - days(90), today(), by = '1 day'),
+	seq(today() - days(30), today(), by = '1 day'),
 	# Plus one random day per month before that
-	seq(as_date('2020-01-01'), add_with_rollback(today() - days(90), months(-1)), by = '1 month') %>%
+	seq(as_date('2020-01-01'), add_with_rollback(today() - days(30), months(-1)), by = '1 month') %>%
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
 	) %>% sort(.)
 
@@ -538,7 +538,7 @@ local({
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
 	results = lapply(bdates, function(this_bdate) {
-		
+	
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
 			select(., date, all_of(pca_varnames)) %>%
@@ -668,7 +668,7 @@ local({
 		bigR =
 			screeDf %>%
 			dplyr::filter(., ic1 == min(ic1)) %>%
-			.$factors + 2
+			.$factors #+ 2
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -742,8 +742,11 @@ local({
 ## 3. Run as VAR(1) -----------------------------------------------------------------
 local({
 	
+	message('*** Running VAR(1)')
+	
 	results = lapply(bdates, function(this_bdate) {
 		
+		message(this_bdate)
 		m = models[[as.character(this_bdate)]]
 		
 		input_df = na.omit(inner_join(m$z_df, add_lagged_columns(m$z_df, max_lag = 1), by = 'date'))
@@ -808,7 +811,7 @@ local({
 				residuals(.) %>% 
 				as_tibble(.) %>%
 				purrr::transpose(.) %>%
-				lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
+				lapply(., function(x) as.numeric(x)^2 %>% diag(., nrow = length(.), ncol = length(.))) %>%
 				{reduce(., function(x, y) x + y)/length(.)}
 			
 			list(
@@ -1214,8 +1217,8 @@ local({
 	message('*** Forecasting Quarterly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.q')$varname
-	ar_lags = 0
-	
+	ar_lags = 1
+
 	results = lapply(bdates, function(this_bdate) {
 		
 		message(str_glue('... Forecasting {this_bdate}'))
@@ -1628,6 +1631,9 @@ local({
 				)
 			)
 	
+	print(
+		pred_wide$`2022-02-04`$q$d1[, c('date', 'gdp', 'pce', 'pdi', 'ex', 'im', 'govt')]
+		)
 	
 })
 
