@@ -190,85 +190,6 @@ local({
 
 	message('*** Adding Calculated Variables')
 
-	fred_data =
-		hist$raw$fred %>%
-		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]') | varname == 'ffr'))
-
-	# Monthly aggregation & append EOM with current val
-	fred_data_cat =
-		fred_data %>%
-		mutate(., date = floor_date(date, 'months')) %>%
-		group_by(., varname, date) %>%
-		summarize(., value = mean(value), .groups = 'drop')
-
-	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
-	yield_curve_names_map =
-		variable_params %>%
-		filter(., freq == 'd' & (str_detect(varname, 't\\d{2}[m|y]'))) %>%
-		select(., varname) %>%
-		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
-
-	# Create training dataset from SPREAD from ffr - fitted on last 3 months
-	hist_df =
-		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		filter(., date >= add_with_rollback(today(), months(-120))) %>%
-		right_join(., yield_curve_names_map, by = 'varname') %>%
-		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
-		mutate(., value = value - ffr) %>%
-		select(., -ffr)
-
-	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
-
-	#' Calculate DNS fit
-	#'
-	#' @param df: A tibble continuing columns date, value, and ttm
-	#' @param return_all: FALSE by default.
-	#' If FALSE, will return only the MSE (useful for optimization).
-	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
-	#'
-	#' @export
-	get_dns_fit = function(df, lambda, return_all = FALSE) {
-		df %>%
-			mutate(f1 = 1, f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm), f3 = f2 - exp(-1 * lambda * ttm)) %>%
-			group_split(., date) %>%
-			map_dfr(., function(x) {
-				reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
-				bind_cols(x, fitted = fitted(reg)) %>%
-					mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
-					mutate(., resid = value - fitted)
-			}) %>%
-			{if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse else .}
-	}
-
-	# Find MSE-minimizing lambda value
-	optim_lambda = optimize(
-		get_dns_fit,
-		df = train_df,
-		return_all = FALSE,
-		interval = c(-1, 1),
-		maximum = FALSE
-	)$minimum
-
-	# Get historical DNS coefficients
-	dns_fit_hist = get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE)
-
-	dns_data =
-		dns_fit_hist %>%
-		group_by(., date) %>%
-		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3)) %>%
-		pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
-		transmute(
-			.,
-			varname,
-			freq = 'm',
-			date,
-			vdate =
-				# Avoid storing too much old DNS data - assign vdate as newesty possible value of edit for
-				# previous months
-				as_date(ifelse(ceiling_date(date, 'months') <= today(), ceiling_date(date, 'months'), today())),
-			value = as.numeric(value)
-		)
-
 	# For each vintage date, pull all CPI values from the latest available vintage for each date
 	# This intelligently handles revisions and prevents
 	# duplications of CPI values by vintage dates/obs date
@@ -299,62 +220,7 @@ local({
 			value
 		)
 
-	# Calculate misc interest rate spreads from cross-weekly/daily rates
-	# Assumes no revisions for this data
-	rates_wd_data = tribble(
-		~ varname, ~ var_w, ~ var_d,
-		'mort30yt30yspread', 'mort30y', 't30y',
-		'mort15yt10yspread', 'mort15y', 't10y'
-		) %>%
-		purrr::transpose(., .names = .$varname) %>%
-		map_dfr(., function(x) {
-
-			# Use weekly data as mortgage pulls are weekly
-			var_w_df =
-				filter(hist$raw$fred, varname == x$var_w & freq == 'w') %>%
-				select(., varname, date, vdate, value)
-
-			var_d_df =
-				filter(hist$raw$fred, varname == x$var_d & freq == 'd') %>%
-				select(., varname, date, vdate, value)
-
-			# Get week-end days
-			w_obs_dates =
-				filter(hist$raw$fred, varname == x$var_w & freq == 'w') %>%
-				.$date %>%
-				unique(.)
-
-			# Iterate through the week-end days
-			purrr::map_dfr(w_obs_dates, function(w_obs_date) {
-
-				var_d_df_x =
-					var_d_df %>%
-					filter(., date %in% seq(w_obs_date - days(6), to = w_obs_date, by = '1 day')) %>%
-					summarize(., d_vdate = max(vdate), d_value = mean(value))
-
-				var_w_df_x =
-					var_w_df %>%
-					filter(., date == w_obs_date) %>%
-					transmute(., w_vdate = vdate, w_value = value)
-
-				if (nrow(var_d_df_x) == 0 | nrow(var_w_df_x) == 0) return(NA)
-
-				bind_cols(var_w_df_x, var_d_df_x) %>%
-					transmute(
-						.,
-						varname = x$varname,
-						freq = 'w',
-						date = w_obs_date,
-						vdate = max(w_vdate, d_vdate),
-						value = w_value - d_value
-						) %>%
-					return(.)
-
-				}) %>%
-				distinct(.)
-			})
-
-	hist_calc = bind_rows(dns_data, inf_data, rates_wd_data)
+	hist_calc = bind_rows(inf_data)
 
 	hist$raw$calc <<- hist_calc
 })
@@ -682,7 +548,7 @@ local({
 		bigR =
 			screeDf %>%
 			dplyr::filter(., ic1 == min(ic1)) %>%
-			.$factors + 2
+			.$factors #+ 2
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -1222,6 +1088,8 @@ local({
 
 ## 2. Quarterly Variables (DFM-LASSO)  -----------------------------------------------------------------
 #' Similar to monthly but with no constant
+#' Note 2022-02-08: ar_lags must be 1+ or there must be more than one factor variable.
+#'  This is due to the fact that glmnet expects 2+ x covariates!
 local({
 
 	message('*** Forecasting Quarterly Variables')
@@ -1258,13 +1126,13 @@ local({
 		factor_vars = paste0('f', 1:m$big_r)
 		
 		dfm_results = lapply(dfm_varnames %>% set_names(., .), function(.varname) {
-		
+
 			lag_vars = {if (ar_lags == 0) NULL else paste0(.varname, '.l', 1:ar_lags)}
 			
 			# Get inputs - include all historical data
 			input_df =
 				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
-				# .[!date %in% as_date(c('2020-01-01', '2020-04-01', '2020-07-01', '2020-10-01'))] %>%
+				.[!date %in% as_date(c('2020-01-01', '2020-04-01', '2020-07-01', '2020-10-01'))] %>%
 				na.omit(.)
 			
 			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
@@ -1657,4 +1525,6 @@ local({
 		)
 	
 })
+
+# Export Nowcast
 
