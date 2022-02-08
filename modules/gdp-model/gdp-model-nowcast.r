@@ -668,7 +668,7 @@ local({
 		bigR =
 			screeDf %>%
 			dplyr::filter(., ic1 == min(ic1)) %>%
-			.$factors + 0#+ 2
+			.$factors + 2
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -923,8 +923,6 @@ local({
 		)
 	})
 	
-	
-	
 	for (x in results) {
 		models[[as.character(x$bdate)]]$dfm_gof_df <<- x$dfm_gof_df
 		models[[as.character(x$bdate)]]$dfm_coef_df <<- x$dfm_coef_df
@@ -934,8 +932,6 @@ local({
 		models[[as.character(x$bdate)]]$d_mat <<- x$d_mat
 	}
 })
-
-
 
 ## 5. Kalman Filter on State Space Obs -----------------------------------------------------------------
 local({
