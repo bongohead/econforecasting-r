@@ -3,9 +3,10 @@
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'GDP-MODEL-NOWCAST'
+JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
+TEST_MODE = T # Will run with less test dates if just testing
 START_TIME = Sys.time()
 
 ## Cron Log ----------------------------------------------------------
@@ -21,6 +22,7 @@ if (interactive() == FALSE) {
 ## Load Libs ----------------------------------------------------------'
 library(tidyverse)
 library(data.table)
+library(readxl)
 library(httr)
 library(DBI)
 library(econforecasting)
@@ -44,17 +46,29 @@ model = list()
 models = list()
 
 ## Load Variable Defs ----------------------------------------------------------
-variable_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'gdp-model-inputs')
-release_params = readxl::read_excel(file.path(DIR, 'model-inputs', 'inputs.xlsx'), sheet = 'data-releases')
+variable_params = read_excel(
+	file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
+	sheet = 'variables'
+	)
+release_params = read_excel(
+	file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
+	sheet = 'releases'
+	)
 
 ## Set Backtest Dates  ----------------------------------------------------------
 bdates = c(
 	# Include all days in last 3 months
-	seq(today() - days(30), today(), by = '1 day'),
+	seq(today() - days({if (TEST_MODE == T) 10 else 90}), today(), by = '1 day'),
 	# Plus one random day per month before that
-	seq(as_date('2020-01-01'), add_with_rollback(today() - days(30), months(-1)), by = '1 month') %>%
+	# 2021-01-01 to 90 day lag for prod
+	seq(
+		{if (TEST_MODE == T) as_date('2021-01-01') else as_date('2018-01-01')},
+		add_with_rollback(today() - {if (TEST_MODE == T) 10 else 90}, months(-1)),
+		by = '1 month'
+		) %>%
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
-	) %>% sort(.)
+	) %>%
+	sort(.)
 
 # Release Data ----------------------------------------------------------
 
@@ -542,7 +556,7 @@ local({
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
 			select(., date, all_of(pca_varnames)) %>%
-			filter(., date >= as_date('2012-01-01'))
+			filter(., date >= as_date('2010-01-01'))
 
 		big_t_dates = filter(pca_variables_df, !if_any(everything(), is.na))$date
 		big_tau_dates = filter(pca_variables_df, if_any(everything(), is.na))$date
@@ -702,17 +716,17 @@ local({
 			as.data.frame(.) %>%
 			as_tibble(.) %>%
 			setNames(., paste0('f', str_pad(1:ncol(.), pad = '0', 1))) %>%
-			dplyr::bind_cols(weight = colnames(xMat), .) %>%
-			tidyr::pivot_longer(., -weight, names_to = 'varname') %>%
-			dplyr::group_by(varname) %>%
-			dplyr::arrange(., varname, desc(abs(value))) %>%
-			dplyr::mutate(., order = 1:n(), valFormat = paste0(weight, ' (', round(value, 2), ')')) %>%
-			dplyr::ungroup(.) %>%
-			dplyr::select(., -value, -weight) %>%
-			tidyr::pivot_wider(., names_from = varname, values_from = valFormat) %>%
-			dplyr::arrange(., order) %>%
-			dplyr::select(., -order) %>%
-			dplyr::select(., paste0('f', 1:bigR))
+			bind_cols(weight = colnames(xMat), .) %>%
+			pivot_longer(., -weight, names_to = 'varname') %>%
+			group_by(varname) %>%
+			arrange(., varname, desc(abs(value))) %>%
+			mutate(., order = 1:n(), valFormat = paste0(weight, ' (', round(value, 2), ')')) %>%
+			ungroup(.) %>%
+			select(., -value, -weight) %>%
+			pivot_wider(., names_from = varname, values_from = valFormat) %>%
+			arrange(., order) %>%
+			select(., -order) %>%
+			select(., paste0('f', 1:bigR))
 		
 		list(
 			bdate = this_bdate,
@@ -1213,7 +1227,7 @@ local({
 	message('*** Forecasting Quarterly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.q')$varname
-	ar_lags = 1
+	ar_lags = 0
 
 	results = lapply(bdates, function(this_bdate) {
 		
@@ -1250,19 +1264,32 @@ local({
 			# Get inputs - include all historical data
 			input_df =
 				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
+				# .[!date %in% as_date(c('2020-01-01', '2020-04-01', '2020-07-01', '2020-10-01'))] %>%
 				na.omit(.)
 			
 			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
 			# Don't need to create constant here since glmnet will handle
 			x_mat = input_df[, c(factor_vars, lag_vars), with = F] %>% as.matrix(.)
 			
+			#  Calculate OLS values for weights
+			ols_yhat = x_mat %*% {solve(t(x_mat) %*% x_mat) %*% (t(x_mat) %*% y_mat)}
+			ols_weights = 1/(lm(abs(y_mat - ols_yhat) ~ y_mat)$fitted.values^2)
+			# ols = tibble(
+			# 	date = input_df$date,
+			# 	value = as.numeric(y_mat) * 400,
+			# 	yhat = as.numeric(ols_yhat) * 400,
+			# 	resids = abs(yhat - value) ,
+			# 	weights = ols_weights
+			# )
+
 			glm_result = lapply(c(1), function(.alpha) {
 				cv = glmnet::cv.glmnet(
 					x = x_mat,
 					y = y_mat,
 					deviance = 'mae',
 					alpha = .alpha,
-					intercept = TRUE
+					intercept = TRUE,
+					weights = ols_weights
 					)
 				tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
 					mutate(., min_lambda_for_given_alpha = (mae == min(mae))) %>%
@@ -1291,13 +1318,13 @@ local({
 					subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
 					Green = MAE Minimizing (Lambda, Alpha) Pair'
 				)
-				
-				
+			
 			glm_obj = glmnet::glmnet(
 					x = x_mat,
 					y = y_mat,
 					alpha = glm_optim$alpha,
-					lambda = glm_optim$lambda
+					lambda = glm_optim$lambda,
+					weights = ols_weights
 				)
 				
 			coef_mat = glm_obj %>% coef(.) %>% as.matrix(.)
