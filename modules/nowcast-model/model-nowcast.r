@@ -58,12 +58,12 @@ release_params = read_excel(
 ## Set Backtest Dates  ----------------------------------------------------------
 bdates = c(
 	# Include all days in last 3 months
-	seq(today() - days({if (TEST_MODE == T) 10 else 90}), today(), by = '1 day'),
+	seq(today() - days({if (TEST_MODE == T) 10 else 30}), today(), by = '1 day'),
 	# Plus one random day per month before that
 	# 2021-01-01 to 90 day lag for prod
 	seq(
 		{if (TEST_MODE == T) as_date('2021-01-01') else as_date('2018-01-01')},
-		add_with_rollback(today() - {if (TEST_MODE == T) 10 else 90}, months(-1)),
+		add_with_rollback(today() - {if (TEST_MODE == T) 30 else 90}, months(-1)),
 		by = '1 month'
 		) %>%
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
@@ -545,10 +545,10 @@ local({
 				x = 'Factors (R)', y = 'Cumulative % of Total Variance Explained', fill = NULL
 				)
 
-		bigR =
-			screeDf %>%
-			dplyr::filter(., ic1 == min(ic1)) %>%
-			.$factors #+ 2
+		bigR = 2
+			# screeDf %>%
+			# dplyr::filter(., ic1 == min(ic1)) %>%
+			# .$factors #+ 2
 		# ((
 		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
 		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
@@ -720,6 +720,8 @@ local({
 ## 4. Run DFM on PCA Monthly Vars -----------------------------------------------------------------
 local({
 	
+	message('*** Running DFM')
+	
 	results = lapply(bdates, function(this_bdate) {
 		
 		m = models[[as.character(this_bdate)]]
@@ -815,6 +817,8 @@ local({
 
 ## 5. Kalman Filter on State Space Obs -----------------------------------------------------------------
 local({
+	
+	message('*** Running Kalman Filter')
 
 	results = lapply(bdates, function(this_bdate) {
 		
@@ -1132,7 +1136,7 @@ local({
 			# Get inputs - include all historical data
 			input_df =
 				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
-				.[!date %in% as_date(c('2020-01-01', '2020-04-01', '2020-07-01', '2020-10-01'))] %>%
+				.[!date %in% as_date(c('2020-04-01', '2020-07-01', '2020-10-01', '2021-04-01'))] %>%
 				na.omit(.)
 			
 			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
@@ -1150,7 +1154,7 @@ local({
 			# 	weights = ols_weights
 			# )
 
-			glm_result = lapply(c(1), function(.alpha) {
+			glm_result = lapply(c(.5, 1), function(.alpha) {
 				cv = glmnet::cv.glmnet(
 					x = x_mat,
 					y = y_mat,
@@ -1381,7 +1385,7 @@ local({
 
 ## 4. Calculate GDP Nowcast  -----------------------------------------------------------------
 local({
-	
+
 	message('*** Adding Calculated Variables')
 	
 	results = lapply(bdates, function(this_bdate) {
@@ -1520,11 +1524,111 @@ local({
 				)
 			)
 	
-	print(
-		pred_wide$`2022-02-04`$q$d1[, c('date', 'gdp', 'pce', 'pdi', 'ex', 'im', 'govt')]
-		)
+	pred_flat_with_form =
+		pred_flat %>%
+		inner_join(
+			.,
+			pivot_longer(
+				variable_params[, c('varname', 'd1', 'd2')],
+				-varname,
+				names_to = 'form',
+				values_to = 'transform'
+				),
+			by = c('varname', 'form')
+		) %>%
+		select(., -form)
 	
+
+	model$pred_flat <<- pred_flat_with_form
+	model$pred_wide <<- pred_wide
 })
 
-# Export Nowcast
+
+## 6. Final Checks ------------------------------------------------------------
+local({
+	
+	plots =
+		model$pred_flat %>%
+		filter(., varname %in% c('gdp', 'pce', 'govt', 'ex', 'im', 'pdi') & transform == 'apchg') %>%
+		filter(., bdate >= date - days(30)) %>%
+		group_split(., date) %>%
+		lapply(., function(x)
+			ggplot(x) + geom_line(aes(x = bdate, y = value, color = varname), size = 1) +
+				geom_point(aes(x = bdate, y = value, color = varname), size = 2) +
+				labs(x = 'Vintage Date', y = 'Annualized % Change', title = x$date[[1]])
+			)
+	
+	for (p in tail(plots, 2)) {
+		print(p)
+	}
+	
+	model$pred_plots <<- plots
+})
+
+
+# Finalize ----------------------------------------------------------------
+local({
+	
+	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
+		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
+		else x
+	})
+	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_submodel_values CASCADE')
+	if (!'rates_model_submodel_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE rates_model_submodel_values (
+					submodel VARCHAR(10) NOT NULL,
+					varname VARCHAR(255) NOT NULL,
+					freq CHAR(1) NOT NULL,
+					vdate DATE NOT NULL,
+					date DATE NOT NULL,
+					value NUMERIC(20, 4) NOT NULL,
+					created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+					PRIMARY KEY (submodel, varname, freq, vdate, date)
+					)'
+		)
+		
+		dbExecute(db, '
+				SELECT create_hypertable(
+					relation => \'rates_model_submodel_values\',
+					time_column_name => \'vdate\'
+					);
+				')
+	}
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		submodel_values %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'rates_model_submodel_values',
+				'ON CONFLICT (submodel, varname, freq, vdate, date) DO UPDATE SET value=EXCLUDED.value'
+			) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	
+	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	message('***** Data Sent to SQL:')
+	print(sum(unlist(sql_result)))
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
+	message('***** Initial Count: ', final_count)
+	message('***** Rows Added: ', final_count - initial_count)
+	
+	submodel_values <<- submodel_values
+})
+
+## Close Connections ----------------------------------------------------------
+dbDisconnect(db)
+
 
