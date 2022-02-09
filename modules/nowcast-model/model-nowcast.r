@@ -58,7 +58,7 @@ release_params = read_excel(
 ## Set Backtest Dates  ----------------------------------------------------------
 bdates = c(
 	# Include all days in last 3 months
-	seq(today() - days({if (TEST_MODE == T) 10 else 30}), today(), by = '1 day'),
+	seq(today() - days({if (TEST_MODE == T) 30 else 90}), today(), by = '1 day'),
 	# Plus one random day per month before that
 	# 2021-01-01 to 90 day lag for prod
 	seq(
@@ -138,7 +138,7 @@ local({
 		purrr::transpose(.) %>%
 		keep(., ~ .$source == 'fred') %>%
 		imap_dfr(., function(x, i) {
-			message(str_glue('Pull {i}: {x$varname}'))
+			# message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_data(x$sckey, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = T, .verbose = F) %>%
 				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date('2010-01-01'), vdate >= as_date('2010-01-01'))
@@ -310,7 +310,7 @@ local({
 		split(., by = c('varname', 'freq')) %>%
 		lapply(., function(x)  {
 
-			message(str_glue('... Getting last vintage dates for {x$varname[[1]]}'))
+			# message(str_glue('... Getting last vintage dates for {x$varname[[1]]}'))
 
 			last_obs_for_all_vdates =
 				x %>%
@@ -414,7 +414,7 @@ local({
 ## 1. Dates -----------------------------------------------------------------
 local({
 
-	quarters_forward = 4
+	quarters_forward = 2
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
 	results = lapply(bdates, function(this_bdate) {
@@ -545,6 +545,7 @@ local({
 				x = 'Factors (R)', y = 'Cumulative % of Total Variance Explained', fill = NULL
 				)
 
+		# 2 factors needed since 1 now represents COVID shock
 		bigR = 2
 			# screeDf %>%
 			# dplyr::filter(., ic1 == min(ic1)) %>%
@@ -990,7 +991,7 @@ local({
 	message('*** Forecasting Monthly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
-	ar_lags = 1 # Lag can be included from 1-4
+	ar_lags = 0 # Lag can be included from 1-4
 
 	# As of 2/6/22 
 	# Single core takes about 1s per date for ar_lags = 2
@@ -1099,7 +1100,8 @@ local({
 	message('*** Forecasting Quarterly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.q')$varname
-	ar_lags = 0
+	ar_lags = 1
+	use_net = T
 
 	results = lapply(bdates, function(this_bdate) {
 		
@@ -1134,14 +1136,27 @@ local({
 			lag_vars = {if (ar_lags == 0) NULL else paste0(.varname, '.l', 1:ar_lags)}
 			
 			# Get inputs - include all historical data
-			input_df =
+			input_df_0 =
 				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
-				.[!date %in% as_date(c('2020-04-01', '2020-07-01', '2020-10-01', '2021-04-01'))] %>%
 				na.omit(.)
 			
-			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
+			forecast_dates = tail(seq(tail(input_df_0$date, 1), tail(m$big_tstar_dates, 1), by = '3 months'), -1)
+			
+			input_df =
+				input_df_0 %>%
+				.[! date %in% from_pretty_date(c('2021-04-01', '2021-07-01'), 'q')]
+				# Add date filters here if needed
+			
+			y_mat =
+				input_df %>%
+				.[, c(.varname), with = F] %>%
+				as.matrix(.)
+			
 			# Don't need to create constant here since glmnet will handle
-			x_mat = input_df[, c(factor_vars, lag_vars), with = F] %>% as.matrix(.)
+			x_mat =
+				input_df %>%
+				.[, c(factor_vars, lag_vars), with = F] %>%
+				as.matrix(.)
 			
 			#  Calculate OLS values for weights
 			ols_yhat = x_mat %*% {solve(t(x_mat) %*% x_mat) %*% (t(x_mat) %*% y_mat)}
@@ -1153,62 +1168,75 @@ local({
 			# 	resids = abs(yhat - value) ,
 			# 	weights = ols_weights
 			# )
-
-			glm_result = lapply(c(.5, 1), function(.alpha) {
-				cv = glmnet::cv.glmnet(
-					x = x_mat,
-					y = y_mat,
-					deviance = 'mae',
-					alpha = .alpha,
-					intercept = TRUE,
-					weights = ols_weights
+		
+			if (use_net == T) {
+				
+				glm_result = lapply(c(.5, 1), function(.alpha) {
+					cv = glmnet::cv.glmnet(
+						x = x_mat,
+						y = y_mat,
+						deviance = 'mae',
+						alpha = .alpha,
+						intercept = TRUE,
+						weights = ols_weights
+						)
+					tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
+						mutate(., min_lambda_for_given_alpha = (mae == min(mae))) %>%
+						return(.)
+					}) %>%
+					bind_rows(.) %>%
+					mutate(., min_overall = (mae == min(mae)))
+					
+				glm_optim = filter(glm_result, min_overall == TRUE)
+	
+				cv_plot =
+					glm_result %>%
+					ggplot(.) +
+					geom_line(aes(x = log(lambda), y = mae, group = alpha, color = alpha)) +
+					geom_point(
+						data = glm_result %>% dplyr::filter(., min_lambda_for_given_alpha == TRUE),
+						aes(x = log(lambda), y = mae), color = 'red'
+					) +
+					geom_point(
+						data = glm_result %>% dplyr::filter(., min_overall == TRUE),
+						aes(x = log(lambda), y = mae), color = 'green'
+					) +
+					labs(
+						x = 'log(Lambda)', y = 'MAE', color = 'alpha',
+						title = 'Elastic Net Hyperparameter Fit',
+						subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
+						Green = MAE Minimizing (Lambda, Alpha) Pair'
 					)
-				tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
-					mutate(., min_lambda_for_given_alpha = (mae == min(mae))) %>%
-					return(.)
-				}) %>%
-				bind_rows(.) %>%
-				mutate(., min_overall = (mae == min(mae)))
 				
-			glm_optim = filter(glm_result, min_overall == TRUE)
-
-			cv_plot =
-				glm_result %>%
-				ggplot(.) +
-				geom_line(aes(x = log(lambda), y = mae, group = alpha, color = alpha)) +
-				geom_point(
-					data = glm_result %>% dplyr::filter(., min_lambda_for_given_alpha == TRUE),
-					aes(x = log(lambda), y = mae), color = 'red'
-				) +
-				geom_point(
-					data = glm_result %>% dplyr::filter(., min_overall == TRUE),
-					aes(x = log(lambda), y = mae), color = 'green'
-				) +
-				labs(
-					x = 'log(Lambda)', y = 'MAE', color = 'alpha',
-					title = 'Elastic Net Hyperparameter Fit',
-					subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
-					Green = MAE Minimizing (Lambda, Alpha) Pair'
-				)
-			
-			glm_obj = glmnet::glmnet(
-					x = x_mat,
-					y = y_mat,
-					alpha = glm_optim$alpha,
-					lambda = glm_optim$lambda,
-					weights = ols_weights
-				)
+				glm_obj = glmnet::glmnet(
+						x = x_mat,
+						y = y_mat,
+						alpha = glm_optim$alpha,
+						lambda = glm_optim$lambda,
+						weights = ols_weights
+					)
+					
+				coef_mat = glm_obj %>% coef(.) %>% as.matrix(.)
+					
+				coef_df =
+					coef_mat %>%
+					as.data.frame(.) %>%
+					rownames_to_column(., var = 'Covariate') %>%
+					setNames(., c('coefname', 'value')) %>%
+					as_tibble(.) %>%
+					mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname)) %>%
+					as.data.table(.)
+			} else {
+				w_mat = diag(ols_weights)
+				x_mat2 = x_mat %>% as.data.frame(.) %>% mutate(., constant = 1) %>% as.matrix(.)
 				
-			coef_mat = glm_obj %>% coef(.) %>% as.matrix(.)
-				
-			coef_df =
-				coef_mat %>%
-				as.data.frame(.) %>%
-				rownames_to_column(., var = 'Covariate') %>%
-				setNames(., c('coefname', 'value')) %>%
-				as_tibble(.) %>%
-				mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname)) %>%
-				as.data.table(.)
+				coef_df =
+					(solve(t(x_mat2) %*% w_mat %*% x_mat2) %*% (t(x_mat2) %*% w_mat %*% y_mat)) %>%
+					t(.) %>%
+					as_tibble(.) %>%
+					pivot_longer(., everything(), names_to = 'coefname', values_to = 'value') %>%
+					as.data.table(.)
+			}
 				
 			# Standard OLS
 			# 		coefDf =
@@ -1250,8 +1278,6 @@ local({
 					else rbind(., cbind(diag(1, ar_lags - 1), matrix(rep(0, ar_lags - 1), ncol = 1)))
 				}
 			
-			forecast_dates = tail(seq(tail(input_df$date, 1), tail(m$big_tstar_dates, 1), by = '3 months'), -1)
-			
 			forecast_df =
 				purrr::accumulate(1:length(forecast_dates), function(accum, i)
 					c_mat + {if (ar_lags == 0) 0 else a_mat %*% accum} + b_mat %*% f_mats[[i]],
@@ -1262,10 +1288,10 @@ local({
 				tibble(date = forecast_dates, varname = .varname, value = .)
 			
 			list(
+				# glm_optim = glm_optim,
+				# cv_plot = cv_plot,
 				forecast_df = forecast_df,
-				coef_df = coef_df,
-				glm_optim = glm_optim,
-				cv_plot = cv_plot
+				coef_df = coef_df
 				)
 			})
 		
@@ -1403,7 +1429,9 @@ local({
 				im = img + ims,
 				nx = ex - im,
 				pdin = pdinstruct + pdinequip + pdinip,
-				pdi = pdin + pdir + pceschange,
+				# PDI = PDI_FIXED + CBI
+				# ~= PDI_FIXED + DLOG.PDI_FIXED * (-1/100)
+				# pdi = pdin + pdir + pceschange,
 				pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit,
 				pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother,
 				pcegd = pcegdmotor + pcegdfurnish + pcegdrec + pcegdother,
@@ -1435,6 +1463,7 @@ local({
 
 
 ## 5. Aggregate & Create Display Formats  -----------------------------------------------------------------
+#' Take 7-day MA to account for weird seasonality issue
 local({
 	
 	results = lapply(bdates, function(this_bdate) {
@@ -1549,84 +1578,99 @@ local({
 	
 	plots =
 		model$pred_flat %>%
-		filter(., varname %in% c('gdp', 'pce', 'govt', 'ex', 'im', 'pdi') & transform == 'apchg') %>%
+		filter(
+			.,
+			varname %in% c('gdp', 'pceg', 'pces', 'govt', 'ex', 'im', 'pdi', 'pdin', 'pdir'),
+			transform == 'apchg'
+			) %>%
 		filter(., bdate >= date - days(30)) %>%
 		group_split(., date) %>%
 		lapply(., function(x)
 			ggplot(x) + geom_line(aes(x = bdate, y = value, color = varname), size = 1) +
 				geom_point(aes(x = bdate, y = value, color = varname), size = 2) +
-				labs(x = 'Vintage Date', y = 'Annualized % Change', title = x$date[[1]])
+				labs(x = 'Vintage Date', y = 'Annualized % Change', title = x$date[[1]]) +
+				scale_x_date(date_breaks = '1 week', date_labels =  '%m/%d/%y') 
 			)
 	
-	for (p in tail(plots, 2)) {
+	for (p in tail(plots, 4)) {
 		print(p)
 	}
+	
+	# imap_dfr(models, function(m, this_bdate) 
+	# 	mutate(m$f_df, bdate = as_date(this_bdate))
+	# 	) %>% filter(., bdate >= today() - days(30) & date == '2022-01-01') %>% 
+	# 	arrange(., date) %>% 
+	# 	ggplot(.) +
+	# 	geom_line(aes(x = bdate, y = f1))
 	
 	model$pred_plots <<- plots
 })
 
 
+
+## 7. Moving Averages ------------------------------------------------------------
+
 # Finalize ----------------------------------------------------------------
-local({
-	
-	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
-		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
-		else x
-	})
-	
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_submodel_values CASCADE')
-	if (!'rates_model_submodel_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		dbExecute(
-			db,
-			'CREATE TABLE rates_model_submodel_values (
-					submodel VARCHAR(10) NOT NULL,
-					varname VARCHAR(255) NOT NULL,
-					freq CHAR(1) NOT NULL,
-					vdate DATE NOT NULL,
-					date DATE NOT NULL,
-					value NUMERIC(20, 4) NOT NULL,
-					created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-					PRIMARY KEY (submodel, varname, freq, vdate, date)
-					)'
-		)
-		
-		dbExecute(db, '
-				SELECT create_hypertable(
-					relation => \'rates_model_submodel_values\',
-					time_column_name => \'vdate\'
-					);
-				')
-	}
-	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
-	message('***** Initial Count: ', initial_count)
-	
-	sql_result =
-		submodel_values %>%
-		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
-			create_insert_query(
-				x,
-				'rates_model_submodel_values',
-				'ON CONFLICT (submodel, varname, freq, vdate, date) DO UPDATE SET value=EXCLUDED.value'
-			) %>%
-				dbExecute(db, .)
-		) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	
-	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
-	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-	message('***** Data Sent to SQL:')
-	print(sum(unlist(sql_result)))
-	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
-	message('***** Initial Count: ', final_count)
-	message('***** Rows Added: ', final_count - initial_count)
-	
-	submodel_values <<- submodel_values
-})
+# local({
+# 	
+# 	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
+# 		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
+# 		else x
+# 	})
+# 	
+# 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_submodel_values CASCADE')
+# 	if (!'rates_model_submodel_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+# 		dbExecute(
+# 			db,
+# 			'CREATE TABLE rates_model_submodel_values (
+# 					submodel VARCHAR(10) NOT NULL,
+# 					varname VARCHAR(255) NOT NULL,
+# 					freq CHAR(1) NOT NULL,
+# 					vdate DATE NOT NULL,
+# 					date DATE NOT NULL,
+# 					value NUMERIC(20, 4) NOT NULL,
+# 					created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+# 					PRIMARY KEY (submodel, varname, freq, vdate, date)
+# 					)'
+# 		)
+# 		
+# 		dbExecute(db, '
+# 				SELECT create_hypertable(
+# 					relation => \'rates_model_submodel_values\',
+# 					time_column_name => \'vdate\'
+# 					);
+# 				')
+# 	}
+# 	
+# 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
+# 	message('***** Initial Count: ', initial_count)
+# 	
+# 	sql_result =
+# 		submodel_values %>%
+# 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+# 		group_split(., split, .keep = FALSE) %>%
+# 		sapply(., function(x)
+# 			create_insert_query(
+# 				x,
+# 				'rates_model_submodel_values',
+# 				'ON CONFLICT (submodel, varname, freq, vdate, date) DO UPDATE SET value=EXCLUDED.value'
+# 			) %>%
+# 				dbExecute(db, .)
+# 		) %>%
+# 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+# 	
+# 	
+# 	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+# 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+# 	message('***** Data Sent to SQL:')
+# 	print(sum(unlist(sql_result)))
+# 	
+# 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
+# 	message('***** Initial Count: ', final_count)
+# 	message('***** Rows Added: ', final_count - initial_count)
+# 	
+# 	submodel_values <<- submodel_values
+# })
 
 ## Close Connections ----------------------------------------------------------
 dbDisconnect(db)
