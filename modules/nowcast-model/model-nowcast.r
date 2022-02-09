@@ -6,8 +6,7 @@
 JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
-TEST_MODE = T # Will run with less test dates if just testing
-START_TIME = Sys.time()
+TEST_MODE = T
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -60,7 +59,6 @@ bdates = c(
 	# Include all days in last 3 months
 	seq(today() - days({if (TEST_MODE == T) 30 else 90}), today(), by = '1 day'),
 	# Plus one random day per month before that
-	# 2021-01-01 to 90 day lag for prod
 	seq(
 		{if (TEST_MODE == T) as_date('2021-01-01') else as_date('2018-01-01')},
 		add_with_rollback(today() - {if (TEST_MODE == T) 30 else 90}, months(-1)),
@@ -75,7 +73,7 @@ bdates = c(
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
 
-	message(str_glue('*** Getting Releases History: {round(as.numeric(difftime(now(), START_TIME)))} min'))
+	message(str_glue('*** Getting Releases History: {format(now(), "%H:%M")}'))
 
 	fred_releases =
 		variable_params %>%
@@ -526,9 +524,9 @@ local({
 					cum_pct_of_total = sum(.[1:i])/totalVar
 				)
 			)} %>%
-			dplyr::bind_rows(.) %>%
-			dplyr::mutate(., mse = mseByR) %>%
-			dplyr::mutate(
+			bind_rows(.) %>%
+			mutate(., mse = mseByR) %>%
+			mutate(
 				.,
 				ic1 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log((bigN * bigT)/(bigN + bigT)),
 				ic2 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log(bigCSquared),
@@ -546,39 +544,36 @@ local({
 				)
 
 		# 2 factors needed since 1 now represents COVID shock
-		bigR = 2
+		big_r = 1
 			# screeDf %>%
 			# dplyr::filter(., ic1 == min(ic1)) %>%
 			# .$factors #+ 2
-		# ((
-		# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
-		#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
-		# 	)/2) %>%
-		# round(., digits = 0)
+			# ((
+			# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
+			#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
+			# 	)/2) %>%
+			# round(., digits = 0)
 	
 		zDf =
 			xDf[, 'date'] %>%
-			dplyr::bind_cols(
-				.,
-				fHat[, 1:bigR] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:bigR))
-			)
+			bind_cols(., fHat[, 1:big_r] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:big_r)))
 	
 	
 		zPlots =
-			purrr::imap(colnames(zDf) %>% .[. != 'date'], function(x, i)
-				dplyr::select(zDf, all_of(c('date', x))) %>%
+			imap(colnames(zDf) %>% .[. != 'date'], function(x, i)
+				select(zDf, all_of(c('date', x))) %>%
 					setNames(., c('date', 'value')) %>%
 					ggplot() +
 					geom_line(
 						aes(x = date, y = value),
-						color = hcl(h = seq(15, 375, length = bigR + 1), l = 65, c = 100)[i]
+						color = hcl(h = seq(15, 375, length = big_r + 1), l = 65, c = 100)[i]
 					) +
 					labs(x = NULL, y = NULL, title = paste0('Estimated PCA Factor ', str_sub(x, -1), ' Plot')) +
 					ggthemes::theme_fivethirtyeight() +
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 			)
 	
-		factorWeightsDf =
+		factor_weights_df =
 			lambdaHat %>%
 			as.data.frame(.) %>%
 			as_tibble(.) %>%
@@ -593,14 +588,14 @@ local({
 			pivot_wider(., names_from = varname, values_from = valFormat) %>%
 			arrange(., order) %>%
 			select(., -order) %>%
-			select(., paste0('f', 1:bigR))
+			select(., paste0('f', 1:big_r))
 		
 		list(
 			bdate = this_bdate,
-			factor_weights_df = factorWeightsDf,
+			factor_weights_df = factor_weights_df,
 			scree_df = screeDf,
 			scree_plot = screePlot,
-			big_r = bigR,
+			big_r = big_r,
 			pca_input_df = xDf,
 			z_df = zDf,
 			z_plots = zPlots
@@ -930,8 +925,6 @@ local({
 			) %>%
 			bind_cols(date = m$big_tstar_dates, .)
 		
-		
-		
 		## Plot and Cleaning
 		kf_plots =
 			lapply(colnames(m$z_df) %>% .[. != 'date'], function(.varname)
@@ -948,7 +941,6 @@ local({
 					labs(x = NULL, y = NULL, color = NULL, title = paste0('Kalman smoothed values for ', .varname)) +
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 			)
-		
 		
 		f_df = bind_rows(
 			kSmooth,
@@ -1100,8 +1092,9 @@ local({
 	message('*** Forecasting Quarterly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.q')$varname
-	ar_lags = 1
-	use_net = T
+	ar_lags = 1 # Number of AR lag terms to include.
+	use_net = T # Use elastic net?
+	use_intercept = T # Include an intercept? Works with either elastic net or ols
 
 	results = lapply(bdates, function(this_bdate) {
 		
@@ -1143,10 +1136,10 @@ local({
 			forecast_dates = tail(seq(tail(input_df_0$date, 1), tail(m$big_tstar_dates, 1), by = '3 months'), -1)
 			
 			input_df =
-				input_df_0 %>%
-				.[! date %in% from_pretty_date(c('2021-04-01', '2021-07-01'), 'q')]
+				input_df_0 %>% 
 				# Add date filters here if needed
-			
+				.[! date %in% from_pretty_date(c('2021Q1', '2021Q2', '2021Q3', '2021Q4'), 'q')]
+
 			y_mat =
 				input_df %>%
 				.[, c(.varname), with = F] %>%
@@ -1171,13 +1164,13 @@ local({
 		
 			if (use_net == T) {
 				
-				glm_result = lapply(c(.5, 1), function(.alpha) {
+				glm_result = lapply(c(0, 1), function(.alpha) {
 					cv = glmnet::cv.glmnet(
 						x = x_mat,
 						y = y_mat,
 						deviance = 'mae',
 						alpha = .alpha,
-						intercept = TRUE,
+						intercept = use_intercept,
 						weights = ols_weights
 						)
 					tibble(alpha = .alpha, lambda = cv$lambda, mae = cv$cvm) %>%
@@ -1213,6 +1206,7 @@ local({
 						y = y_mat,
 						alpha = glm_optim$alpha,
 						lambda = glm_optim$lambda,
+						intercept = use_intercept,
 						weights = ols_weights
 					)
 					
@@ -1226,9 +1220,16 @@ local({
 					as_tibble(.) %>%
 					mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname)) %>%
 					as.data.table(.)
+				
 			} else {
+				
+				# Use OLS with weighted coefficients
 				w_mat = diag(ols_weights)
-				x_mat2 = x_mat %>% as.data.frame(.) %>% mutate(., constant = 1) %>% as.matrix(.)
+				x_mat2 =
+					x_mat %>%
+					as.data.frame(.) %>%
+					{if (use_intercept) mutate(., constant = 1) else .} %>% 
+					as.matrix(.)
 				
 				coef_df =
 					(solve(t(x_mat2) %*% w_mat %*% x_mat2) %*% (t(x_mat2) %*% w_mat %*% y_mat)) %>%
@@ -1238,12 +1239,6 @@ local({
 					as.data.table(.)
 			}
 				
-			# Standard OLS
-			# 		coefDf =
-			# 			lm(yMat ~ . - 1, xDf)$coef %>%
-			#     		as.data.frame(.) %>% rownames_to_column(., 'coefname') %>% as_tibble(.) %>%
-			# 			setNames(., c('coefname', 'value'))
-			
 			# Initialize lag Y_0 matrix
 			y_0 =
 				stat_df[order(-date)][date <= tail(input_df$date, 1), .varname, with = F] %>%
@@ -1288,8 +1283,8 @@ local({
 				tibble(date = forecast_dates, varname = .varname, value = .)
 			
 			list(
-				# glm_optim = glm_optim,
-				# cv_plot = cv_plot,
+				glm_optim = {if (use_net == T) glm_optim else NA},
+				cv_plot = {if (use_net == T) cv_plot else NA},
 				forecast_df = forecast_df,
 				coef_df = coef_df
 				)
@@ -1611,8 +1606,10 @@ local({
 ## 7. Moving Averages ------------------------------------------------------------
 
 # Finalize ----------------------------------------------------------------
+## Send to SQL ----------------------------------------------------------------
+
 # local({
-# 	
+# 		message(str_glue('*** Getting Releases History: {format(now(), "%H:%M")}'))
 # 	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
 # 		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
 # 		else x
