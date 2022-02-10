@@ -136,7 +136,7 @@ local({
 		purrr::transpose(.) %>%
 		keep(., ~ .$source == 'fred') %>%
 		imap_dfr(., function(x, i) {
-			# message(str_glue('Pull {i}: {x$varname}'))
+			message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_data(x$sckey, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = T, .verbose = F) %>%
 				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date('2010-01-01'), vdate >= as_date('2010-01-01'))
@@ -362,6 +362,7 @@ local({
 						value := {
 							if (transform == 'none') NA
 							else if (transform == 'base') value
+							else if (transform == 'log') log(value)
 							else if (transform == 'dlog') dlog(value)
 							else if (transform == 'diff1') diff1(value)
 							else if (transform == 'pchg') pchg(value)
@@ -412,7 +413,7 @@ local({
 ## 1. Dates -----------------------------------------------------------------
 local({
 
-	quarters_forward = 2
+	quarters_forward = 3
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
 	results = lapply(bdates, function(this_bdate) {
@@ -544,9 +545,9 @@ local({
 				)
 
 		# 2 factors needed since 1 now represents COVID shock
-		big_r = 1
+		big_r = 3
 			# screeDf %>%
-			# dplyr::filter(., ic1 == min(ic1)) %>%
+			# filter(., ic1 == min(ic1)) %>%
 			# .$factors #+ 2
 			# ((
 			# 	{screeDf %>% dplyr::filter(cum_pct_of_total >= .80) %>% head(., 1) %>%.$factors} +
@@ -1095,6 +1096,9 @@ local({
 	ar_lags = 1 # Number of AR lag terms to include.
 	use_net = T # Use elastic net?
 	use_intercept = T # Include an intercept? Works with either elastic net or ols
+	
+	
+	
 
 	results = lapply(bdates, function(this_bdate) {
 		
@@ -1136,9 +1140,9 @@ local({
 			forecast_dates = tail(seq(tail(input_df_0$date, 1), tail(m$big_tstar_dates, 1), by = '3 months'), -1)
 			
 			input_df =
-				input_df_0 %>% 
+				input_df_0 #%>% 
 				# Add date filters here if needed
-				.[! date %in% from_pretty_date(c('2021Q1', '2021Q2', '2021Q3', '2021Q4'), 'q')]
+				# .[! date %in% from_pretty_date(c('2020Q2', '2020Q3', '2020Q4'), 'q')]
 
 			y_mat =
 				input_df %>%
@@ -1347,6 +1351,7 @@ local({
 				 	.[, value := {
 				 		if (.$st[[1]] == 'none') NA
 				 		else if (.$st[[1]] == 'base') value
+				 		else if (.$st[[1]] == 'log') exp(value)
 				 		else if (.$st[[1]] == 'dlog')
 				 			undlog(value, tail(filter(this_m_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
 				 		else if (.$st[[1]] == 'diff1')
@@ -1374,6 +1379,7 @@ local({
 					.[, value := {
 						if (.$st[[1]] == 'none') NA
 						else if (.$st[[1]] == 'base') value
+						else if (.$st[[1]] == 'log') exp(value)
 						else if (.$st[[1]] == 'dlog')
 							undlog(value, tail(filter(this_q_hist, date < x$date[[1]]), 1)[[.$varname[[1]]]])
 						else if (.$st[[1]] == 'diff1')
@@ -1507,10 +1513,12 @@ local({
 								.[, value := {
 									if (.$transform[[1]] == 'none') NA
 									else if (.$transform[[1]] == 'base') value
+									else if (.$transform[[1]] == 'log') log(value)
 									else if (.$transform[[1]] == 'dlog') dlog(value)
 									else if (.$transform[[1]] == 'diff1') diff1(value)
 									else if (.$transform[[1]] == 'pchg') pchg(value)
-									else if (.$transform[[1]] == 'apchg') apchg(value, 12)
+									else if (.$transform[[1]] == 'apchg' & z$freq == 'q') apchg(value, 4)
+									else if (.$transform[[1]] == 'apchg' & z$freq == 'm') apchg(value, 12)
 									else stop('Error')
 								}] %>%
 								tail(., -1)
@@ -1605,7 +1613,6 @@ local({
 
 ## 7. Moving Averages ------------------------------------------------------------
 
-# Finalize ----------------------------------------------------------------
 ## Send to SQL ----------------------------------------------------------------
 
 # local({
