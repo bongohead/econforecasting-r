@@ -82,25 +82,25 @@ local({
 		left_join(
 			.,
 			variable_params  %>%
-				filter(., nc_dfm_input == 1) %>%
+				filter(., nc_dfm_input == T) %>%
 				group_by(., relkey) %>%
 				summarize(., n_dfm_varnames = n(), dfm_varnames = toJSON(fullname), .groups = 'drop'),
 			variable_params %>%
+				filter(., nc_dfm_input == T) %>%
 				group_by(., relkey) %>%
 				summarize(., n_varnames = n(), varnames = toJSON(fullname), .groups = 'drop'),
 			by = 'relkey'
 		) %>%
 		left_join(., release_params, by = 'relkey') %>%
-		# Now create a column of included releaseDates
+		# Now create a column of included release dates 
 		left_join(
 			.,
 			map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
-
 				RETRY(
 					'GET',
 					str_glue(
 						'https://api.stlouisfed.org/fred/release/dates?',
-						'release_id={x$relsckey}&realtime_start=2020-01-01',
+						'release_id={x$relsckey}&realtime_start={min(bdates)}',
 						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
 					),
 					times = 10
@@ -111,7 +111,7 @@ local({
 					tibble(relkey = x$relkey, reldates = .)
 				}) %>%
 				group_by(., relkey) %>%
-				summarize(., reldates = jsonlite::toJSON(reldates), .groups = 'drop'),
+				summarize(., reldates = toJSON(reldates), .groups = 'drop'),
 			by = 'relkey'
 			)
 
@@ -256,14 +256,12 @@ local({
 		as_tibble(.) %>%
 		transmute(., varname, freq = 'm', date, vdate, value)
 
-
 	# Works similarly as monthly aggregation but does not create new quarterly data unless all
 	# 3 monthly data points are available, and where the vintage is at least as great as the
 	# EOQ value of the obs date
 	quarterly_agg =
 		monthly_agg %>%
 		bind_rows(., filter(hist_agg_0, freq == 'm')) %>%
-		filter(., varname == 'spy') %>%
 		mutate(., this_quarter = lubridate::floor_date(date, 'quarter')) %>%
 		as.data.table(.) %>%
 		split(., by = c('this_quarter', 'varname')) %>%
@@ -1167,7 +1165,7 @@ local({
 		
 			if (use_net == T) {
 				
-				glm_result = lapply(c(0, 1), function(.alpha) {
+				glm_result = lapply(c(0, .5, 1), function(.alpha) {
 					cv = glmnet::cv.glmnet(
 						x = x_mat,
 						y = y_mat,
@@ -1557,22 +1555,22 @@ local({
 				)
 			)
 	
-	pred_flat_with_form =
-		pred_flat %>%
-		inner_join(
-			.,
-			pivot_longer(
-				variable_params[, c('varname', 'd1', 'd2')],
-				-varname,
-				names_to = 'form',
-				values_to = 'transform'
-				),
-			by = c('varname', 'form')
-		) %>%
-		select(., -form)
+	# pred_flat_with_form =
+	# 	pred_flat %>%
+	# 	inner_join(
+	# 		.,
+	# 		pivot_longer(
+	# 			variable_params[, c('varname', 'd1', 'd2')],
+	# 			-varname,
+	# 			names_to = 'form',
+	# 			values_to = 'transform'
+	# 			),
+	# 		by = c('varname', 'form')
+	# 	) %>%
+	# 	select(., -form)
 	
 
-	model$pred_flat <<- pred_flat_with_form
+	model$pred_flat <<- pred_flat
 	model$pred_wide <<- pred_wide
 })
 
@@ -1587,7 +1585,7 @@ local({
 		filter(
 			.,
 			varname %in% c('gdp', 'pceg', 'pces', 'govt', 'ex', 'im', 'pdi', 'pdin', 'pdir'),
-			transform == 'apchg'
+			form == 'd1'
 			) %>%
 		filter(., bdate >= date - days(30)) %>%
 		group_split(., date) %>%
@@ -1612,25 +1610,122 @@ local({
 	model$pred_plots <<- plots
 })
 
-
-hist$flat %>% as_tibble(.) %>% mutate(., date = as_date(date)) %>% filter(., form == 'st' & bdate == max(bdate) & varname %in% filter(variable_params, nc_dfm_input == 1)$varname) %>% group_by(., varname) %>% summarize(., min_dt = min(date)) %>% View(.)
-## 7. Moving Averages ------------------------------------------------------------
-
-
 # Finalize ----------------------------------------------------------------
 
-## Send to SQL ----------------------------------------------------------------
-
+## Send Params to SQL ----------------------------------------------------------------
 local({
 	
-	message(str_glue('*** Getting Releases History: {format(now(), "%H:%M")}'))
+	message(str_glue('*** Sending Params to SQL: {format(now(), "%H:%M")}'))
 	
-	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
-		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
-		else x
-	})
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_releases CASCADE')
 
+	if (!'nowcast_model_releases' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE nowcast_model_releases (
+				relkey VARCHAR(255) CONSTRAINT nowcast_model_relkey_pk PRIMARY KEY,
+				relname VARCHAR(255) CONSTRAINT nowcast_model_relname_uk UNIQUE NOT NULL,
+				relsc VARCHAR(255) NOT NULL,
+				relsckey VARCHAR(255),
+				relurl VARCHAR(255),
+				relnotes TEXT,
+				n_varnames INTEGER,
+				varnames JSON,
+				n_dfm_varnames INTEGER,
+				dfm_varnames JSON,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+				)'
+			)
+	}
+	releases$final %>%
+		transmute(
+			.,
+			relkey, relname, relsc, relsckey , relurl, relnotes,
+			n_varnames = ifelse(is.na(n_varnames), 0, n_varnames), varnames,
+			n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames
+		) %>%
+		create_insert_query(
+			.,
+			'nowcast_model_releases',
+			'ON CONFLICT ON CONSTRAINT nowcast_model_relkey_pk DO UPDATE SET
+		    relname=EXCLUDED.relname,
+		    relsc=EXCLUDED.relsc,
+		    relsckey=EXCLUDED.relsckey,
+		    relurl=EXCLUDED.relurl,
+		    relnotes=EXCLUDED.relnotes,
+		    n_varnames=EXCLUDED.n_varnames,
+		    varnames=EXCLUDED.varnames,
+		    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
+		    dfm_varnames=EXCLUDED.dfm_varnames'
+			) %>%
+		dbExecute(db, .)
+	
+	
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_variables CASCADE')
+	if (!'nowcast_model_variables' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE nowcast_model_variables (
+				varname VARCHAR(255) CONSTRAINT nowcast_model_varname_pk PRIMARY KEY,
+				fullname VARCHAR(255) CONSTRAINT nowcast_model_fullname_uk UNIQUE NOT NULL,
+				dispgroup VARCHAR(255),
+				disprank INT,
+				disptabs INT,
+				disporder INT,
+				source VARCHAR(255) NOT NULL,
+				sckey VARCHAR(255),
+				relkey VARCHAR(255) NOT NULL,
+				units VARCHAR(255) NOT NULL,
+				freq CHAR(1) NOT NULL,
+				st VARCHAR(10) NOT NULL,
+				d1 VARCHAR(10) NOT NULL,
+				d2 VARCHAR(10) NOT NULL,
+				nc_dfm_input BOOLEAN,
+				nc_method VARCHAR(10) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				CONSTRAINT nowcast_model_variables_fk FOREIGN KEY (relkey) REFERENCES nowcast_model_releases (relkey)
+					ON DELETE CASCADE ON UPDATE CASCADE
+				)'
+			)
+	}
+	variable_params %>%
+		transmute(
+			.,
+			varname, fullname, dispgroup, disprank, disptabs, disporder,
+			source, sckey, relkey, units, freq,
+			st, d1, d2, nc_dfm_input, nc_method,
+			) %>%
+		create_insert_query(
+			.,
+			'nowcast_model_variables',
+			'ON CONFLICT ON CONSTRAINT nowcast_model_varname_pk DO UPDATE
+		    SET
+		    fullname=EXCLUDED.fullname,
+		    dispgroup=EXCLUDED.dispgroup,
+		    disprank=EXCLUDED.disprank,
+		    disptabs=EXCLUDED.disptabs,
+		    disporder=EXCLUDED.disporder,
+		    source=EXCLUDED.source,
+		    sckey=EXCLUDED.sckey,
+		    relkey=EXCLUDED.relkey,
+		    units=EXCLUDED.units,
+		    freq=EXCLUDED.freq,
+		    st=EXCLUDED.st,
+		    d1=EXCLUDED.d1,
+		    d2=EXCLUDED.d2,
+		    nc_dfm_input=EXCLUDED.nc_dfm_input,
+		    nc_method=EXCLUDED.nc_method'
+			) %>%
+		dbExecute(db, .)
+})
+
+## Send Values to SQL ----------------------------------------------------------------
+local({
+	
+	message(str_glue('*** Sending Values to SQL: {format(now(), "%H:%M")}'))
+	
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_values CASCADE')
+	
 	if (!'nowcast_model_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
 			db,
@@ -1658,7 +1753,7 @@ local({
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
-		model %>%
+		model$pred_flat %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
@@ -1674,20 +1769,19 @@ local({
 
 	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-	message('***** Data Sent to SQL:')
-	print(sum(unlist(sql_result)))
+	message('***** Data Sent to SQL: ', sum(unlist(sql_result)))
 
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 
-	model$values <<- model
+	model$sql_values <<- model
 })
 
 ## Create Docs  ----------------------------------------------------------
 local({
 	
-	
+	message('*** Skipping Docs Creation Temporarily')
 	
 })
 
