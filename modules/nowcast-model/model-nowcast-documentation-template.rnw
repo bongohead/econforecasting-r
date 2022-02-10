@@ -113,11 +113,14 @@ To do this, we will use a methodology that relies heavily on principal component
 <<>>=
 	hist$wide_last$q$st %>% 
   	select(., vsales, csent, advsales, ipi, vix, spy, cfnai) %>%
-  	rename(., 'GDP' = gdp, 'VehicleSales' = vsales, 'ConsumerSentiment' = csent, 'AdvSales' = advsales, 'IndustrialProd' = ipi, 'VIX' = vix, 'SP500' = spy) %>%
+  	rename(
+  		., 'GDP' = gdp, 'VehicleSales' = vsales, 'ConsumerSentiment' = csent,
+  		'AdvSales' = advsales, 'IndustrialProd' = ipi, 'VIX' = vix, 'SP500' = spy
+  		) %>%
   	corrr::correlate(.) %>%
   	corrr::shave(.) %>%
   	select(., -CFNAI) %>%
-  	xtable::xtable(., caption = 'Correlation Between Major Leading Predictors') %>%
+  	xtable(., caption = 'Correlation Between Major Leading Predictors') %>%
   	print(., size = 'scriptsize')
 @
 As a result, we can take a very high-dimensional dataset of indicator variables and extract a few time series, \textit{factors} or \textit{principal components}, using principal components analysis. These factors will be able to contain the majority of information within our larger, high-dimensional dataset. Then we will use a time series model of the factor behavior --- a vector autoregression, or VAR --- to forecast the factors forward in time. 
@@ -136,33 +139,33 @@ The model is run every weekday; this documentation will use actual data and esti
 We begin by importing monthly data of various leading indicators from the St. Louis Federal Reserve Database (FRED). We choose data of at least monthly frequency and with historical data available as of at least 2010. Data are transformed for stationarity as listed below; \textit{dlog} refers to the natural log of the first difference, whereas \textit{base} means that no transformation was necessary for the variable to be stationary.
 
 <<>>=
-	ef$paramsDf %>%
-    	dplyr::filter(., dfminput == TRUE) %>%
-    	dplyr::select(., fullname, st) %>%
-    	setNames(., c('Variable', 'Stationary Form')) %>%
-    	xtable::xtable(., caption = 'Imported Monthly Data - Leading Economic Variables', align = 'llc') %>%
-    	print(., size = 'scriptsize')
+	variable_params %>%
+  	filter(., nc_dfm_input == TRUE) %>%
+  	select(., fullname, st) %>%
+  	set_names(., c('Variable', 'Stationary Form')) %>%
+  	xtable(., caption = 'Imported Monthly Data - Leading Economic Variables', align = 'llc') %>%
+  	print(., size = 'scriptsize')
 @
 
 We additionally import quarterly data for our variables of interest. While this model can be used for nowcasting other data, here we will use import GDP, its components, as well as several other major macroeconomic variables of interest.
 <<>>=
-	ef$paramsDf %>%
-    	# dplyr::filter(., category == 'Output') %>%
-    	dplyr::filter(., freq == 'q') %>% 
-    	dplyr::select(., fullname, st) %>%
-    	setNames(., c('Variable', 'Stationary Form')) %>%
-    	xtable::xtable(., caption = 'Imported Quarterly Data', align = 'llc') %>%
-    	print(., size = 'scriptsize')
+	variable_params %>%
+  	# filter(., dispgroup == 'GDP') %>%
+  	filter(., freq == 'q') %>% 
+  	select(., fullname, st) %>%
+  	set_names(., c('Variable', 'Stationary Form')) %>%
+  	xtable(., caption = 'Imported Quarterly Data', align = 'llc') %>%
+  	print(., size = 'scriptsize')
 @
 
 Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
 <<>>=
-	ef$paramsDf %>%
-    	dplyr::filter(., is.na(dfminput) & freq == 'm') %>%
-    	dplyr::select(., fullname, st) %>%
-    	setNames(., c('Variable', 'Stationary Form')) %>%
-    	xtable::xtable(., caption = 'Other Imported Monthly Data', align = 'llc') %>%
-    	print(., size = 'scriptsize')
+	variable_params %>%
+  	filter(., is.na(nc_dfm_input) & freq == 'm') %>%
+  	select(., fullname, st) %>%
+  	set_names(., c('Variable', 'Stationary Form')) %>%
+  	xtable(., caption = 'Other Imported Monthly Data', align = 'llc') %>%
+  	print(., size = 'scriptsize')
 @
 
 Most datasets have already been deseasonalized if necessary by their original source. We deseasonalize the remaining series by using the U.S. Census Bureau's seasonal adjustment package, X13-ARIMA-SEATS. We interface with it by using the \texttt{seasonal} package implementation in R (Sax and Eddelbuettel 2018).
@@ -179,11 +182,11 @@ In other words, data will be indexed by $t = 1, 2, \dots, T, T+1, \dots, \tau, \
 \end{figure}
 For our data, we set the dates as follows.
 <<>>=
-    ef$nc$timeDf %>%
-		dplyr::mutate(., date = as.character(date)) %>%
-    	dplyr::mutate(., time = ifelse(time == 'Tau', '$\\tau$', paste0('$', time, '$'))) %>%
-    	setNames(., c('Date', '$t$')) %>%
-    	xtable::xtable(., caption = 'Time Periods', align = 'lcc') %>%
+  models[[length(models)]]$time_df %>%
+		mutate(., date = as.character(date)) %>%
+  	mutate(., time = ifelse(time == 'Tau', '$\\tau$', paste0('$', time, '$'))) %>%
+  	set_names(., c('Date', '$t$')) %>%
+  	xtable(., caption = 'Time Periods', align = 'lcc') %>%
 		print(., sanitize.colnames.function = function(x) x, sanitize.text.function = function(x) x)
 @
 
