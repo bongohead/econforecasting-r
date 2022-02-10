@@ -30,7 +30,9 @@ library(lubridate)
 library(jsonlite)
 library(glmnet)
 library(roll)
-library(corrr)
+library(knitr) # Needed for knitting latex docs
+library(corrr) # Needed for knitting latex docs
+library(xtable) # Needed for knitting latex docs
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
@@ -339,8 +341,8 @@ local({
 					{if (nrow(.) == 0) NULL else .[vdate == max(vdate)] %>% .[, bdate := this_bdate]}
 				) %>%
 				rbindlist(.)
-		}) #%>%
-#		rbindlist(.)
+		}) %>%
+		rbindlist(.)
 
 	hist$base <<- last_obs_by_vdate
 })
@@ -1619,6 +1621,7 @@ local({
 	model$pred_plots <<- plots
 })
 
+
 # Finalize ----------------------------------------------------------------
 
 ## Send Params to SQL ----------------------------------------------------------------
@@ -1790,12 +1793,14 @@ local({
 ## Create Docs  ----------------------------------------------------------
 local({
 	
-	message('*** Skipping Docs Creation Temporarily')
+	message('*** Creating Docs')
+	
 	knitr::knit2pdf(
 		input = file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
-		output = file.path(DIR, 'logs', 'nowcast-model.pdf'),
+		output = file.path(DIR, 'logs', 'nowcast-model.tex'),
 		clean = TRUE
-	)
+		)
+	
 })
 
 ## Close Connections ----------------------------------------------------------
