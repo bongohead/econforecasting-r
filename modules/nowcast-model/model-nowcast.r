@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
-RESET_SQL = FALSE
+RESET_SQL = TRUE
 TEST_MODE = TRUE
 IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007
 
@@ -25,9 +25,12 @@ library(data.table)
 library(readxl)
 library(httr)
 library(DBI)
+library(RPostgres)
 library(lubridate)
 library(jsonlite)
 library(glmnet)
+library(roll)
+library(corrr)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
@@ -55,18 +58,24 @@ release_params = read_excel(
 	)
 
 ## Set Backtest Dates  ----------------------------------------------------------
-bdates = c(
-	# Include all days in last 3 months
-	seq(today() - days({if (TEST_MODE == T) 30 else 90}), today(), by = '1 day'),
-	# Plus one random day per month before that
-	seq(
-		{if (TEST_MODE == T) as_date('2021-01-01') else as_date('2018-01-01')},
-		add_with_rollback(today() - {if (TEST_MODE == T) 30 else 90}, months(-1)),
-		by = '1 month'
+local({
+	# Include all days in last 3 months plus one random day per month before that
+	contiguous = seq(today() - days({if (TEST_MODE == T) 30 else 90}), today(), by = '1 day')
+	
+	old = 
+		seq(
+			{if (TEST_MODE) as_date('2021-01-01') else as_date('2018-01-01')},
+			add_with_rollback(floor_date(min(contiguous), 'months'), months(-1)),
+			by = '1 month'
 		) %>%
-		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1))
-	) %>%
-	sort(.)
+		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1)) %>%
+		unlist(.) %>%
+		as_date(.)
+	
+	bdates = c(old, contiguous)
+
+	bdates <<- bdates
+})
 
 # Release Data ----------------------------------------------------------
 
@@ -308,7 +317,7 @@ local({
 		lapply(., function(x)  {
 
 			# message(str_glue('**** Getting last vintage dates for {x$varname[[1]]}'))
-
+			# Get last observation for every vintage date
 			last_obs_for_all_vdates =
 				x %>%
 					.[order(vdate)] %>%
@@ -320,16 +329,18 @@ local({
 						value.name = 'value',
 						variable.name = 'date',
 						na.rm = T
-					)
+					) %>%
+				.[, date := as_date(date)]
 
-			lapply(bdates, function(test_vdate)
+			# For each bdate, get last vdate before this value
+			lapply(bdates, function(this_bdate)
 				last_obs_for_all_vdates %>%
-					.[vdate <= test_vdate] %>%
-					{if (nrow(.) == 0) NULL else .[vdate == max(vdate)] %>% .[, bdate := test_vdate]}
+					.[vdate <= this_bdate] %>%
+					{if (nrow(.) == 0) NULL else .[vdate == max(vdate)] %>% .[, bdate := this_bdate]}
 				) %>%
 				rbindlist(.)
-		}) %>%
-		rbindlist(.)
+		}) #%>%
+#		rbindlist(.)
 
 	hist$base <<- last_obs_by_vdate
 })
@@ -391,13 +402,14 @@ local({
 		lapply(., function(x)
 			split(x, by = 'form', keep.by = F) %>%
 				lapply(., function(y)
-					split(y, by = 'bdate', keep.by = F) %>%
-					lapply(., function(z)
-						dcast(z, date ~ varname, value.var = 'value') %>%
+					split(y, by = 'bdate', keep.by = T) %>%
+					lapply(., function(z) {
+						message(z$bdate[[1]])
+						dcast(select(z, -bdate), date ~ varname, value.var = 'value') %>%
 							.[, date := as_date(date)] %>%
 							.[order(date)] %>%
 							as_tibble(.)
-						)
+						})
 				)
 			)
 
@@ -977,14 +989,14 @@ local({
 # Nowcast  -----------------------------------------------------------------
 
 ## 1. Monthly Variables (DFM-AR)  -----------------------------------------------------------------
-#' TBD: Forecast by rewriting to VAR(p)
+#' This forecasts an autoregressive DFM-AR process by rewriting it to a VAR(1)
 #' y_{t+s} = A^s*Y_t + sum^{s-1}_{j=0} (A^j (BF_{t+j} + C))
 local({
 
 	message('*** Forecasting Monthly Variables')
 	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
-	ar_lags = 0 # Lag can be included from 1-4
+	ar_lags = 1 # Lag can be included from 1-4
 
 	# As of 2/6/22 
 	# Single core takes about 1s per date for ar_lags = 2
@@ -1085,9 +1097,6 @@ local({
 })
 
 ## 2. Quarterly Variables (DFM-LASSO)  -----------------------------------------------------------------
-#' Similar to monthly but with no constant
-#' Note 2022-02-08: ar_lags must be 1+ or there must be more than one factor variable.
-#'  This is due to the fact that glmnet expects 2+ x covariates!
 local({
 
 	message('*** Forecasting Quarterly Variables')
@@ -1165,7 +1174,7 @@ local({
 		
 			if (use_net == T) {
 				
-				glm_result = lapply(c(0, .5, 1), function(.alpha) {
+				glm_result = lapply(c(1), function(.alpha) {
 					cv = glmnet::cv.glmnet(
 						x = x_mat,
 						y = y_mat,
@@ -1782,7 +1791,11 @@ local({
 local({
 	
 	message('*** Skipping Docs Creation Temporarily')
-	
+	knitr::knit2pdf(
+		input = file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
+		output = file.path(DIR, 'logs', 'nowcast-model.pdf'),
+		clean = TRUE
+	)
 })
 
 ## Close Connections ----------------------------------------------------------
