@@ -52,10 +52,6 @@
 
 
 <<echo=F,results='hide',message=F, warning=F>>=
-  library(tidyverse)
-	library(corrr)
-  library(xtable)
-
   # Settings for PDF compilation
   knitr::opts_chunk$set(
     echo = F, results = 'asis',
@@ -111,15 +107,14 @@ Our goal will be to take monthly-frequency leading economic predictor variables 
 
 To do this, we will use a methodology that relies heavily on principal components. It is well known that most macroeconomic variables are highly correlated with one another (see, for example, Bernanke et al 2005).
 <<>>=
-	hist$wide_last$q$st %>% 
-  	select(., vsales, csent, advsales, ipi, vix, spy, cfnai) %>%
+	hist$wide_last$q$st %>%
+  	select(., gdp, vsales, csent, advsales, ipi, vix, spy) %>%
   	rename(
   		., 'GDP' = gdp, 'VehicleSales' = vsales, 'ConsumerSentiment' = csent,
   		'AdvSales' = advsales, 'IndustrialProd' = ipi, 'VIX' = vix, 'SP500' = spy
   		) %>%
   	corrr::correlate(.) %>%
   	corrr::shave(.) %>%
-  	select(., -CFNAI) %>%
   	xtable(., caption = 'Correlation Between Major Leading Predictors') %>%
   	print(., size = 'scriptsize')
 @
@@ -217,21 +212,24 @@ Once factors are derived, we select the optimal number of factors to use in pred
 \end{align*}
 
 <<fig.cap = 'Factor Selection'>>=
-	ef$nc$screePlot
+	models[[length(models)]]$scree_plot
 @
 
 <<>>=
-	ef$nc$screeDf %>%
-    	setNames(., c('Factors (R)', 'Variance Explained', 'Pct of Total Var Explained', 'Cumulative Pct', 'MSE', 'IC1', 'IC2', 'IC3')) %>%
-    	xtable::xtable(., caption = 'Factor Selection Process', align = 'lcccccccc') %>%
-    	print(., size = 'scriptsize')
+	models[[length(models)]]$scree_df %>%
+		set_names(
+			.,
+			c('Factors (R)', 'Variance Explained', 'Pct of Total Var Explained', 'Cumulative Pct', 'MSE', 'IC1', 'IC2', 'IC3')
+			) %>%
+  	xtable(., caption = 'Factor Selection Process', align = 'lcccccccc') %>%
+  	print(., size = 'scriptsize')
 @
 
-Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{ef$nc$bigR}$ factors.
+Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{models[[length(models)]]$big_r}$ factors.
 
 <<>>=
-for (i in 1:length(ef$nc$zPlots)) {
-	print(ef$nc$zPlots[[i]])
+for (i in 1:length(	models[[length(models)]]$z_plots)) {
+	print(models[[length(models)]][[i]])
 }
 @
 
@@ -239,10 +237,10 @@ Next, we perform a qualitative check of the factors. The first factor usually re
 
 Finally, we evaluate the components of each factor, i.e. which 
 <<>>=
-	ef$nc$factorWeightsDf %>%
-    	head(., 5) %>%
-    	xtable::xtable(., caption = 'PCA Factor Weights - Top 5 Per Factor', align = 'cccc') %>%
-    	print(., size = 'scriptsize')
+	models[[length(models)]]$factor_weights_df %>%
+  	head(., 5) %>%
+  	xtable(., caption = 'PCA Factor Weights - Top 5 Per Factor', align = 'cccc') %>%
+  	print(., size = 'scriptsize')
 @
 
 
@@ -321,29 +319,29 @@ It can then be partitioned to calculate $\widehat{B}'$ and $\widehat{C}'$, which
 
 The estimated coefficients in $\widehat{B}$ and $\widehat{C}$ are shown below.
 <<>>=
-	ef$nc$varCoefDf %>%
-    	tidyr::pivot_longer(., -coefname) %>%
-    	tidyr::pivot_wider(., names_from = coefname) %>%
-    	xtable::xtable(., caption = 'Factor VAR Coefficients') %>%
-    	print(.)
+	models[[length(models)]]$var_coef_df %>%
+  	pivot_longer(., -coefname) %>%
+  	pivot_wider(., names_from = coefname) %>%
+  	xtable(., caption = 'Factor VAR Coefficients') %>%
+  	print(.)
 @
 
 
 Finally, we perform a qualitative check of the fitted values and residuals. It is important that factors that are predictable --- i.e., factors 2 and 3, since they represent output --- have a good fit. Since factor 1 represents the COVID-19 shock, we should expect that the fit is poor; such a shock should not be predictable simply from the time dynamics of the factors; so if the fit is good, our model is likely overfitted.
 <<>>=
-for (i in 1:length(ef$nc$varFittedPlots)) {
-	print(ef$nc$varFittedPlots[[i]])
-}
+	for (i in 1:length(models[[length(models)]]$var_fitted_plots)) {
+		print(models[[length(models)]]$var_fitted_plots[[i]])
+	}
 @
 
 
 <<fig.cap = 'Factor VAR Residuals'>>=
-print(ef$nc$varResidPlot)
+	print(models[[length(models)]]$var_resid_plot)
 @
 
 Additionally, we expect residuals of the nowcast. Goodness-of-fit statistics are shown below.
 <<>>=
-ef$nc$varGofDf %>%
+	models[[length(models)]]$var_gof_df %>%
     xtable::xtable(., caption = 'DFM Goodness of Fit', digits = 8) %>%
     print(.)
 @
@@ -425,16 +423,18 @@ However, estimation of $A$ and $D$ with the standard OLS estimator is likely to 
 
 Estimated coefficients for $\widehat{A}$ and $\widehat{D}$ are below.
 <<>>= 
-ef$nc$dfmCoefDf %>% tidyr::pivot_longer(., -coefname) %>% tidyr::pivot_wider(., names_from = coefname) %>%
-    	xtable::xtable(., caption = 'Estimated DFM Coefficients') %>%
-    	print(.)
+	models[[length(models)]]$dfm_coef_df %>%
+  	pivot_longer(., -coefname) %>%
+  	pivot_wider(., names_from = coefname) %>%
+  	xtable(., caption = 'Estimated DFM Coefficients') %>%
+  	print(.)
 @
 
 We perform a qualitative check of the in-sample fit, as well as a quantitative review of the goodness-of-fit. The graphs of the fitted plots are located in the appendix.
 <<>>=
-	ef$nc$dfmGofDf %>%
-    	xtable::xtable(., caption = 'DFM Goodness of Fit', digits = 8) %>%
-    	print(.)
+	models[[length(models)]]$dfm_gof_df %>%
+  	xtable(., caption = 'DFM Goodness of Fit', digits = 8) %>%
+  	print(.)
 @
 
 
@@ -530,8 +530,8 @@ Recursively iterating over $t = \tau + 1, \dots, T^*$, we calculate the followin
 Combining the calculations for $\vv{z}_{t|\tau}$ with the ones derived from the Kalman smoother, we will now be able to obtain the full time series for the factors from time 1 through time $T^*$.
 
 <<>>=
-    for (i in 1:length(ef$nc$kfPlots)) {
-    	print(ef$nc$kfPlots[[i]])
+    for (i in 1:length(models[[length(models)]]$kf_plots)) {
+    	print(models[[length(models)]]$kf_plots[[i]])
     }
 @
 
@@ -545,11 +545,11 @@ We begin by aggregating these monthly factors into quarterly data by taking a si
 
 In this section, we will use these now-quarterly factors to forecast our quarterly subcomponents of GDP. As discussed in the data import section, these have been transformed for stationarity, typically by taking a log-difference.
 <<>>=
-ef$paramsDf %>%
-    	dplyr::filter(., category == 'Output' & nowcast == 'dfm.q') %>%
-    	dplyr::transmute(., Variable = fullname) %>%
-    	xtable::xtable(., caption = 'Quarterly Data Covariates') %>%
-    	print(., size = 'scriptsize')
+	variable_params %>%
+  	filter(., dispgroup == 'GDP' & nc_method == 'dfm.q') %>%
+  	transmute(., Variable = fullname) %>%
+  	xtable(., caption = 'Quarterly Data Covariates') %>%
+  	print(., size = 'scriptsize')
 @
 We will notate each of these gdp subcomponents as $y^i$ and $M$ as the total number of covariates, so that $i = 1, \dots, M$.
 
@@ -575,24 +575,24 @@ The $\beta$ coefficients can be estimated with a typical OLS process, where the 
 After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
 The forecasted results are as follows.
 <<>>=
-ef$ncpred0$q$st %>%
-    	tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-    	dplyr::inner_join(., filter(ef$paramsDf, category == 'Output')[, c('varname', 'fullname')], by = 'varname') %>%
-    	dplyr::mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
-    	dplyr::select(., -varname) %>%
-    	tidyr::pivot_wider(., values_from = value, names_from = date) %>%
-    	dplyr::rename(., 'Variable' = fullname) %>%
-    	xtable::xtable(., caption = 'DFM-AR(1) Forecasted GDP Subcomponents') %>%
-    	print(., size = 'scriptsize')
+	models[[length(models)]]$dfm_q_df %>%
+  	pivot_longer(., -date, names_to = 'varname') %>%
+  	inner_join(., filter(variable_params, dispgroup == 'GDP')[, c('varname', 'fullname')], by = 'varname') %>%
+  	mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
+  	select(., -varname) %>%
+  	pivot_wider(., values_from = value, names_from = date) %>%
+  	rename(., 'Variable' = fullname) %>%
+  	xtable(., caption = 'DFM-AR(1) Forecasted GDP Subcomponents') %>%
+  	print(., size = 'scriptsize')
 @
 
 We can then backtransform the data so that the units are in base values. After backtransformation, we are ready to aggregate these up to higher-level GDP components. In particular, we calculate the variables below.
 <<>>=
-ef$paramsDf %>%
-    	dplyr::filter(., category == 'Output' & nowcast == 'calc') %>%
-    	dplyr::transmute(., Variable = fullname) %>%
-    	xtable::xtable(., caption = 'Summable Quarterly Data Covariates') %>%
-    	print(., size = 'scriptsize')
+  variable_params %>%
+  	filter(., dispgroup == 'GDP' & nc_method == 'calc') %>%
+  	transmute(., Variable = fullname) %>%
+  	xtable(., caption = 'Summable Quarterly Data Covariates') %>%
+  	print(., size = 'scriptsize')
 @
 These are calculated using the standard GDP aggregation equations, e.g., net exports = exports - imports, and so on.
 Finally, we convert these into annualized percentage change, as this is the standard format in which GDP subcomponents are reported in. The results are reported in the next section.
@@ -603,54 +603,94 @@ We also use a similar DFM-AR(1) specification to forecast out other economic var
 \section{Results}
 Our final nowcasts of GDP and its subcomponents are below. All units are reported in terms of annualized percentage change (seasonally adjusted) except for change in private inventories and net exports, which are reported in terms of billions of real 2012 dollars.
 <<>>=
-ef$ncpred$q$d1 %>%
-	tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-	dplyr::inner_join(filter(ef$paramsDf, category == 'Output')[, c('varname', 'fullname')], ., by = 'varname') %>%
-	# Add tabs
+	model$pred_flat %>%
+  	filter(., bdate == max(bdate) & form == 'd1' & freq == 'q') %>%
+  	select(., -bdate, -form, -freq)	%>%
+  	# pivot_longer(., -date, names_to = 'varname') %>%
+		inner_join(filter(variable_params, dispgroup == 'GDP')[, c('varname', 'fullname')], ., by = 'varname') %>%
+		# Add tabs
     rowwise(.) %>%
-    dplyr::mutate(., fullname = paste0(paste0(rep(' ', str_count(fullname, ':')), collapse = ''), fullname)) %>%
-    dplyr::mutate(., fullname1 = paste0('\\hspace{',str_count(fullname, ':') * 8, 'mm} ')) %>%
-    dplyr::mutate(., fullname2 = sub('.*\\:', '', fullname)) %>%
-    dplyr::mutate(., fullname2 = str_replace(fullname2, coll('&'), '\\&')) %>%
-    dplyr::mutate(., fullname2 = ifelse(str_count(fullname, ':') == 0, paste0('\\textbf{', fullname2, '}'), fullname2)) %>%
-    dplyr::mutate(., fullname = paste0(fullname1, fullname2)) %>%
-    dplyr::select(., -fullname1, -fullname2) %>%
-    dplyr::ungroup(.) %>%
+    mutate(., fullname = paste0(paste0(rep(' ', str_count(fullname, ':')), collapse = ''), fullname)) %>%
+    mutate(., fullname1 = paste0('\\hspace{',str_count(fullname, ':') * 8, 'mm} ')) %>%
+    mutate(., fullname2 = sub('.*\\:', '', fullname)) %>%
+    mutate(., fullname2 = str_replace(fullname2, coll('&'), '\\&')) %>%
+    mutate(., fullname2 = ifelse(str_count(fullname, ':') == 0, paste0('\\textbf{', fullname2, '}'), fullname2)) %>%
+    mutate(., fullname = paste0(fullname1, fullname2)) %>%
+    select(., -fullname1, -fullname2) %>%
+    ungroup(.) %>%
     # End
-	dplyr::mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
-	dplyr::select(., -varname) %>%
-	tidyr::pivot_wider(., values_from = value, names_from = date) %>%
-	dplyr::rename(., 'Variable' = fullname) %>%
-	xtable::xtable(., caption = 'Nowcasts for GDP and Subcomponents (Annualized Percent Change)') %>%
-	print(., size = '\\fontsize{10pt}{12pt}\\selectfont', sanitize.text.function = function(x) x, add.to.row = list(pos = list(nrow(.)), command = '\\hline \n \\textit{apchg} = annualized \\% change \n'), hline.after = c(-1, 0))
+	mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
+	select(., -varname) %>%
+	pivot_wider(., values_from = value, names_from = date) %>%
+	rename(., 'Variable' = fullname) %>%
+	xtable(., caption = 'Nowcasts for GDP and Subcomponents (Annualized Percent Change)') %>%
+	print(
+		.,
+		size = '\\fontsize{10pt}{12pt}\\selectfont',
+		sanitize.text.function = function(x) x,
+		add.to.row = list(
+			pos = list(nrow(.)),
+			command = '\\hline \n \\textit{apchg} = annualized \\% change \n'),
+		hline.after = c(-1, 0)
+		)
 @
 
 We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
 <<>>=
-ef$ncpred$q$d1 %>%
-	tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-    dplyr::inner_join(filter(ef$paramsDf, category != 'Output')[, c('varname', 'units', 'd1', 'fullname')], ., by = 'varname') %>%
-    dplyr::mutate(., fullname = ifelse(d1 != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', d1, ')}}'), fullname)) %>%
-    dplyr::mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
-	dplyr::mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
-	dplyr::select(., -varname, -d1, -units) %>%
-	tidyr::pivot_wider(., values_from = value, names_from = date) %>%
-	dplyr::rename(., 'Variable' = fullname) %>%
-	xtable::xtable(., caption = 'Nowcasts for Other Quarterly Variables') %>%
-	print(., size = '\\fontsize{11pt}{13pt}\\selectfont')
+	model$pred_flat %>%
+  	filter(., bdate == max(bdate) & form == 'd1' & freq == 'q') %>%
+  	select(., -bdate, -form, -freq)	%>%
+    inner_join(
+    	filter(variable_params, dispgroup != 'GDP')[, c('varname', 'units', 'd1', 'fullname')],
+    	.,
+    	by = 'varname'
+    	) %>%
+    mutate(
+    	.,
+    	fullname = ifelse(
+    		d1 != 'base',
+    		paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', d1, ')}}'),
+    		fullname
+    		)
+    	) %>%
+    mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
+		mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
+		select(., -varname, -d1, -units) %>%
+		pivot_wider(., values_from = value, names_from = date) %>%
+		rename(., 'Variable' = fullname) %>%
+		xtable(., caption = 'Nowcasts for Other Quarterly Variables') %>%
+		print(., size = '\\fontsize{11pt}{13pt}\\selectfont')
 @
 <<>>=
-ef$ncpred$m$d1 %>%
-    tidyr::pivot_longer(., -date, names_to = 'varname') %>%
-    dplyr::inner_join(filter(ef$paramsDf, category != 'Output')[, c('varname', 'units', 'd1', 'fullname')], ., by = 'varname') %>%
-    dplyr::mutate(., fullname = ifelse(d1 != 'base', paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', d1, ')}}'), fullname)) %>%
-    dplyr::mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
-    dplyr::mutate(., date = paste0(year(date), 'M', month(date))) %>%
-    dplyr::select(., -varname, -d1, -units) %>%
-    tidyr::pivot_wider(., values_from = value, names_from = date) %>%
-    dplyr::rename(., 'Variable' = fullname) %>%
-    xtable::xtable(., caption = 'Nowcasts for All Monthly Variables') %>%
-	print(., size = '\\fontsize{10pt}{12pt}\\selectfont', sanitize.text.function = function(x) x, add.to.row = list(pos = list(nrow(.)), command = '\\hline \n \\textit{apchg} = annualized \\% change \n'), hline.after = c(-1, 0))
+	model$pred_flat %>%
+  	filter(., bdate == max(bdate) & form == 'd1' & freq == 'm') %>%
+    inner_join(
+    	filter(variable_params, dispgroup != 'GDP')[, c('varname', 'units', 'd1', 'fullname')],
+    	.,
+    	by = 'varname'
+    	) %>%
+    mutate(
+    	.,
+    	fullname = ifelse(
+    		d1 != 'base',
+    		paste0(fullname, ' \\textit{\\footnotesize\\textcolor{gray}{(', d1, ')}}'),
+    		fullname)
+    	) %>%
+    mutate(., fullname = str_replace(fullname, coll('&'), '\\&')) %>%
+    mutate(., date = paste0(year(date), 'M', month(date))) %>%
+    select(., -varname, -d1, -units) %>%
+    pivot_wider(., values_from = value, names_from = date) %>%
+    rename(., 'Variable' = fullname) %>%
+    xtable(., caption = 'Nowcasts for All Monthly Variables') %>%
+  	print(
+  		.,
+  		size = '\\fontsize{10pt}{12pt}\\selectfont',
+  		sanitize.text.function = function(x) x,
+  		add.to.row = list(
+  			pos = list(nrow(.)),
+  			command = '\\hline \n \\textit{apchg} = annualized \\% change \n'),
+  		hline.after = c(-1, 0)
+  		)
 @
 
 
@@ -660,10 +700,9 @@ ef$ncpred$m$d1 %>%
 
 \section{DFM Fitted Plots}
 <<>>=
-for (i in 1:length(ef$nc$dfmFittedPlots)) {
-	print(ef$nc$dfmFittedPlots[[i]])
-}
-
+	for (i in 1:length(models[[length(models)]]$dfm_fitted_plots)) {
+		print(models[[length(models)]]$dfm_fitted_plots[[i]])
+	}
 @
 
 
