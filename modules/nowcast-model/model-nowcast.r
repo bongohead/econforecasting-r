@@ -7,6 +7,7 @@ JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
 TEST_MODE = T
+IMPORT_DATE_START = '2005-01-01'
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -28,6 +29,7 @@ library(econforecasting)
 library(lubridate)
 library(jsonlite)
 library(glmnet)
+library(highcharter)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
@@ -139,7 +141,7 @@ local({
 			message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_data(x$sckey, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = T, .verbose = F) %>%
 				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
-				filter(., date >= as_date('2010-01-01'), vdate >= as_date('2010-01-01'))
+				filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
 			})
 
 	hist$raw$fred <<- fred_data
@@ -158,7 +160,7 @@ local({
 			url =
 				paste0(
 					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
-					'?period1=', '1262304000', # 12/30/1999
+					'?period1=', as.numeric(as.POSIXct(as_date(IMPORT_DATE_START))),
 					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
 					'&interval=1d',
 					'&events=history&includeAdjustedClose=true'
@@ -300,7 +302,7 @@ local({
 		group_by(., varname) %>%
 		summarize(., min_dt = min(date)) %>%
 		arrange(., desc(min_dt)) %>%
-		print(., n = 5)
+		print(., n = 100)
 
 	last_obs_by_vdate =
 		hist$agg %>%
@@ -420,9 +422,8 @@ local({
 	
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
-			select(., date, all_of(pca_varnames)) %>%
-			filter(., date >= as_date('2010-01-01'))
-
+			select(., date, all_of(pca_varnames))
+		
 		big_t_dates = filter(pca_variables_df, !if_any(everything(), is.na))$date
 		big_tau_dates = filter(pca_variables_df, if_any(everything(), is.na))$date
 		big_tstar_dates =
@@ -545,7 +546,7 @@ local({
 				)
 
 		# 2 factors needed since 1 now represents COVID shock
-		big_r = 3
+		big_r = 2
 			# screeDf %>%
 			# filter(., ic1 == min(ic1)) %>%
 			# .$factors #+ 2
@@ -1610,7 +1611,7 @@ local({
 })
 
 
-
+hist$flat %>% as_tibble(.) %>% mutate(., date = as_date(date)) %>% filter(., form == 'st' & bdate == max(bdate) & varname %in% filter(variable_params, nc_dfm_input == 1)$varname) %>% group_by(., varname) %>% summarize(., min_dt = min(date)) %>% View(.)
 ## 7. Moving Averages ------------------------------------------------------------
 
 ## Send to SQL ----------------------------------------------------------------
