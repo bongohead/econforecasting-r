@@ -726,7 +726,7 @@ We also report nowcasts of other variables of interest, including other quarterl
 \section{Elastic Net Hyperparameter Selection}
 <<>>=
 	for (i in 1:length(models[[length(models)]]$glm_cv_plots)) {
-		print(models[[length(models)]]$glm_cv_plots[[i]])
+		print(models[[length(models)]]$glm_cv_plots[[i]] + ggthemes::theme_clean())
 	}
 @
 
