@@ -10,9 +10,9 @@
 \usepackage{appendix}
 \graphicspath{{\Sexpr{file.path(DIR, 'modules', 'nowcast-model', 'documentation-images')}}}
 \newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
-\definecolor{econgreen}{RGB}{55, 91, 1}
+\definecolor{econgreen}{RGB}{45, 140, 38}
 
-\geometry{left=2.6cm, right = 2.6cm, top = 3cm, bottom = 3cm}
+\geometry{left=2.2cm, right = 2.2cm, top = 3cm, bottom = 3cm}
 
 \fancypagestyle{plain}{
 	\let\oldheadrule\headrule% Copy \headrule into \oldheadrule
@@ -33,7 +33,7 @@
 \newgeometry{left=5cm, top=5cm} %defines the geometry for the titlepage
 \pagecolor{econgreen}
 \noindent
-\includegraphics[width=2cm]{cmefi_short.png} \\[-1em]
+\includegraphics[width=2cm]{cmefi-short.png} \\[-1em]
 \color{white}
 \makebox[0pt][l]{\rule{1.3\textwidth}{1pt}}
 \par
@@ -58,7 +58,7 @@
     root.dir = file.path(DIR, 'modules', 'nowcast-model'),
     fig.path = file.path(DIR, 'logs', 'latex-figures'),
     cache.path = file.path(DIR, 'logs', 'latex-cache'),
-    fig.width = 10, fig.height = 4, out.width = '5in', out.height = '2in',
+    fig.width = 9, fig.height = 3, out.width = '4.5in', out.height = '1.5in',
     fig.pos = 'H', fig.align = 'center', warnings = F, message = F
     )
   options(xtable.include.rownames = F)
@@ -156,7 +156,7 @@ We additionally import quarterly data for our variables of interest. While this 
 Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
 <<>>=
 	variable_params %>%
-  	filter(., is.na(nc_dfm_input) & freq == 'm') %>%
+  	filter(., (is.na(nc_dfm_input) | nc_dfm_input == 0) & freq == 'm') %>%
   	select(., fullname, st) %>%
   	set_names(., c('Variable', 'Stationary Form')) %>%
   	xtable(., caption = 'Other Imported Monthly Data', align = 'llc') %>%
@@ -229,7 +229,7 @@ Choosing the IC-minimizing $R$ lets us choose $R = \Sexpr{models[[length(models)
 
 <<>>=
 for (i in 1:length(	models[[length(models)]]$z_plots)) {
-	print(models[[length(models)]][[i]])
+	print(models[[length(models)]]$z_plots[[i]])
 }
 @
 
@@ -239,7 +239,7 @@ Finally, we evaluate the components of each factor, i.e. which
 <<>>=
 	models[[length(models)]]$factor_weights_df %>%
   	head(., 5) %>%
-  	xtable(., caption = 'PCA Factor Weights - Top 5 Per Factor', align = 'cccc') %>%
+  	xtable(., caption = 'PCA Factor Weights - Top 5 Per Factor', align = rep('c', ncol(.) + 1)) %>%
   	print(., size = 'scriptsize')
 @
 
@@ -555,7 +555,7 @@ We will notate each of these gdp subcomponents as $y^i$ and $M$ as the total num
 
 Note that many higher-level components of GDP (including GDP itself) are \textit{not} forecasted directly in this step; these will be forecasted later by aggregating their subcomponents.
 
-Now we will specify that these GDP subcomponents follow a DFM-AR(1) model; i.e., they will be functions of the monthly-aggregated factors as well as the first lag of themselves.
+Now we will specify that these GDP subcomponents follow a DFM-AR(1) model; i.e., they will be functions of the monthly-aggregated factors as well as the first lag of themselves. For any variable $i$,
 \begin{align*}
 	y^i_t
 	=
@@ -568,11 +568,23 @@ Now we will specify that these GDP subcomponents follow a DFM-AR(1) model; i.e.,
 	f^R_t
 	\end{bmatrix}
 	+
-	e_t
+	e_t.
 \end{align*}
-The $\beta$ coefficients can be estimated with a typical OLS process, where the training data is constituted of the $y^i_t$ quarterly covariates, the lagged quarterly covariates $y^i_{t-1}$, and the quarterly-aggregated factor variables. The data is cut off at the date for which the any data on the quarterly covariates are missing.
+The $R + 2 \times 1$ $\beta$ matrix can be estimated with a GLS process, where the training data is constituted of the $y^i_t$ quarterly covariates, the lagged quarterly covariates $y^i_{t-1}$, and the quarterly-aggregated factor variables. The data is cut off at the date for which the any data on the quarterly covariates are missing.
 
-After estimation, we then use the same model to forecast forward the $y^i_t$ quarterly, up through time $\tau$. 
+In particular, to control for overfitting, we use an elastic net process, a linear combination of the standard LASSO and ridge regression estimators. We use a grid search process to find an optimal combination of the $L_1$ and $L2$ coefficient hyperparameters. The optimal values for each variable are given below. Plots for the selection process can be found in the appendix.
+<<>>=
+	models[[length(models)]]$glm_optim_df %>%
+  	filter(., min_overall == T)  %>%
+  	transmute(., varname, l1 = alpha, l2 = lambda) %>%
+  	inner_join(., filter(variable_params, dispgroup == 'GDP')[, c('varname', 'fullname')], by = 'varname') %>%
+  	transmute(., Variable = fullname, l1, l2) %>%
+  	xtable(., caption = 'Elastic Net Hyperparameters') %>%
+  	print(., size = 'scriptsize')
+@
+
+After estimation, we then use the same model to iteratively forecast forward the $y^i_t$ quarterly, up through time $\tau$. The Kalman forecast values are used for the $f$ forecasts.
+
 The forecasted results are as follows.
 <<>>=
 	models[[length(models)]]$dfm_q_df %>%
@@ -581,6 +593,7 @@ The forecasted results are as follows.
   	mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
   	select(., -varname) %>%
   	pivot_wider(., values_from = value, names_from = date) %>%
+  	na.omit(.) %>%
   	rename(., 'Variable' = fullname) %>%
   	xtable(., caption = 'DFM-AR(1) Forecasted GDP Subcomponents') %>%
   	print(., size = 'scriptsize')
@@ -635,6 +648,8 @@ Our final nowcasts of GDP and its subcomponents are below. All units are reporte
 		)
 @
 
+Backtested forecasts of these variables can be found in the appendix.
+
 We also report nowcasts of other variables of interest, including other quarterly variables, as well as all monthly variables used in this process. Note that because these variables are ragged-edge in nature, there may be "blank" columns. These columns simply indicate that historical data already exists for those columns. Only nowcasts produced by the model are reported.
 <<>>=
 	model$pred_flat %>%
@@ -664,6 +679,7 @@ We also report nowcasts of other variables of interest, including other quarterl
 <<>>=
 	model$pred_flat %>%
   	filter(., bdate == max(bdate) & form == 'd1' & freq == 'm') %>%
+  	select(., -bdate, -form, -freq) %>%
     inner_join(
     	filter(variable_params, dispgroup != 'GDP')[, c('varname', 'units', 'd1', 'fullname')],
     	.,
@@ -694,6 +710,8 @@ We also report nowcasts of other variables of interest, including other quarterl
 @
 
 
+
+
 \appendix
 \appendixpage
 \addappheadtotoc
@@ -704,6 +722,53 @@ We also report nowcasts of other variables of interest, including other quarterl
 		print(models[[length(models)]]$dfm_fitted_plots[[i]])
 	}
 @
+
+\section{Elastic Net Hyperparameter Selection}
+<<>>=
+	for (i in 1:length(models[[length(models)]]$glm_cv_plots)) {
+		print(models[[length(models)]]$glm_cv_plots[[i]])
+	}
+@
+
+\section{Backtested GDP Forecasts}
+<<>>=	
+	plots =
+		model$pred_flat %>%
+		filter(
+			.,
+			varname %in% c('gdp', 'pce', 'govt', 'ex', 'im', 'pdi'),
+			form == 'd1'
+			) %>%
+  	left_join(., variable_params[, c('varname', 'fullname')], by = 'varname') %>%
+		filter(., bdate >= date - days(30)) %>%
+		group_split(., date) %>%
+		lapply(., function(x)
+			ggplot(x) + geom_line(aes(x = bdate, y = value, color = fullname), size = 1) +
+				geom_point(aes(x = bdate, y = value, color = fullname), size = 2) +
+				scale_x_date(date_breaks = '1 week', date_labels =  '%m/%d/%y') +
+				ggthemes::theme_fivethirtyeight() +
+				labs(
+					x = 'Vintage Date',
+					y = 'Annualized % Change',
+					title = paste0('Backtested Forecasts For ', to_pretty_date(x$date[[1]], 'q')),
+					color = NULL
+					)
+			)
+	
+	for (p in tail(plots, 2)) {
+		print(p)
+	}
+	
+	# imap_dfr(models, function(m, this_bdate) 
+	# 	mutate(m$f_df, bdate = as_date(this_bdate))
+	# 	) %>% filter(., bdate >= today() - days(30) & date == '2022-01-01') %>% 
+	# 	arrange(., date) %>% 
+	# 	ggplot(.) +
+	# 	geom_line(aes(x = bdate, y = f1))
+	
+	model$pred_plots <<- plots
+@
+
 
 
 \end{document}
