@@ -33,6 +33,7 @@ library(roll)
 library(knitr) # Needed for knitting latex docs
 library(corrr) # Needed for knitting latex docs
 library(xtable) # Needed for knitting latex docs
+library(ggthemes) # Needed for knitting latex docs
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
@@ -406,7 +407,7 @@ local({
 				lapply(., function(y)
 					split(y, by = 'bdate', keep.by = T) %>%
 					lapply(., function(z) {
-						message(z$bdate[[1]])
+						# message(z$bdate[[1]])
 						dcast(select(z, -bdate), date ~ varname, value.var = 'value') %>%
 							.[, date := as_date(date)] %>%
 							.[order(date)] %>%
