@@ -58,7 +58,7 @@
     root.dir = file.path(DIR, 'modules', 'nowcast-model'),
     fig.path = file.path(DIR, 'logs', 'latex-figures'),
     cache.path = file.path(DIR, 'logs', 'latex-cache'),
-    fig.width = 9, fig.height = 3, out.width = '4.5in', out.height = '1.5in',
+    fig.width = 9, fig.height = 4, out.width = '4.5in', out.height = '2in',
     fig.pos = 'H', fig.align = 'center', warnings = F, message = F
     )
   options(xtable.include.rownames = F)
@@ -592,8 +592,8 @@ The forecasted results are as follows.
   	inner_join(., filter(variable_params, dispgroup == 'GDP')[, c('varname', 'fullname')], by = 'varname') %>%
   	mutate(., date = paste0(year(date), 'Q', quarter(date))) %>%
   	select(., -varname) %>%
-  	pivot_wider(., values_from = value, names_from = date) %>%
   	na.omit(.) %>%
+  	pivot_wider(., values_from = value, names_from = date) %>%
   	rename(., 'Variable' = fullname) %>%
   	xtable(., caption = 'DFM-AR(1) Forecasted GDP Subcomponents') %>%
   	print(., size = 'scriptsize')
@@ -758,14 +758,7 @@ We also report nowcasts of other variables of interest, including other quarterl
 	for (p in tail(plots, 2)) {
 		print(p)
 	}
-	
-	# imap_dfr(models, function(m, this_bdate) 
-	# 	mutate(m$f_df, bdate = as_date(this_bdate))
-	# 	) %>% filter(., bdate >= today() - days(30) & date == '2022-01-01') %>% 
-	# 	arrange(., date) %>% 
-	# 	ggplot(.) +
-	# 	geom_line(aes(x = bdate, y = f1))
-	
+
 	model$pred_plots <<- plots
 @
 
