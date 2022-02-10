@@ -6,7 +6,7 @@
 JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
 RESET_SQL = TRUE
-TEST_MODE = TRUE
+TEST_MODE = FALSE
 IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007
 
 ## Cron Log ----------------------------------------------------------
@@ -64,8 +64,8 @@ release_params = read_excel(
 local({
 	# Include all days in last 3 months plus one random day per month before that
 	contiguous = seq(today() - days({if (TEST_MODE == T) 30 else 90}), today(), by = '1 day')
-	
-	old = 
+
+	old =
 		seq(
 			{if (TEST_MODE) as_date('2021-01-01') else as_date('2018-01-01')},
 			add_with_rollback(floor_date(min(contiguous), 'months'), months(-1)),
@@ -1212,18 +1212,18 @@ local({
 					ggplot(.) +
 					geom_line(aes(x = log(lambda), y = mae, group = alpha, color = alpha)) +
 					geom_point(
-						data = glm_result %>% dplyr::filter(., min_lambda_for_given_alpha == TRUE),
+						data = glm_result %>% filter(., min_lambda_for_given_alpha == TRUE),
 						aes(x = log(lambda), y = mae), color = 'red'
 					) +
 					geom_point(
-						data = glm_result %>% dplyr::filter(., min_overall == TRUE),
+						data = glm_result %>% filter(., min_overall == TRUE),
 						aes(x = log(lambda), y = mae), color = 'green'
 					) +
 					labs(
-						x = 'log(Lambda)', y = 'MAE', color = 'alpha',
-						title = 'Elastic Net Hyperparameter Fit',
-						subtitle = 'Red = MAE Minimizing Lambda for Given Alpha;
-						Green = MAE Minimizing (Lambda, Alpha) Pair'
+						x = 'log-Lambda', y = 'MAE', color = 'alpha',
+						title = paste0(.varname, ' DFM-AR(1) Model, Elastic Net Hyperparameter Fit'),
+						subtitle = 
+						'Red = MAE Minimizing Lambda for Given Alpha, Green = MAE Minimizing (Lambda, Alpha) Pair'
 					)
 				
 				glm_obj = glmnet::glmnet(
@@ -1810,13 +1810,22 @@ local({
 	
 	knitr::knit2pdf(
 		input = file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
-		output = file.path(DIR, 'logs', 'nowcast-model.tex'),
+		output = file.path(DIR, 'logs', 'nowcast-model-documentation.tex'),
 		clean = TRUE
 		)
+	
+	fs::file_move(
+		file.path(DIR, 'logs', 'nowcast-model-documentation.pdf'),
+		file.path(DIR, 'nowcast-model-documentation.pdf')
+		)
+	
+	# Upload via SFTP
+	# RCurl::ftpUpload(
+	# 	what = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
+	# 	to = paste0(CONST$SFTP_PATH_PUBLIC, 'nowcast-documentation.pdf')
+	# )
 	
 })
 
 ## Close Connections ----------------------------------------------------------
 dbDisconnect(db)
-
-
