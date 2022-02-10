@@ -170,7 +170,7 @@ local({
 				paste0(
 					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
 					'?period1=', as.numeric(as.POSIXct(as_date(IMPORT_DATE_START))),
-					'&period2=', as.numeric(as.POSIXct(Sys.Date() + lubridate::days(1))),
+					'&period2=', as.numeric(as.POSIXct(Sys.Date() + days(1))),
 					'&interval=1d',
 					'&events=history&includeAdjustedClose=true'
 				)
@@ -355,7 +355,7 @@ local({
 
 	stat_groups =
 		hist$base %>%
-		split(., by = c('varname', 'freq', 'vdate')) %>%
+		split(., by = c('varname', 'freq', 'bdate')) %>%
 		unname(.)
 
 	stat_final =
@@ -429,7 +429,7 @@ local({
 	quarters_forward = 3
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
-	results = lapply(bdates, function(this_bdate) {
+	results = lapply(bdates %>% set_names(., .), function(this_bdate) {
 	
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
@@ -444,8 +444,8 @@ local({
 				from = .,
 				to =
 					# From this quarter to next quarter minus a month
-					from_pretty_date(paste0(lubridate::year(.), 'Q', lubridate::quarter(.)), 'q') %>%
-					lubridate::add_with_rollback(., months(3 * (1 + quarters_forward) - 1)),
+					from_pretty_date(paste0(year(.), 'Q', quarter(.)), 'q') %>%
+					add_with_rollback(., months(3 * (1 + quarters_forward) - 1)),
 				by = '1 month'
 			) %>%
 			.[2:length(.)]
@@ -806,7 +806,7 @@ local({
 			c(lapply(1:length(m$big_t_dates), function(x) r_mat_0), .)
 		
 		list(
-			bdates = this_bdate,
+			bdate = this_bdate,
 			dfm_gof_df = gof_df,
 			dfm_coef_df = coef_df,
 			dfm_fitted_plots = fitted_plots,
@@ -971,13 +971,25 @@ local({
 		kf_df = y_df
 		
 		list(
-			bdates = this_bdate,
+			k_smooth = kSmooth,
+			k_fitted = tail(kFitted, 1),
+			k_forecast = kForecast,
+			bdate = this_bdate,
 			f_df = f_df,
 			kf_plots = kf_plots,
 			y_df = y_df,
 			kf_df = kf_df
 			)
 	})
+	
+	# Test factor forecasts by backtest date
+	map_dfr(results, function(x)
+		x$f_df %>%
+			filter(., date == '2022-01-01') %>%
+			mutate(., bdate = as_date(x$bdate))
+		) %>%
+		ggplot(.) + 
+		geom_line(aes(x = bdate, y = f1))
 	
 	for (x in results) {
 		models[[as.character(x$bdate)]]$f_df <<- x$f_df
