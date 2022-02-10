@@ -6,30 +6,28 @@
 JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
-TEST_MODE = T
-IMPORT_DATE_START = '2005-01-01'
+TEST_MODE = TRUE
+IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
 	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
 	sink_conn = file(sink_path, open = 'at')
 	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	sink(sink_conn, append = T, type = 'output')
-	sink(sink_conn, append = T, type = 'message')
+	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
 	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
 }
 
 ## Load Libs ----------------------------------------------------------'
+library(econforecasting)
 library(tidyverse)
 library(data.table)
 library(readxl)
 library(httr)
 library(DBI)
-library(econforecasting)
 library(lubridate)
 library(jsonlite)
 library(glmnet)
-library(highcharter)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(DIR, 'model-inputs', 'constants.r'))
@@ -298,6 +296,7 @@ local({
 
 	# Check min dates
 	# The latest min date for PCA inputs should be no earlier than the last PCA input variable
+	message('**** Variables Dates:')
 	hist$agg %>%
 		group_by(., varname) %>%
 		summarize(., min_dt = min(date)) %>%
@@ -310,7 +309,7 @@ local({
 		split(., by = c('varname', 'freq')) %>%
 		lapply(., function(x)  {
 
-			# message(str_glue('... Getting last vintage dates for {x$varname[[1]]}'))
+			# message(str_glue('**** Getting last vintage dates for {x$varname[[1]]}'))
 
 			last_obs_for_all_vdates =
 				x %>%
@@ -352,7 +351,7 @@ local({
 		stat_groups %>%
 		imap(., function(x, i) {
 
-			if (i %% 1000 == 0) message(str_glue('... Transforming {i} of {length(stat_groups)}'))
+			if (i %% 1000 == 0) message(str_glue('**** Transforming {i} of {length(stat_groups)}'))
 
 			variable_param = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
 			if (is.null(variable_param)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
@@ -479,6 +478,8 @@ local({
 
 ## 2. Extract PCA Factors -----------------------------------------------------------------
 local({
+	
+	message('*** Extracting PCA Factors')
 	
 	results = lapply(bdates, function(this_bdate) {
 
@@ -991,7 +992,7 @@ local({
 	# Single core takes about 1s per date for ar_lags = 2
 	results = lapply(bdates, function(this_bdate) {
 		
-		message(str_glue('... Forecasting {this_bdate}'))
+		message(str_glue('**** Forecasting {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
 
 		# Only include variables which are available at that date
@@ -1097,13 +1098,10 @@ local({
 	ar_lags = 1 # Number of AR lag terms to include.
 	use_net = T # Use elastic net?
 	use_intercept = T # Include an intercept? Works with either elastic net or ols
-	
-	
-	
 
 	results = lapply(bdates, function(this_bdate) {
 		
-		message(str_glue('... Forecasting {this_bdate}'))
+		message(str_glue('***** Forecasting {this_bdate}'))
 		
 		m = models[[as.character(this_bdate)]]
 		
@@ -1468,6 +1466,8 @@ local({
 #' Take 7-day MA to account for weird seasonality issue
 local({
 	
+	message('*** Aggregating & Creating Display Formats')
+	
 	results = lapply(bdates, function(this_bdate) {
 		
 		message(str_glue('... Aggregating {this_bdate}'))
@@ -1580,6 +1580,8 @@ local({
 ## 6. Final Checks ------------------------------------------------------------
 local({
 	
+	message(str_glue('*** Getting Final Checks: {format(now(), "%H:%M")}'))
+	
 	plots =
 		model$pred_flat %>%
 		filter(
@@ -1614,68 +1616,80 @@ local({
 hist$flat %>% as_tibble(.) %>% mutate(., date = as_date(date)) %>% filter(., form == 'st' & bdate == max(bdate) & varname %in% filter(variable_params, nc_dfm_input == 1)$varname) %>% group_by(., varname) %>% summarize(., min_dt = min(date)) %>% View(.)
 ## 7. Moving Averages ------------------------------------------------------------
 
+
+# Finalize ----------------------------------------------------------------
+
 ## Send to SQL ----------------------------------------------------------------
 
-# local({
-# 		message(str_glue('*** Getting Releases History: {format(now(), "%H:%M")}'))
-# 	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
-# 		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
-# 		else x
-# 	})
-# 	
-# 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_submodel_values CASCADE')
-# 	if (!'rates_model_submodel_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-# 		dbExecute(
-# 			db,
-# 			'CREATE TABLE rates_model_submodel_values (
-# 					submodel VARCHAR(10) NOT NULL,
-# 					varname VARCHAR(255) NOT NULL,
-# 					freq CHAR(1) NOT NULL,
-# 					vdate DATE NOT NULL,
-# 					date DATE NOT NULL,
-# 					value NUMERIC(20, 4) NOT NULL,
-# 					created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-# 					PRIMARY KEY (submodel, varname, freq, vdate, date)
-# 					)'
-# 		)
-# 		
-# 		dbExecute(db, '
-# 				SELECT create_hypertable(
-# 					relation => \'rates_model_submodel_values\',
-# 					time_column_name => \'vdate\'
-# 					);
-# 				')
-# 	}
-# 	
-# 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
-# 	message('***** Initial Count: ', initial_count)
-# 	
-# 	sql_result =
-# 		submodel_values %>%
-# 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-# 		group_split(., split, .keep = FALSE) %>%
-# 		sapply(., function(x)
-# 			create_insert_query(
-# 				x,
-# 				'rates_model_submodel_values',
-# 				'ON CONFLICT (submodel, varname, freq, vdate, date) DO UPDATE SET value=EXCLUDED.value'
-# 			) %>%
-# 				dbExecute(db, .)
-# 		) %>%
-# 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-# 	
-# 	
-# 	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
-# 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-# 	message('***** Data Sent to SQL:')
-# 	print(sum(unlist(sql_result)))
-# 	
-# 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
-# 	message('***** Initial Count: ', final_count)
-# 	message('***** Rows Added: ', final_count - initial_count)
-# 	
-# 	submodel_values <<- submodel_values
-# })
+local({
+	
+	message(str_glue('*** Getting Releases History: {format(now(), "%H:%M")}'))
+	
+	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
+		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
+		else x
+	})
+
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_values CASCADE')
+	if (!'nowcast_model_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE nowcast_model_values (
+					bdate DATE NOT NULL,
+					varname VARCHAR(255) NOT NULL,
+					freq CHAR(1) NOT NULL,
+					form VARCHAR(255) NOT NULL,
+					date DATE NOT NULL,
+					value NUMERIC(20, 4) NOT NULL,
+					created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+					PRIMARY KEY (bdate, varname, freq, form, date)
+					)'
+			)
+
+		dbExecute(db, '
+				SELECT create_hypertable(
+					relation => \'nowcast_model_values\',
+					time_column_name => \'bdate\'
+					);
+				')
+	}
+
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_values')$count)
+	message('***** Initial Count: ', initial_count)
+
+	sql_result =
+		model %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'nowcast_model_values',
+				'ON CONFLICT (bdate, varname, freq, form, date) DO UPDATE SET value=EXCLUDED.value'
+				) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+
+
+	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	message('***** Data Sent to SQL:')
+	print(sum(unlist(sql_result)))
+
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_values')$count)
+	message('***** Initial Count: ', final_count)
+	message('***** Rows Added: ', final_count - initial_count)
+
+	model$values <<- model
+})
+
+## Create Docs  ----------------------------------------------------------
+local({
+	
+	
+	
+})
 
 ## Close Connections ----------------------------------------------------------
 dbDisconnect(db)
