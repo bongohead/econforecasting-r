@@ -74,7 +74,7 @@ local({
 		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month') - days(1), '1 day'), 1)) %>%
 		unlist(.) %>%
 		as_date(.)
-	
+
 	bdates = c(old, contiguous)
 
 	bdates <<- bdates
@@ -104,7 +104,7 @@ local({
 			by = 'relkey'
 		) %>%
 		left_join(., release_params, by = 'relkey') %>%
-		# Now create a column of included release dates 
+		# Now create a column of included release dates
 		left_join(
 			.,
 			map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
@@ -440,11 +440,11 @@ local({
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
 	results = lapply(bdates, function(this_bdate) {
-	
+
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
 			select(., date, all_of(pca_varnames))
-		
+
 		big_t_dates = filter(pca_variables_df, !if_any(everything(), is.na))$date
 		big_tau_dates = filter(pca_variables_df, if_any(everything(), is.na))$date
 		big_tstar_dates =
@@ -488,8 +488,8 @@ local({
 			time_df = time_df
 			)
 		})
-	
-	
+
+
 	for (x in results) {
 		models[[as.character(x$bdate)]] <<- x
 	}
@@ -500,26 +500,26 @@ local({
 
 ## 2. Extract PCA Factors -----------------------------------------------------------------
 local({
-	
+
 	message('*** Extracting PCA Factors')
-	
+
 	results = lapply(bdates, function(this_bdate) {
 
 		m = models[[as.character(this_bdate)]]
-		
+
 		xDf = filter(m$pca_variables_df, date %in% m$big_t_dates)
-	
+
 		xMat = scale(as.matrix(select(xDf, -date)))
-	
+
 		lambdaHat = eigen(t(xMat) %*% xMat)$vectors
 		fHat = (xMat) %*% lambdaHat
 		bigN = ncol(xMat)
 		bigT = nrow(xMat)
 		bigCSquared = min(bigN, bigT)
-	
+
 		# Total variance of data
 		totalVar = xMat %>% cov(.) %>% diag(.) %>% sum(.)
-	
+
 		# Calculate ICs from Bai and Ng (2002)
 		# Total SSE should be approx 0 due to normalization above;
 		# sapply(1:ncol(xMat), function(i)
@@ -530,14 +530,14 @@ local({
 		# 	sum(.) %>%
 		# 	{./(ncol(xMat) %*% nrow(xMat))}
 		(xMat - (fHat %*% t(lambdaHat)))^1
-	
+
 		# Now test by R
 		mseByR =
 			sapply(1:bigN, function(r)
 				sum((xMat - (fHat[, 1:r, drop = FALSE] %*% t(lambdaHat)[1:r, , drop = FALSE]))^2)/(bigT * bigN)
 			)
-	
-	
+
+
 		# Explained variance of data
 		screeDf =
 			fHat %>% cov(.) %>% diag(.) %>%
@@ -557,7 +557,7 @@ local({
 				ic2 = (mse) + factors * (bigN + bigT)/(bigN * bigT) * log(bigCSquared),
 				ic3 = (mse) + factors * (log(bigCSquared)/bigCSquared)
 			)
-	
+
 		screePlot =
 			screeDf %>%
 			ggplot(.) +
@@ -578,12 +578,12 @@ local({
 			#   	{screeDf %>% dplyr::filter(., ic1 == min(ic1)) %>% .$factors}
 			# 	)/2) %>%
 			# round(., digits = 0)
-	
+
 		zDf =
 			xDf[, 'date'] %>%
 			bind_cols(., fHat[, 1:big_r] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:big_r)))
-	
-	
+
+
 		zPlots =
 			imap(colnames(zDf) %>% .[. != 'date'], function(x, i)
 				select(zDf, all_of(c('date', x))) %>%
@@ -597,7 +597,7 @@ local({
 					ggthemes::theme_fivethirtyeight() +
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 			)
-	
+
 		factor_weights_df =
 			lambdaHat %>%
 			as.data.frame(.) %>%
@@ -614,7 +614,7 @@ local({
 			arrange(., order) %>%
 			select(., -order) %>%
 			select(., paste0('f', 1:big_r))
-		
+
 		list(
 			bdate = this_bdate,
 			factor_weights_df = factor_weights_df,
@@ -626,8 +626,8 @@ local({
 			z_plots = zPlots
 		)
 	})
-	
-	
+
+
 
 	for (x in results) {
 		models[[as.character(x$bdate)]]$factor_weights_df <<- x$factor_weights_df
@@ -642,18 +642,18 @@ local({
 
 ## 3. Run as VAR(1) -----------------------------------------------------------------
 local({
-	
+
 	message('*** Running VAR(1)')
-	
+
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		m = models[[as.character(this_bdate)]]
-		
+
 		input_df = na.omit(inner_join(m$z_df, add_lagged_columns(m$z_df, max_lag = 1), by = 'date'))
 
 		y_mat = input_df %>% select(., -contains('.l'), -date) %>% as.matrix(.)
 		x_df = input_df %>% select(., contains('.l')) %>% bind_cols(constant = 1, .)
-			
+
 		coef_df =
 			lm(y_mat ~ . - 1, data = x_df) %>%
 			coef(.) %>%
@@ -661,7 +661,7 @@ local({
 			rownames_to_column(., 'coefname') %>%
 			as_tibble(.) %>%
 			set_names(., c('coefname', paste0('f', 1:m$big_r)))
-			
+
 		gof_df =
 			lm(y_mat ~ . - 1, x_df) %>%
 			resid(.) %>%
@@ -670,7 +670,7 @@ local({
 			pivot_longer(., everything(), names_to = 'varname') %>%
 			group_by(., varname) %>%
 			summarize(., MAE = mean(abs(value)), MSE = mean(value^2))
-			
+
 		resid_plot =
 			lm(y_mat ~ . - 1, x_df) %>%
 			resid(.) %>%
@@ -678,7 +678,7 @@ local({
 			as_tibble(.) %>%
 			bind_cols(date = input_df$date, .) %>%
 			pivot_longer(., -date) %>%
-			ggplot(.) + 	
+			ggplot(.) +
 			geom_line(aes(x = date, y = value, group = name, color = name), size = 1) +
 			labs(title = 'Residuals plot for PCA factors', x = NULL, y = NULL, color = NULL)
 
@@ -688,7 +688,7 @@ local({
 			as_tibble(.) %>%
 			bind_cols(date = input_df$date, ., type = 'Fitted Values') %>%
 			bind_rows(., m$z_df %>% dplyr::mutate(., type = 'Data')) %>%
-			pivot_longer(., -c('type', 'date')) %>% 
+			pivot_longer(., -c('type', 'date')) %>%
 			as.data.table(.) %>%
 			split(., by = 'name') %>%
 			imap(., function(x, i)
@@ -704,17 +704,17 @@ local({
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y') +
 					ggthemes::theme_fivethirtyeight()
 				)
-			
+
 			b_mat = coef_df %>% filter(., coefname != 'constant') %>% select(., -coefname) %>% t(.)
 			c_mat = coef_df %>% filter(., coefname == 'constant') %>% select(., -coefname) %>% t(.)
 			q_mat =
 				lm(y_mat ~ . - 1, data = x_df) %>%
-				residuals(.) %>% 
+				residuals(.) %>%
 				as_tibble(.) %>%
 				purrr::transpose(.) %>%
 				lapply(., function(x) as.numeric(x)^2 %>% diag(., nrow = length(.), ncol = length(.))) %>%
 				{reduce(., function(x, y) x + y)/length(.)}
-			
+
 			list(
 				bdate = this_bdate,
 				var_fitted_plots = fitted_plots,
@@ -726,7 +726,7 @@ local({
 				c_mat = c_mat
 			)
 		})
-	
+
 	for (x in results) {
 		models[[as.character(x$bdate)]]$var_fitted_plots <<- x$var_fitted_plots
 		models[[as.character(x$bdate)]]$var_resid_plots <<- x$var_resid_plots
@@ -740,24 +740,24 @@ local({
 
 ## 4. Run DFM on PCA Monthly Vars -----------------------------------------------------------------
 local({
-	
+
 	message('*** Running DFM')
-	
+
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		m = models[[as.character(this_bdate)]]
-		
+
 		y_mat = as.matrix(select(m$pca_input_df, -date))
 		x_df = bind_cols(constant = 1, select(m$z_df, -date))
-		
+
 		coef_df =
 			lm(y_mat ~ . - 1, x_df) %>%
-			coef(.) %>%	
+			coef(.) %>%
 			as.data.frame(.) %>%
 			rownames_to_column(., 'coefname') %>%
 			as_tibble(.)
-		
-		
+
+
 		fitted_plots =
 			lm(y_mat ~ . - 1, x_df) %>%
 			fitted(.) %>%
@@ -779,7 +779,7 @@ local({
 					) +
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 			)
-		
+
 		gof_df =
 			lm(y_mat ~ . - 1, x_df) %>%
 			resid(.) %>%
@@ -788,33 +788,33 @@ local({
 			pivot_longer(., everything(), names_to = 'varname') %>%
 			group_by(., varname) %>%
 			summarize(., MAE = mean(abs(value)), MSE = mean(value^2))
-		
-		
+
+
 		a_mat = coef_df %>% filter(., coefname != 'constant') %>% select(., -coefname) %>% t(.)
 		d_mat = coef_df %>% filter(., coefname == 'constant') %>% select(., -coefname) %>% t(.)
-		
+
 		r_mat_0 =
 			lm(y_mat ~ . - 1, data = x_df) %>%
-			residuals(.) %>% 
+			residuals(.) %>%
 			as_tibble(.) %>%
 			purrr::transpose(.) %>%
 			lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
 			{purrr::reduce(., function(x, y) x + y)/length(.)}
-		
+
 		r_mat_diag = tibble(varname = model$pca_varnames, variance = diag(r_mat_0))
-		
+
 		r_mats =
 			lapply(m$big_tau_dates, function(d)
 				sapply(model$pca_varnames, function(v)
 					hist$wide$m$st[[as.character(this_bdate)]] %>%
 						filter(., date == (d)) %>%
-						.[[v]] %>% 
+						.[[v]] %>%
 						{if (is.na(.)) 1e20 else filter(r_mat_diag, varname == v)$variance}
 					) %>%
 					diag(.)
 			) %>%
 			c(lapply(1:length(m$big_t_dates), function(x) r_mat_0), .)
-		
+
 		list(
 			bdate = this_bdate,
 			dfm_gof_df = gof_df,
@@ -825,7 +825,7 @@ local({
 			d_mat = d_mat
 		)
 	})
-	
+
 	for (x in results) {
 		models[[as.character(x$bdate)]]$dfm_gof_df <<- x$dfm_gof_df
 		models[[as.character(x$bdate)]]$dfm_coef_df <<- x$dfm_coef_df
@@ -838,13 +838,13 @@ local({
 
 ## 5. Kalman Filter on State Space Obs -----------------------------------------------------------------
 local({
-	
+
 	message('*** Running Kalman Filter')
 
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		m = models[[as.character(this_bdate)]]
-		
+
 		b_mat = m$b_mat
 		c_mat = m$c_mat
 		a_mat = m$a_mat
@@ -862,21 +862,21 @@ local({
 			select(., -date) %>%
 			purrr::transpose(.) %>%
 			lapply(., function(x) matrix(unlist(x), ncol = 1))
-		
+
 		z0Cond0 = matrix(rep(0, m$big_r), ncol = 1)
 		sigmaZ0Cond0 = matrix(rep(0, m$big_r^2), ncol = m$big_r)
-		
+
 		zTCondTMinusOne = list()
 		zTCondT = list()
-		
+
 		sigmaZTCondTMinusOne = list()
 		sigmaZTCondT = list()
-		
+
 		yTCondTMinusOne = list()
 		sigmaYTCondTMinusOne = list()
-		
+
 		pT = list()
-		
+
 		## Filter Step
 		for (t in 1:length(c(m$big_t_dates, m$big_tau_dates))) {
 			# message(t)
@@ -885,7 +885,7 @@ local({
 			sigmaZTCondTMinusOne[[t]] = b_mat %*% {if (t == 1) sigmaZ0Cond0 else sigmaZTCondT[[t-1]]} + q_mat
 			yTCondTMinusOne[[t]] = a_mat %*% zTCondTMinusOne[[t]] + d_mat
 			sigmaYTCondTMinusOne[[t]] = a_mat %*% sigmaZTCondTMinusOne[[t]] %*% t(a_mat) + r_mats[[t]]
-			
+
 			# Correction Step
 			pT[[t]] = sigmaZTCondTMinusOne[[t]] %*% t(a_mat) %*%
 				{
@@ -895,46 +895,46 @@ local({
 			zTCondT[[t]] = zTCondTMinusOne[[t]] + pT[[t]] %*% (y_mats[[t]] - yTCondTMinusOne[[t]])
 			sigmaZTCondT[[t]] = sigmaZTCondTMinusOne[[t]] - (pT[[t]] %*% sigmaYTCondTMinusOne[[t]] %*% t(pT[[t]]))
 		}
-		
+
 		kFitted =
 			zTCondT %>%
 			purrr::map_dfr(., function(x)
 				as.data.frame(x) %>% t(.) %>% as_tibble(.)
 			) %>%
-			bind_cols(date = c(m$big_t_dates, m$big_tau_dates), .) 
-		
-		
+			bind_cols(date = c(m$big_t_dates, m$big_tau_dates), .)
+
+
 		## Smoothing step
 		zTCondBigTSmooth = list()
 		sigmaZTCondBigTSmooth = list()
 		sT = list()
-		
+
 		for (t in (length(zTCondT) - 1): 1) {
 			# message(t)
 			sT[[t]] = sigmaZTCondT[[t]] %*% t(b_mat) %*% solve(sigmaZTCondTMinusOne[[t + 1]])
-			zTCondBigTSmooth[[t]] = zTCondT[[t]] + sT[[t]] %*% 
+			zTCondBigTSmooth[[t]] = zTCondT[[t]] + sT[[t]] %*%
 				({if (t == length(zTCondT) - 1) zTCondT[[t + 1]] else zTCondBigTSmooth[[t + 1]]} - zTCondTMinusOne[[t + 1]])
 			sigmaZTCondBigTSmooth[[t]] = sigmaZTCondT[[t]] - sT[[t]] %*%
 				(sigmaZTCondTMinusOne[[t + 1]] -
 				 	{if (t == length(zTCondT) - 1) sigmaZTCondT[[t + 1]] else sigmaZTCondBigTSmooth[[t + 1]]}
 				) %*% t(sT[[t]])
 		}
-		
+
 		kSmooth =
 			zTCondBigTSmooth %>%
 			map_dfr(., function(x)
 				as.data.frame(x) %>% t(.) %>% as_tibble(.)
 			) %>%
-			bind_cols(date = c(m$big_t_dates, m$big_tau_dates) %>% .[1:(length(.) - 1)], .) 
-		
-		
-		
+			bind_cols(date = c(m$big_t_dates, m$big_tau_dates) %>% .[1:(length(.) - 1)], .)
+
+
+
 		## Forecasting step
 		zTCondBigT = list()
 		sigmaZTCondBigT = list()
 		yTCondBigT = list()
 		sigmaYTCondBigT = list()
-		
+
 		for (j in 1:length(m$big_tstar_dates)) {
 			zTCondBigT[[j]] = b_mat %*% {if (j == 1) zTCondT[[length(zTCondT)]] else zTCondBigT[[j - 1]]} + c_mat
 			sigmaZTCondBigT[[j]] = b_mat %*%
@@ -942,14 +942,14 @@ local({
 			yTCondBigT[[j]] = a_mat %*% zTCondBigT[[j]] + d_mat
 			sigmaYTCondBigT[[j]] = a_mat %*% sigmaZTCondBigT[[j]] %*% t(a_mat) + r_mats[[1]]
 		}
-		
+
 		kForecast =
 			zTCondBigT %>%
 			map_dfr(., function(x)
 				as.data.frame(x) %>% t(.) %>% as_tibble(.)
 			) %>%
 			bind_cols(date = m$big_tstar_dates, .)
-		
+
 		## Plot and Cleaning
 		kf_plots =
 			lapply(colnames(m$z_df) %>% .[. != 'date'], function(.varname)
@@ -962,24 +962,24 @@ local({
 					pivot_longer(., -c('date', 'type'), names_to = 'varname') %>%
 					filter(., varname == .varname) %>%
 					ggplot(.) +
-					geom_line(aes(x = date, y = value, color = type), size = 1) + 
+					geom_line(aes(x = date, y = value, color = type), size = 1) +
 					labs(x = NULL, y = NULL, color = NULL, title = paste0('Kalman smoothed values for ', .varname)) +
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
 			)
-		
+
 		f_df = bind_rows(
 			kSmooth,
 			tail(kFitted, 1),
 			kForecast # %>% mutate(., f1 = mean(filter(m$z_df, date < '2020-03-01')$f1))
 			)
-		
+
 		y_df =
 			yTCondBigT %>%
 			map_dfr(., function(x) as_tibble(t(as.data.frame(x)))) %>%
 			bind_cols(date = m$big_tstar_dates, .)
-		
+
 		kf_df = y_df
-		
+
 		list(
 			k_smooth = kSmooth,
 			k_fitted = tail(kFitted, 1),
@@ -991,16 +991,16 @@ local({
 			kf_df = kf_df
 			)
 	})
-	
+
 	# Test factor forecasts by backtest date
 	map_dfr(results, function(x)
 		x$f_df %>%
 			filter(., date == '2022-01-01') %>%
 			mutate(., bdate = as_date(x$bdate))
 		) %>%
-		ggplot(.) + 
+		ggplot(.) +
 		geom_line(aes(x = bdate, y = f1))
-	
+
 	for (x in results) {
 		models[[as.character(x$bdate)]]$f_df <<- x$f_df
 		models[[as.character(x$bdate)]]$kf_plots <<- x$kf_plots
@@ -1018,14 +1018,14 @@ local({
 local({
 
 	message('*** Forecasting Monthly Variables')
-	
+
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
 	ar_lags = 1 # Lag can be included from 1-4
 
-	# As of 2/6/22 
+	# As of 2/6/22
 	# Single core takes about 1s per date for ar_lags = 2
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		message(str_glue('**** Forecasting {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
 
@@ -1037,12 +1037,12 @@ local({
 			{if (ar_lags > 0) bind_cols(., select(add_lagged_columns(., max_lag = ar_lags), -date)) else .} %>%
 			inner_join(., m$f_df, by = 'date') %>%
 			as.data.table(.)
-		
+
 		vars_to_forecast = colnames(stat_df) %>% keep(., ~ . %in% dfm_varnames)
 		factor_vars = paste0('f', 1:m$big_r)
-		
+
 		dfm_df = lapply(vars_to_forecast, function(.varname) {
-			
+
 			# message(.varname)
 			lag_vars = {if (ar_lags == 0) NULL else paste0(.varname, '.l', 1:ar_lags)}
 
@@ -1053,25 +1053,25 @@ local({
 
 			y_mat = input_df[, c(.varname), with = F] %>% as.matrix(.)
 			x_mat = input_df[, c(factor_vars, lag_vars), with = F][, constant := 1] %>% as.matrix(.)
-			
+
 			coef_df =
 				(solve(t(x_mat) %*% x_mat) %*% (t(x_mat) %*% y_mat)) %>%
 				as.data.table(.) %>%
 				.[, coefname := c(factor_vars, lag_vars, 'constant')] %>%
 				set_names(., c('value', 'coefname'))
-			
+
 			# Initialize lag Y_0 matrix
 			y_0 =
 				stat_df[order(-date)][date <= tail(input_df$date, 1), .varname, with = F] %>%
 				head(., ar_lags) %>%
-				as.matrix(., ncol = 1) 
-			
+				as.matrix(., ncol = 1)
+
 			# Initialize factor matrix
 			f_mats =
 				as.data.table(m$f_df)[date > tail(input_df$date, 1), !'date'] %>%
 				split(., 1:nrow(.)) %>%
 				lapply(., function(x) t(x))
-			
+
 			# Initialize factor loadings matrix
 			b_mat =
 				coef_df[coefname %chin% factor_vars]$value %>%
@@ -1080,12 +1080,12 @@ local({
 					if (ar_lags == 0) .
 					else rbind(., matrix(rep(0, (ar_lags - 1) * length(factor_vars)), ncol = length(factor_vars)))
 					}
-			
+
 			# Initialize constant matrix
-			c_mat = 
+			c_mat =
 				c(coef_df[coefname == 'constant']$value, {if (ar_lags == 0) NULL else rep(0, ar_lags - 1)}) %>%
 				matrix(., ncol = 1)
-			
+
 			# Lag weighted matrix
 			a_mat =
 				matrix(coef_df[coefname %chin% lag_vars][order(coefname)]$value, nrow = 1) %>%
@@ -1093,9 +1093,9 @@ local({
 					if (ar_lags == 0) .
 					else rbind(., cbind(diag(1, ar_lags - 1), matrix(rep(0, ar_lags - 1), ncol = 1)))
 				}
-			
+
 			forecast_dates = tail(seq(tail(input_df$date, 1), tail(m$big_tstar_dates, 1), by = '1 month'), -1)
-			
+
 			purrr::accumulate(1:length(forecast_dates), function(accum, i)
 				c_mat + {if (ar_lags == 0) 0 else a_mat %*% accum} + b_mat %*% f_mats[[i]],
 				.init = y_0
@@ -1103,7 +1103,7 @@ local({
 				.[2:length(.)] %>%
 				sapply(., function(x) matrix(x, ncol = 1)[[1, 1]]) %>%
 				tibble(date = forecast_dates, varname = .varname, value = .)
-			
+
 			}) %>%
 			bind_rows(.) %>%
 			pivot_wider(., id_cols = 'date', names_from = varname, values_from = value) %>%
@@ -1114,7 +1114,7 @@ local({
 			dfm_m_df = dfm_df
 		)
 	})
-	
+
 	for (x in results) {
 		models[[as.character(x$bdate)]]$dfm_m_df <<- x$dfm_m_df
 	}
@@ -1124,18 +1124,18 @@ local({
 local({
 
 	message('*** Forecasting Quarterly Variables')
-	
+
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.q')$varname
 	ar_lags = 1 # Number of AR lag terms to include.
 	use_net = T # Use elastic net?
 	use_intercept = T # Include an intercept? Works with either elastic net or ols
 
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		message(str_glue('***** Forecasting {this_bdate}'))
-		
+
 		m = models[[as.character(this_bdate)]]
-		
+
 		q_f_df =
 			m$f_df %>%
 			pivot_longer(., -date, names_to = 'varname') %>%
@@ -1145,7 +1145,7 @@ local({
 			summarize(., value = mean(value), .groups = 'drop') %>%
 			pivot_wider(., names_from = varname, values_from = value) %>%
 			rename(., date = q)
-		
+
 		# Only include variables which are available at that date
 		stat_df =
 			hist$wide$q$st[[as.character(this_bdate)]] %>%
@@ -1154,23 +1154,23 @@ local({
 			{if (ar_lags > 0) bind_cols(., select(add_lagged_columns(., max_lag = ar_lags), -date)) else .} %>%
 			inner_join(., q_f_df, by = 'date') %>%
 			as.data.table(.)
-		
+
 		vars_to_forecast = colnames(stat_df) %>% keep(., ~ . %in% dfm_varnames)
 		factor_vars = paste0('f', 1:m$big_r)
-		
+
 		dfm_results = lapply(dfm_varnames %>% set_names(., .), function(.varname) {
 
 			lag_vars = {if (ar_lags == 0) NULL else paste0(.varname, '.l', 1:ar_lags)}
-			
+
 			# Get inputs - include all historical data
 			input_df_0 =
 				stat_df[, c('date', .varname, factor_vars, lag_vars), with = F] %>%
 				na.omit(.)
-			
+
 			forecast_dates = tail(seq(tail(input_df_0$date, 1), tail(m$big_tstar_dates, 1), by = '3 months'), -1)
-			
+
 			input_df =
-				input_df_0 #%>% 
+				input_df_0 #%>%
 				# Add date filters here if needed
 				# .[! date %in% from_pretty_date(c('2020Q2', '2020Q3', '2020Q4'), 'q')]
 
@@ -1178,13 +1178,13 @@ local({
 				input_df %>%
 				.[, c(.varname), with = F] %>%
 				as.matrix(.)
-			
+
 			# Don't need to create constant here since glmnet will handle
 			x_mat =
 				input_df %>%
 				.[, c(factor_vars, lag_vars), with = F] %>%
 				as.matrix(.)
-			
+
 			#  Calculate OLS values for weights
 			ols_yhat = x_mat %*% {solve(t(x_mat) %*% x_mat) %*% (t(x_mat) %*% y_mat)}
 			ols_weights = 1/(lm(abs(y_mat - ols_yhat) ~ y_mat)$fitted.values^2)
@@ -1195,9 +1195,9 @@ local({
 			# 	resids = abs(yhat - value) ,
 			# 	weights = ols_weights
 			# )
-		
+
 			if (use_net == T) {
-				
+
 				glm_result = lapply(c(1), function(.alpha) {
 					cv = glmnet::cv.glmnet(
 						x = x_mat,
@@ -1213,9 +1213,9 @@ local({
 					}) %>%
 					bind_rows(.) %>%
 					mutate(., min_overall = (mae == min(mae)))
-					
+
 				glm_optim = filter(glm_result, min_overall == TRUE)
-	
+
 				cv_plot =
 					glm_result %>%
 					ggplot(.) +
@@ -1231,10 +1231,10 @@ local({
 					labs(
 						x = 'log-Lambda', y = 'MAE', color = 'alpha',
 						title = paste0(.varname, ' DFM-AR(1) Model, Elastic Net Hyperparameter Fit'),
-						subtitle = 
+						subtitle =
 						'Red = MAE Minimizing Lambda for Given Alpha, Green = MAE Minimizing (Lambda, Alpha) Pair'
 					)
-				
+
 				glm_obj = glmnet::glmnet(
 						x = x_mat,
 						y = y_mat,
@@ -1243,9 +1243,9 @@ local({
 						intercept = use_intercept,
 						weights = ols_weights
 					)
-					
+
 				coef_mat = glm_obj %>% coef(.) %>% as.matrix(.)
-					
+
 				coef_df =
 					coef_mat %>%
 					as.data.frame(.) %>%
@@ -1254,17 +1254,17 @@ local({
 					as_tibble(.) %>%
 					mutate(., coefname = ifelse(coefname == '(Intercept)', 'constant', coefname)) %>%
 					as.data.table(.)
-				
+
 			} else {
-				
+
 				# Use OLS with weighted coefficients
 				w_mat = diag(ols_weights)
 				x_mat2 =
 					x_mat %>%
 					as.data.frame(.) %>%
-					{if (use_intercept) mutate(., constant = 1) else .} %>% 
+					{if (use_intercept) mutate(., constant = 1) else .} %>%
 					as.matrix(.)
-				
+
 				coef_df =
 					(solve(t(x_mat2) %*% w_mat %*% x_mat2) %*% (t(x_mat2) %*% w_mat %*% y_mat)) %>%
 					t(.) %>%
@@ -1272,19 +1272,19 @@ local({
 					pivot_longer(., everything(), names_to = 'coefname', values_to = 'value') %>%
 					as.data.table(.)
 			}
-				
+
 			# Initialize lag Y_0 matrix
 			y_0 =
 				stat_df[order(-date)][date <= tail(input_df$date, 1), .varname, with = F] %>%
 				head(., ar_lags) %>%
-				as.matrix(., ncol = 1) 
-			
+				as.matrix(., ncol = 1)
+
 			# Initialize factor matrix
 			f_mats =
 				as.data.table(q_f_df)[date > tail(input_df$date, 1), !'date'] %>%
 				split(., 1:nrow(.)) %>%
 				lapply(., function(x) t(x))
-			
+
 			# Initialize factor loadings matrix
 			b_mat =
 				coef_df[coefname %chin% factor_vars]$value %>%
@@ -1293,12 +1293,12 @@ local({
 					if (ar_lags == 0) .
 					else rbind(., matrix(rep(0, (ar_lags - 1) * length(factor_vars)), ncol = length(factor_vars)))
 				}
-			
+
 			# Initialize constant matrix
-			c_mat = 
+			c_mat =
 				c(coef_df[coefname == 'constant']$value, {if (ar_lags == 0) NULL else rep(0, ar_lags - 1)}) %>%
 				matrix(., ncol = 1)
-			
+
 			# Lag weighted matrix
 			a_mat =
 				matrix(coef_df[coefname %chin% lag_vars][order(coefname)]$value, nrow = 1) %>%
@@ -1306,7 +1306,7 @@ local({
 					if (ar_lags == 0) .
 					else rbind(., cbind(diag(1, ar_lags - 1), matrix(rep(0, ar_lags - 1), ncol = 1)))
 				}
-			
+
 			forecast_df =
 				purrr::accumulate(1:length(forecast_dates), function(accum, i)
 					c_mat + {if (ar_lags == 0) 0 else a_mat %*% accum} + b_mat %*% f_mats[[i]],
@@ -1315,7 +1315,7 @@ local({
 				.[2:length(.)] %>%
 				sapply(., function(x) matrix(x, ncol = 1)[[1, 1]]) %>%
 				tibble(date = forecast_dates, varname = .varname, value = .)
-			
+
 			list(
 				glm_optim = {if (use_net == T) glm_optim else NA},
 				cv_plot = {if (use_net == T) cv_plot else NA},
@@ -1323,20 +1323,20 @@ local({
 				coef_df = coef_df
 				)
 			})
-		
+
 		dfm_df =
 			dfm_results %>%
 			map(., ~ .$forecast_df) %>%
 			bind_rows(.) %>%
 			pivot_wider(., id_cols = 'date', names_from = varname, values_from = value) %>%
 			arrange(., date)
-		
-		glm_coef_list = map(dfm_results, ~ .$coef_df) 
-		
+
+		glm_coef_list = map(dfm_results, ~ .$coef_df)
+
 		glm_optim_df = imap_dfr(dfm_results, function(x, i) bind_cols(varname = i, x$glm_optim))
-		
+
 		glm_cv_plots = map(dfm_results, ~ .$cv_plot)
-		
+
 		list(
 			bdate = this_bdate,
 			glm_coef_list = glm_coef_list,
@@ -1344,9 +1344,9 @@ local({
 			glm_cv_plots = glm_cv_plots,
 			dfm_q_df = dfm_df
 			)
-		
+
 		})
-	
+
 	for (x in results) {
 		models[[as.character(x$bdate)]]$dfm_q_df <<- x$dfm_q_df
 		models[[as.character(x$bdate)]]$glm_coef_list <<- x$glm_coef_list
@@ -1357,26 +1357,26 @@ local({
 
 ## 3. Detransform ---------------------------------------------------------------
 local({
-	
+
 	message('*** Reversing Stationary Transformations')
-	
+
 	# Detransform monthly and quarterly forecasts
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		message(str_glue('... Detransforming {this_bdate}'))
-		
+
 		m = models[[as.character(this_bdate)]]
-		
+
 		this_m_hist = hist$wide$m$base[[as.character(this_bdate)]]
 		this_q_hist = hist$wide$q$base[[as.character(this_bdate)]]
-		
+
 		m_df =
 			m$dfm_m_df %>%
 			as.data.table(.) %>%
 			melt(., id.vars = 'date', value.name = 'value', variable.name = 'varname', na.rm = T) %>%
 			merge(., variable_params[, c('varname', 'st')], by = 'varname', all.x = T) %>%
 			split(., by = 'varname') %>%
-			lapply(., function(x) 
+			lapply(., function(x)
 				 x[order(date)] %>%
 				 	.[, value := {
 				 		if (.$st[[1]] == 'none') NA
@@ -1397,14 +1397,14 @@ local({
 			.[, st := NULL] %>%
 			dcast(., date ~ varname, value.var = 'value', fill = NA) %>%
 			as_tibble(.)
-		
+
 		q_df =
 			m$dfm_q_df %>%
 			as.data.table(.) %>%
 			melt(., id.vars = 'date', value.name = 'value', variable.name = 'varname', na.rm = T) %>%
 			merge(., variable_params[, c('varname', 'st')], by = 'varname', all.x = T) %>%
 			split(., by = 'varname') %>%
-			lapply(., function(x) 
+			lapply(., function(x)
 				x[order(date)] %>%
 					.[, value := {
 						if (.$st[[1]] == 'none') NA
@@ -1425,14 +1425,14 @@ local({
 			.[, st := NULL] %>%
 			dcast(., date ~ varname, value.var = 'value', fill = NA) %>%
 			as_tibble(.)
-		
+
 		list(
 			bdate = this_bdate,
 			m_ut = m_df,
 			q_ut = q_df
 			)
 		})
-	
+
 	for (x in results) {
 		models[[as.character(x$bdate)]]$pred_m_ut0 <<- x$m_ut
 		models[[as.character(x$bdate)]]$pred_q_ut0 <<- x$q_ut
@@ -1444,12 +1444,12 @@ local({
 local({
 
 	message('*** Adding Calculated Variables')
-	
+
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		message(str_glue('... Forecasting {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
-		
+
 		pred_q_ut1 =
 			m$pred_q_ut0 %>%
 			transmute(
@@ -1470,7 +1470,7 @@ local({
 				pce = pceg + pces,
 				gdp = pce + pdi + nx + govt
 			)
-		
+
 		pred_m_ut1 =
 			m$pred_m_ut0 %>%
 			transmute(
@@ -1478,14 +1478,14 @@ local({
 				date,
 				psr = ps/pid
 			)
-		
+
 		list(
 			bdate = this_bdate,
 			pred_q_ut1 = pred_q_ut1,
 			pred_m_ut1 = pred_m_ut1
 			)
 	})
-	
+
 	for (x in results) {
 		models[[as.character(x$bdate)]]$pred_m_ut1 <<- x$pred_m_ut1
 		models[[as.character(x$bdate)]]$pred_q_ut1 <<- x$pred_q_ut1
@@ -1496,32 +1496,32 @@ local({
 ## 5. Aggregate & Create Display Formats  -----------------------------------------------------------------
 #' Take 7-day MA to account for weird seasonality issue
 local({
-	
+
 	message('*** Aggregating & Creating Display Formats')
-	
+
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		message(str_glue('... Aggregating {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
-		
+
 		pred_ut = lapply(c('m', 'q') %>% set_names(., .), function(freq)
 			{if (freq == 'm') list(m$pred_m_ut0, m$pred_m_ut1) else list(m$pred_q_ut0, m$pred_q_ut1)} %>%
 				reduce(., function(x, y) full_join(x, y, by = 'date')) %>%
 				arrange(., date)
 			)
-		
+
 		this_hist = lapply(c('m', 'q') %>% set_names(., .), function(freq)
 			hist$wide[[freq]]$base[[as.character(this_bdate)]] %>%
 				as.data.table(.) %>%
 				melt(., id.vars = 'date', variable.name = 'varname', na.rm = T)
 			)
-		
-		pred_flat = 
+
+		pred_flat =
 			# Map each frequency x display form combination
 			expand_grid(form = c('d1', 'd2'), freq = c('m', 'q')) %>%
 			purrr::transpose(.) %>%
 			lapply(., function(z) {
-				
+
 				df =
 					pred_ut[[z$freq]] %>%
 						as.data.table(.) %>%
@@ -1558,7 +1558,7 @@ local({
 						rbindlist(.) %>%
 						.[, transform := NULL] %>%
 						na.omit(.)
-				
+
 				list(
 					df = df,
 					form = z$form,
@@ -1566,18 +1566,18 @@ local({
 					)
 			}) %>%
 			map_dfr(., function(z) z$df[, c('form', 'freq') := list(z$form, z$freq)])
-			
+
 		list(
 			bdate = this_bdate,
 			pred_flat = pred_flat
 			)
 		})
-	
+
 	pred_flat =
 		map_dfr(results, function(z) as_tibble(mutate(z$pred_flat, bdate = z$bdate))) %>%
 		# Varname gets casted as a factor
 		mutate(., varname = as.character(varname))
-	
+
 	pred_wide =
 		lapply(split(as.data.table(pred_flat), by = 'bdate', keep.by = F), function(x)
 			lapply(split(x, by = 'freq', keep.by = F), function(y)
@@ -1587,7 +1587,7 @@ local({
 					)
 				)
 			)
-	
+
 	# pred_flat_with_form =
 	# 	pred_flat %>%
 	# 	inner_join(
@@ -1601,7 +1601,7 @@ local({
 	# 		by = c('varname', 'form')
 	# 	) %>%
 	# 	select(., -form)
-	
+
 
 	model$pred_flat <<- pred_flat
 	model$pred_wide <<- pred_wide
@@ -1610,9 +1610,9 @@ local({
 
 ## 6. Final Checks ------------------------------------------------------------
 local({
-	
+
 	message(str_glue('*** Getting Final Checks: {format(now(), "%H:%M")}'))
-	
+
 	plots =
 		model$pred_flat %>%
 		filter(
@@ -1626,20 +1626,20 @@ local({
 			ggplot(x) + geom_line(aes(x = bdate, y = value, color = varname), size = 1) +
 				geom_point(aes(x = bdate, y = value, color = varname), size = 2) +
 				labs(x = 'Vintage Date', y = 'Annualized % Change', title = x$date[[1]]) +
-				scale_x_date(date_breaks = '1 week', date_labels =  '%m/%d/%y') 
+				scale_x_date(date_breaks = '1 week', date_labels =  '%m/%d/%y')
 			)
-	
+
 	for (p in tail(plots, 4)) {
 		print(p)
 	}
-	
-	# imap_dfr(models, function(m, this_bdate) 
+
+	# imap_dfr(models, function(m, this_bdate)
 	# 	mutate(m$f_df, bdate = as_date(this_bdate))
-	# 	) %>% filter(., bdate >= today() - days(30) & date == '2022-01-01') %>% 
-	# 	arrange(., date) %>% 
+	# 	) %>% filter(., bdate >= today() - days(30) & date == '2022-01-01') %>%
+	# 	arrange(., date) %>%
 	# 	ggplot(.) +
 	# 	geom_line(aes(x = bdate, y = f1))
-	
+
 	model$pred_plots <<- plots
 })
 
@@ -1648,9 +1648,9 @@ local({
 
 ## Send Params to SQL ----------------------------------------------------------------
 local({
-	
+
 	message(str_glue('*** Sending Params to SQL: {format(now(), "%H:%M")}'))
-	
+
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_releases CASCADE')
 
 	if (!'nowcast_model_releases' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
@@ -1667,6 +1667,7 @@ local({
 				varnames JSON,
 				n_dfm_varnames INTEGER,
 				dfm_varnames JSON,
+				reldates JSON,
 				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 				)'
 			)
@@ -1676,7 +1677,8 @@ local({
 			.,
 			relkey, relname, relsc, relsckey , relurl, relnotes,
 			n_varnames = ifelse(is.na(n_varnames), 0, n_varnames), varnames,
-			n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames
+			n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames,
+			reldates
 		) %>%
 		create_insert_query(
 			.,
@@ -1690,11 +1692,12 @@ local({
 		    n_varnames=EXCLUDED.n_varnames,
 		    varnames=EXCLUDED.varnames,
 		    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
-		    dfm_varnames=EXCLUDED.dfm_varnames'
+		    dfm_varnames=EXCLUDED.dfm_varnames,
+			reldates=EXCLUDED.reldates'
 			) %>%
 		dbExecute(db, .)
-	
-	
+
+
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_variables CASCADE')
 	if (!'nowcast_model_variables' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
@@ -1755,11 +1758,11 @@ local({
 
 ## Send Values to SQL ----------------------------------------------------------------
 local({
-	
+
 	message(str_glue('*** Sending Values to SQL: {format(now(), "%H:%M")}'))
-	
+
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_values CASCADE')
-	
+
 	if (!'nowcast_model_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
 			db,
@@ -1771,7 +1774,9 @@ local({
 					date DATE NOT NULL,
 					value NUMERIC(20, 4) NOT NULL,
 					created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-					PRIMARY KEY (bdate, varname, freq, form, date)
+					PRIMARY KEY (bdate, varname, freq, form, date),
+					CONSTRAINT nowcast_model_values_fk FOREIGN KEY (varname) REFERENCES nowcast_model_variables (varname)
+						ON DELETE CASCADE ON UPDATE CASCADE
 					)'
 			)
 
@@ -1814,20 +1819,20 @@ local({
 
 ## Create Docs  ----------------------------------------------------------
 local({
-	
+
 	message('*** Creating Docs')
-	
+
 	knitr::knit2pdf(
 		input = file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
 		output = file.path(DIR, 'logs', 'nowcast-model-documentation.tex'),
 		clean = TRUE
 		)
-	
+
 	fs::file_move(
 		file.path(DIR, 'logs', 'nowcast-model-documentation.pdf'),
 		file.path(DIR, 'nowcast-model-documentation.pdf')
 		)
-	
+
 })
 
 ## Close Connections ----------------------------------------------------------
