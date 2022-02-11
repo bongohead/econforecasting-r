@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
-RESET_SQL = TRUE
+RESET_SQL = F
 TEST_MODE = FALSE
 IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007
 
@@ -71,7 +71,7 @@ local({
 			add_with_rollback(floor_date(min(contiguous), 'months'), months(-1)),
 			by = '1 month'
 		) %>%
-		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month'), '1 day'), 1)) %>%
+		map(., ~ sample(seq(floor_date(., 'month'), ceiling_date(., 'month') - days(1), '1 day'), 1)) %>%
 		unlist(.) %>%
 		as_date(.)
 	

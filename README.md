@@ -13,7 +13,9 @@ This continues modularization & adds an initial web release on beta.econforecast
 - Added reticulate Python integration
 - Added Fannie Mae data parsing
 - Added nowcast model with correct aggregations and stationary transformations (by vintage date)
+- Added nowcast model DB storage
 - Added UUP import to replace FRED USD source (vintage dates start too late)
+- Cleaned up old files
 - Deprecated Quandl data input
 - Fixed bug in get_fred_data related to observation date pulls
 - Fixed STLFSI with updated version
