@@ -148,10 +148,19 @@ local({
 		purrr::transpose(.) %>%
 		keep(., ~ .$source == 'fred') %>%
 		imap_dfr(., function(x, i) {
-			message(str_glue('Pull {i}: {x$varname}'))
-			get_fred_data(x$sckey, CONST$FRED_API_KEY, .freq = x$freq, .return_vintages = T, .verbose = F) %>%
+			message(str_glue('**** Pull {i}: {x$varname}'))
+			res =
+				get_fred_data(
+					x$sckey,
+					CONST$FRED_API_KEY,
+					.freq = x$freq,
+					.return_vintages = T,
+					.obs_start = IMPORT_DATE_START,
+					) %>%
 				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
+			message(str_glue('**** Count: {nrow(res)}'))
+			return(res)
 			})
 
 	hist$raw$fred <<- fred_data
@@ -430,7 +439,7 @@ local({
 	quarters_forward = 3
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
-	results = lapply(bdates %>% set_names(., .), function(this_bdate) {
+	results = lapply(bdates, function(this_bdate) {
 	
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
@@ -1819,13 +1828,9 @@ local({
 		file.path(DIR, 'nowcast-model-documentation.pdf')
 		)
 	
-	# Upload via SFTP
-	# RCurl::ftpUpload(
-	# 	what = file.path(DOC_DIR, 'nowcast-documentation.pdf'),
-	# 	to = paste0(CONST$SFTP_PATH_PUBLIC, 'nowcast-documentation.pdf')
-	# )
-	
 })
 
 ## Close Connections ----------------------------------------------------------
 dbDisconnect(db)
+
+message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
