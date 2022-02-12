@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'MODEL-NOWCAST'
 DIR = Sys.getenv('EF_DIR')
-RESET_SQL = F
+RESET_SQL = T
 TEST_MODE = FALSE
 IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007
 
@@ -63,7 +63,7 @@ release_params = read_excel(
 ## Set Backtest Dates  ----------------------------------------------------------
 local({
 	# Include all days in last 3 months plus one random day per month before that
-	contiguous = seq(today() - days({if (TEST_MODE == T) 30 else 90}), today(), by = '1 day')
+	contiguous = seq(today() - days({if (TEST_MODE == T) 30 else 120}), today(), by = '1 day')
 
 	old =
 		seq(
@@ -436,7 +436,7 @@ local({
 ## 1. Dates -----------------------------------------------------------------
 local({
 
-	quarters_forward = 3
+	quarters_forward = 12
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
 
 	results = lapply(bdates, function(this_bdate) {
@@ -1815,6 +1815,69 @@ local({
 	message('***** Rows Added: ', final_count - initial_count)
 
 	model$sql_values <<- model
+})
+
+## Store Final GDP Values   ----------------------------------------------------------
+local({
+
+	message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
+
+	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_hist_values CASCADE')
+
+	if (!'nowcast_model_hist_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
+		dbExecute(
+			db,
+			'CREATE TABLE nowcast_model_hist_values (
+				varname VARCHAR(255) NOT NULL,
+				freq CHAR(1) NOT NULL,
+				form VARCHAR(255) NOT NULL,
+				date DATE NOT NULL,
+				value NUMERIC(20, 4) NOT NULL,
+				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+				PRIMARY KEY (varname, freq, form, date),
+				CONSTRAINT nowcast_model_hist_values_fk FOREIGN KEY (varname)
+					REFERENCES nowcast_model_variables (varname)
+					ON DELETE CASCADE ON UPDATE CASCADE
+				)'
+		)
+
+		dbExecute(db, '
+				SELECT create_hypertable(
+					relation => \'nowcast_model_hist_values\',
+					time_column_name => \'date\'
+					);
+				')
+	}
+
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_hist_values')$count)
+	message('***** Initial Count: ', initial_count)
+
+	sql_result =
+		hist$flat_last %>%
+		.[form == 'd1' & freq == 'q' & varname %chin% filter(variable_params, dispgroup == 'GDP')$varname] %>%
+		select(., varname, freq, form, date, value) %>%
+		as_tibble(.) %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'nowcast_model_hist_values',
+				'ON CONFLICT (varname, freq, form, date) DO UPDATE SET value=EXCLUDED.value'
+			) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+
+
+	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
+	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
+	message('***** Data Sent to SQL: ', sum(unlist(sql_result)))
+
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_hist_values')$count)
+	message('***** Initial Count: ', final_count)
+	message('***** Rows Added: ', final_count - initial_count)
+
 })
 
 ## Create Docs  ----------------------------------------------------------
