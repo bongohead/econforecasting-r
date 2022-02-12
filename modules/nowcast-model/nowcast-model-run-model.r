@@ -11,7 +11,7 @@ IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
+	sink_path = file.path(DIR, 'logs', paste0(JOB_NAME, '.log'))
 	sink_conn = file(sink_path, open = 'at')
 	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
 	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
