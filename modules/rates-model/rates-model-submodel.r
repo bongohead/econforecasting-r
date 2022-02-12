@@ -14,8 +14,7 @@ if (interactive() == FALSE) {
 	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
 	sink_conn = file(sink_path, open = 'at')
 	system(paste0('echo "$(tail -1000 ', sink_path, ')" > ', sink_path,''))
-	sink(sink_conn, append = T, type = 'output')
-	sink(sink_conn, append = T, type = 'message')
+	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
 	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
 }
 
@@ -72,7 +71,7 @@ input_sources = tribble(
 
 
 # forecast_sources = tribble(
-# 	~ forecastname, 
+# 	~ forecastname,
 # 	'cme',
 # 	'tdns',
 # 	'ameribor'
@@ -102,13 +101,13 @@ local({
 
 ## BLOOM  ----------------------------------------------------------
 local({
-	
+
 	bloom_data =
 		input_sources %>%
 		purrr::transpose(.) %>%
 		keep(., ~ .$source == 'BLOOM') %>%
 		map_dfr(., function(x) {
-			
+
 			httr::GET(
 				paste0(
 					'https://www.bloomberg.com/markets2/api/history/', x$source_key, '%3AIND/PX_LAST?',
@@ -137,18 +136,18 @@ local({
 					) %>%
 				na.omit(.)
 		})
-	
+
 	hist$bloom <<- bloom_data
 })
 
 ## AFX  ----------------------------------------------------------
 local({
-	
+
 	afx_data =
 		httr::GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
 		httr::content(., 'parsed') %>%
 		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
-		map_dfr(., function(x) 
+		map_dfr(., function(x)
 			as_tibble(x) %>%
 				select(., all_of(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y'))) %>%
 				mutate(., across(-date, function(x) as.numeric(x)))
@@ -162,16 +161,16 @@ local({
 			) %>%
 		distinct(.) %>%
 		transmute(., varname, freq = 'd', date, value)
-	
+
 	hist$afx <<- afx_data
 })
 
 
 ## Store in SQL ----------------------------------------------------------
 local({
-	
+
 	message('**** Storing SQL Data')
-	
+
 	hist_values =
 		purrr::imap_dfr(hist, function(x, source) {
 			if (!'source' %in% colnames(x)) x %>% mutate(., source = source)
@@ -184,7 +183,7 @@ local({
 				group_by(., source, varname, freq, date) %>%
 				summarize(., value = mean(value), .groups = 'drop')
 			)
-	
+
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_hist_values CASCADE')
 	if (!'rates_model_hist_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
@@ -199,7 +198,7 @@ local({
 				PRIMARY KEY (source, varname, freq, date)
 				)'
 			)
-		
+
 		dbExecute(db, '
 			SELECT create_hypertable(
 				relation => \'rates_model_hist_values\',
@@ -207,10 +206,10 @@ local({
 				);
 			')
 	}
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_hist_values')$count)
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		hist_values %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
@@ -224,17 +223,17 @@ local({
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	
+
+
 	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
 	message('***** Data Sent to SQL:')
 	print(sum(unlist(sql_result)))
-	
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_hist_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
-	
+
 	hist_values <<- hist_values
 })
 
@@ -264,7 +263,7 @@ local({
 		as_tibble(.) %>%
 		filter(., name == 'ak_bmsc') %>%
 		.$value
-	
+
 	# Get CME Vintage Date
 	last_trade_date =
 		httr::GET(
@@ -281,7 +280,7 @@ local({
 				'Host' = 'www.cmegroup.com'
 			))
 		) %>% content(., 'parsed') %>% .$tradeDate %>% lubridate::parse_date_time(., 'd-b-Y') %>% as_date(.)
-	
+
 	# See https://www.federalreserve.gov/econres/feds/files/2019014pap.pdf for CME futures model
 	cme_raw_data =
 		tribble(
@@ -320,7 +319,7 @@ local({
 					)
 				})
 			)
-	
+
 	cme_data =
 		cme_raw_data %>%
 		# Now average out so that there's only one value for each (varname, date) combo
@@ -336,9 +335,9 @@ local({
 	#   	tidyr::pivot_wider(., names_from = j, values_from = settle) %>%
 	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 	# 		View(.)
-	
+
 	## Bloom forecasts
-	# These are necessary to fill in missing BSBY forecasts for first 3 months before 
+	# These are necessary to fill in missing BSBY forecasts for first 3 months before
 	# date of first CME future
 	bloom_data =
 		hist$bloom %>%
@@ -355,12 +354,12 @@ local({
 					) %>% floor_date(., 'months')
 			) %>%
 		transmute(., varname = 'bsby', vdate = max(cme_data$vdate), date, value)
-	
+
 	## Combine datasets and add monthly interpolation
 	message('Adding monthly interpolation ...')
 	final_df =
 		cme_data %>%
-		# Replace Bloom futures with data 
+		# Replace Bloom futures with data
 		full_join(
 			.,
 			rename(bloom_data, bloom = value),
@@ -393,14 +392,14 @@ local({
 					value = zoo::na.spline(value)
 				)
 			})
-	
-	
+
+
 	# Print diagnostics
 	final_df %>%
 		filter(., vdate == max(vdate)) %>%
 		pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value') %>%
 		arrange(., date)
-	
+
 	series_data =
 		final_df %>%
 		group_split(., varname) %>%
@@ -414,7 +413,7 @@ local({
 				map(., ~ list(.$date, round(.$value, 2))),
 			color = rainbow(3)[i]
 			))
-	
+
 	series_chart =
 		highchart(type = 'stock') %>%
 		reduce(
@@ -428,7 +427,7 @@ local({
 		hc_legend(., enabled = TRUE)
 
 	print(series_chart)
-	
+
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_cme_raw')
 	if (!'rates_model_cme_raw' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(db,
@@ -468,7 +467,7 @@ local({
 		'rates_model_cme',
 		'ON CONFLICT (varname, vdate, date) DO UPDATE SET value=EXCLUDED.value'
 	))
-	
+
 	submodels$cme <<- final_df
 })
 
@@ -503,7 +502,7 @@ local({
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
-	
+
 	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
 
 	#' Calculate DNS fit
@@ -526,7 +525,7 @@ local({
 				}) %>%
 			{if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse else .}
 	}
-	
+
 	# Find MSE-minimizing lambda value
 	optim_lambda = optimize(
 		get_dns_fit,
@@ -546,7 +545,7 @@ local({
 
 	# Get last DNS coefs
 	dns_coefs_now = as.list(select(filter(dns_coefs_hist, date == max(date)), tdns1, tdns2, tdns3))
-	
+
 	# Check fit on current data
 	dns_fit =
 		dns_fit_hist %>%
@@ -555,13 +554,13 @@ local({
 		ggplot(.) +
 		geom_point(aes(x = ttm, y = value)) +
 		geom_line(aes(x = ttm, y = fitted))
-	
+
 	print(dns_fit)
-	
+
 	# Calculated TDNS1: TYield_10y
 	# Calculated TDNS2: -1 * (t10y - t03m)
 	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
-	
+
 	# Monthly forecast up to 10 years (minus ffr)
 	# Get cumulative return starting from cur_date
 	fitted_curve =
@@ -576,7 +575,7 @@ local({
 			# Get dns_coefs yield
 			cum_return = (1 + annualized_yield/100)^(ttm/12)
 			)
-	
+
 	# Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
 	# and for each, iterate over the original "ttms" 1, 2, 3,
 	# ..., 120 and for each forecast the cumulative return for the yttm period ahead.
@@ -608,17 +607,17 @@ local({
 			by = 'date'
 			) %>%
 		transmute(., varname, freq = 'm', date, vdate = today(), value = value + ffr)
-	
+
 	# Plot point forecasts
 	treasury_forecasts %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = varname))
-	
+
 	# Plot curve forecasts
 	treasury_forecasts %>%
 		left_join(., yield_curve_names_map, by = 'varname') %>%
 		hchart(., 'line', hcaes(x = ttm, y = value, color = date, group = date))
-	
+
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
 	# date since reliant purely on historical data
@@ -635,25 +634,25 @@ local({
 		) %>%
 		pivot_longer(., -date, names_to = 'varname') %>%
 		transmute(., varname, freq = 'm', date, vdate = today(), value)
-	
+
 	submodels$tdns <<- treasury_forecasts
 })
 
 ## CBOE: Futures ---------------------------------------------------------------------
 local({
-	
+
 	cboe_data =
 		httr::GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
 		httr::content(.) %>%
 		rvest::html_elements(., 'ul.document-list > li > a') %>%
 		map_dfr(., function(x)
 			tibble(
-				vdate = as_date(str_sub(rvest::html_attr(x, 'href'), -10)), 
+				vdate = as_date(str_sub(rvest::html_attr(x, 'href'), -10)),
 				url = paste0('https://cboe.com', rvest::html_attr(x, 'href'))
 			)
 		) %>%
 		purrr::transpose(.) %>%
-		map_dfr(., function(x) 
+		map_dfr(., function(x)
 			read_csv(x$url, col_names = c('product', 'symbol', 'exp_date', 'price'), col_types = 'ccDn', skip = 1) %>%
 				filter(., product == 'AMB1') %>%
 				transmute(
@@ -664,7 +663,7 @@ local({
 					value = 100 - price/100
 				)
 			)
-	
+
 	# Plot comparison against TDNS
 	cboe_data %>%
 		filter(., vdate == max(vdate)) %>%
@@ -675,7 +674,7 @@ local({
 			) %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = varname, group = varname))
-	
+
 	ameribor_forecasts =
 		filter(cboe_data, vdate == max(vdate)) %>%
 		right_join(
@@ -695,7 +694,7 @@ local({
 			value = round(ifelse(!is.na(value), value, sofr + spread), 4)
 			) %>%
 		transmute(., varname, freq = 'm', vdate, date, value)
-	
+
 	submodels$cboe <<- ameribor_forecasts
 })
 
@@ -711,7 +710,7 @@ local({
 		file.path(tempdir(), 'inf.xls'),
 		mode = 'wb'
 	)
-	
+
 	# Get vintage dates for each release
 	vintage_dates_1 =
 		httr::GET(paste0(
@@ -723,7 +722,7 @@ local({
 			keep(., ~ length(rvest::html_nodes(., 'a.download')) == 1) %>%
 			map_chr(., ~ str_extract(rvest::html_text(.), '(?<=released ).*')) %>%
 			mdy(.)
-	
+
 	vintage_dates_2 =
 		httr::GET(paste0(
 			'https://www.clevelandfed.org/en/our-research/',
@@ -733,14 +732,14 @@ local({
 			rvest::html_nodes('ul.topic-list li time') %>%
 			map_chr(., ~ rvest::html_text(.)) %>%
 			mdy(.)
-	
+
 	vdate_map =
 		c(vintage_dates_1, vintage_dates_2) %>%
 		tibble(vdate = .) %>%
-		mutate(., vdate0 = floor_date(vdate, 'months')) %>% 
+		mutate(., vdate0 = floor_date(vdate, 'months')) %>%
 		group_by(., vdate0) %>% summarize(., vdate = max(vdate)) %>%
 		arrange(., vdate0)
-		
+
 	# Now parse data and get inflation expectations
 	einf_final =
 		readxl::read_excel(file.path(tempdir(), 'inf.xls'), sheet = 'Expected Inflation') %>%
@@ -778,7 +777,7 @@ local({
 			value = yttm_ahead_annualized_yield,
 		) %>%
 		na.omit(.)
-	
+
 	einf_chart =
 		einf_final %>%
 		filter(., month(vdate) %in% c(1, 6)) %>%
@@ -786,14 +785,14 @@ local({
 		geom_line(aes(x = date, y = value, color = as.factor(vdate)))
 
 	print(einf_chart)
-	
+
 	submodels$einf <<- einf_final
 })
 
 
 ## SPF: Forecasts ---------------------------------------------------------------
 local({
-	
+
 	# Scrape vintage dates
 	vintage_dates =
 		httr::GET(paste0('https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
@@ -825,14 +824,14 @@ local({
 		) %>%
 		# Don't include first date - weirdly has same vintage date as second date
 		filter(., release_date >= as_date('2000-01-01'))
-	
+
 	spf_params = tribble(
 		~ varname, ~ spfname, ~ method,
 		't03m', 'TBILL', 'level',
 		't10y', 'TBOND', 'level',
 		'inf', 'CORECPI', 'level'
 		)
-	
+
 	spf_data = purrr::map_dfr(c('level', 'growth'), function(m) {
 
 		httr::GET(
@@ -842,7 +841,7 @@ local({
 				),
 			httr::write_disk(file.path(tempdir(), paste0('spf-', m, '.xlsx')), overwrite = TRUE)
 			)
-		
+
 		spf_params %>%
 			filter(., method == m) %>%
 			purrr::transpose(.) %>%
@@ -872,9 +871,9 @@ local({
 			) %>%
 			bind_rows(.) %>%
 			return(.)
-		
+
 		})
-	
+
 	submodels$spf <<- spf_data
 })
 
@@ -882,7 +881,7 @@ local({
 local({
 
 	message('**** CBO')
-	
+
 	cbo_vintages =
 		map(0:2, function(page)
 			paste0('https://www.cbo.gov/data/publications-with-data-files?page=', page, '') %>%
@@ -902,7 +901,7 @@ local({
 		summarize(., release_date = min(release_date), .groups = 'drop') %>%
 		select(., release_date) %>%
 		arrange(., release_date)
-	
+
 	url_params =
 		httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
 		httr::content(., type = 'parsed') %>%
@@ -923,26 +922,26 @@ local({
 		't03m', 'Interest Rates', '3-Month Treasury Bill', 'Percent',
 		't10y', 'Interest Rates', '10-Year Treasury Note', 'Percent'
 		)
-	
-	
+
+
 	cbo_data =
 		url_params %>%
 		purrr::transpose(.) %>%
 		imap_dfr(., function(x, i) {
-			
+
 			download.file(x$url, file.path(tempdir(), 'cbo.xlsx'), mode = 'wb', quiet = TRUE)
-			
+
 			# Not all spreadsheets start at the same row
-			skip_rows = 
+			skip_rows =
 				suppressMessages(readxl::read_excel(
 					file.path(tempdir(), 'cbo.xlsx'),
 					sheet = '1. Quarterly',
 					skip = 0
 				)) %>%
 				mutate(., idx = 1:nrow(.)) %>%
-				filter(., .[[1]] == 'Output') %>% 
+				filter(., .[[1]] == 'Output') %>%
 				{.$idx - 1}
-			
+
 			xl =
 				suppressMessages(readxl::read_excel(
 					file.path(tempdir(), 'cbo.xlsx'),
@@ -955,7 +954,7 @@ local({
 				tidyr::fill(., cbo_category, .direction = 'down') %>%
 				tidyr::fill(., cbo_name, .direction = 'down') %>%
 				na.omit(.)
-			
+
 			xl %>%
 				inner_join(., cbo_params, by = c('cbo_category', 'cbo_name', 'cbo_units')) %>%
 				select(., -cbo_category, -cbo_name, -cbo_units) %>%
@@ -963,22 +962,22 @@ local({
 				mutate(., date = from_pretty_date(date, 'q')) %>%
 				filter(., date >= as_date(x$vdate)) %>%
 				mutate(., vdate = as_date(x$vdate))
-			
+
 		}) %>%
 		transmute(., varname, freq = 'q', vdate, date, value)
-	
+
 	submodels$cbo <<- cbo_data
 })
 
 ## FNMA: External  -----------------------------------------------------------
 local({
 	message('**** Downloading Fannie Mae Data')
-	
+
 	fnma_dir = file.path(tempdir(), 'fnma')
 	fs::dir_create(fnma_dir)
-	
+
 	message('***** FNMA dir: ', fnma_dir)
-	
+
 	fnma_links =
 		httr::GET('https://www.fanniemae.com/research-and-insights/forecast/forecast-monthly-archive') %>%
 		httr::content(., type = 'parsed') %>%
@@ -994,7 +993,7 @@ local({
 				TRUE ~ NA_character_
 				)
 			)) %>%
-		na.omit(.) 
+		na.omit(.)
 
 	fnma_details =
 		fnma_links %>%
@@ -1004,9 +1003,9 @@ local({
 		purrr::transpose(.) %>%
 		.[1:12] %>%
 		purrr::imap_dfr(., function(x, i) {
-			
+
 			# if (i %% 10 == 0) message('Downloading ', i)
-			
+
 			vdate =
 				httr::GET(paste0('https://www.fanniemae.com', x$article)) %>%
 				httr::content(., type = 'parsed') %>%
@@ -1014,47 +1013,47 @@ local({
 				rvest::html_node(., "div[data-block-plugin-id='field_block:node:news:field_date'] > div") %>%
 				rvest::html_text(.) %>%
 				mdy(.)
-			
+
 			httr::GET(
 				paste0('https://www.fanniemae.com', x$econ_forecast),
 				httr::write_disk(file.path(fnma_dir, paste0('econ_', vdate, '.pdf')), overwrite = TRUE)
 				)
-			
+
 			httr::GET(
 				paste0('https://www.fanniemae.com', x$housing_forecast),
 				httr::write_disk(file.path(fnma_dir, paste0('housing_', vdate, '.pdf')), overwrite = TRUE)
 			)
-			
+
 			tibble(
-				vdate = vdate, 
+				vdate = vdate,
 				econ_forecast_path = normalizePath(file.path(fnma_dir, paste0('econ_', vdate, '.pdf'))),
 				housing_forecast_path = normalizePath(file.path(fnma_dir, paste0('housing_', vdate, '.pdf')))
 				)
 			})
-	
+
 	camelot = import('camelot')
-	
+
 	fnma_clean_macro =
 		fnma_details %>%
 		purrr::transpose(.) %>%
 		purrr::imap_dfr(., function(x, i) {
-	
+
 			raw_import = camelot$read_pdf(
 				x$econ_forecast_path,
 				pages = '1',
 				flavor = 'stream',
 				# Below needed to prevent split wrapping columns correctly https://www.fanniemae.com/media/42376/display
-				column_tol = -1 
+				column_tol = -1
 				#table_areas = list('100, 490, 700, 250')
 				)[0]$df %>%
 				as_tibble(.)
-			
+
 			col_names =
 				purrr::transpose(raw_import[3, ])[[1]] %>%
 				str_replace_all(., coll(c('.' = 'Q'))) %>%
 				paste0('20', .) %>%
 				{ifelse(. == '20', 'varname', .)}
-		
+
 			clean_import =
 				raw_import[4:nrow(raw_import), ] %>%
 				set_names(., col_names) %>%
@@ -1081,31 +1080,31 @@ local({
 					) %>%
 				na.omit(.) %>%
 				transmute(., vdate = as_date(x$vdate), varname, date, value)
-			
+
 			if (length(unique(clean_import$varname)) < 12) stop('Missing variable')
-			
+
 			return(clean_import)
 		})
-	
+
 	fnma_clean_housing =
 		fnma_details %>%
 		purrr::transpose(.) %>%
 		purrr::imap_dfr(., function(x, i) {
-			
+
 			raw_import = camelot$read_pdf(
 				x$housing_forecast_path,
 				pages = '1',
 				flavor = 'stream',
-				column_tol = -1 
+				column_tol = -1
 				)[0]$df %>%
 				as_tibble(.)
-			
+
 			col_names =
 				purrr::transpose(raw_import[3, ])[[1]] %>%
 				str_replace_all(., coll(c('.' = 'Q'))) %>%
 				paste0('20', .) %>%
 				{ifelse(. == '20', 'varname', .)}
-			
+
 			clean_import =
 				raw_import[4:nrow(raw_import), ] %>%
 				set_names(., col_names) %>%
@@ -1124,17 +1123,17 @@ local({
 				) %>%
 				na.omit(.) %>%
 				transmute(., vdate = as_date(x$vdate), varname, date, value)
-			
+
 			if (length(unique(clean_import$varname)) < 4) stop('Missing variable')
-			
+
 			return(clean_import)
 		})
-	
+
 	fnma_final =
 		bind_rows(fnma_clean_macro, fnma_clean_housing) %>%
 		transmute(., varname, freq = 'q', vdate, date, value) %>%
 		filter(., varname %in% c('t10y', 't01y', 'ffr', 'inf', 'mort30y', 'mort5y'))
-	
+
 	submodels$fnma <<- fnma_final
 })
 
@@ -1142,14 +1141,14 @@ local({
 #' Testing as of 2/4/2022
 # local({
 # 	message('**** Downloading TD Data')
-# 	
+#
 # 	dl_1 =
 # 		seq(as_date('2019-03-01'), today(), '3 months') %>%
 # 		format('%Y-%b') %>%
 # 		str_to_lower(.) %>%
 # 		paste0('https://economics.td.com/domains/economics.td.com/documents/reports/qef/',. ,'/6-us-outlook.htm') %>%
 # 		lapply(., function(x) httr::GET(x) %>% content(., 'parsed', encoding = 'Windows-1252'))
-# 	
+#
 # 	dl_1 %>%
 # 		lapply(., function(html)
 # 			html %>%
@@ -1158,20 +1157,20 @@ local({
 # 				rvest::html_elements(x, 'td,th') %>%
 # 					rvest::html_text(.) %>%
 # 					str_squish(.) %>%
-# 					na_if(., '') 
+# 					na_if(., '')
 # 				) %>%
 # 				.[[3]]
 # 			)
-# 	
+#
 # 		submodels$fnma <<- fnma_final
 # })
 
 ## WSJ: External -----------------------------------------------------------
 local({
-	
+
 	message('**** WSJ Survey')
 	message('***** Last Import Jan 22')
-	
+
 	wsj_params = tribble(
 		~ submodel, ~ fullname,
 		'wsj', 'WSJ Consensus',
@@ -1183,16 +1182,16 @@ local({
 		'wsj_gs', 'Goldman, Sachs & Co.',
 		'wsj_ms', 'Morgan Stanley'
 	)
-	
+
 	xl_path = file.path(EF_DIR, 'model-inputs', 'external-forecasts-manual.xlsx')
-	
+
 	wsj_data =
 		readxl::excel_sheets(xl_path) %>%
 		keep(., ~ str_extract(., '[^_]+') == 'wsj') %>%
 		map_dfr(., function(sheetname) {
-			
+
 			vdate = str_extract(sheetname, '(?<=_).*')
-			
+
 			col_names = suppressMessages(readxl::read_excel(
 				xl_path,
 				sheet = sheetname,
@@ -1202,9 +1201,9 @@ local({
 				)) %>%
 				replace(., is.na(.), '') %>%
 				{paste0(.[1,], '-', .[2,])}
-			
+
 			if (length(unique(col_names)) != length(col_names)) stop('WSJ Input Error!')
-			
+
 			readxl::read_excel(
 				xl_path,
 				sheet = sheetname,
@@ -1245,7 +1244,7 @@ local({
 				)
 		}) %>%
 		filter(., varname %in% c('t10y', 'ffr', 'inf'))
-		
+
 	submodels$wsj <<- wsj_data
 })
 
@@ -1253,12 +1252,12 @@ local({
 
 ## Store in SQL ----------------------------------------------------------
 local({
-	
+
 	submodel_values = purrr::imap_dfr(submodels, function(x, submodel) {
 		if (!'submodel' %in% colnames(x)) x %>% mutate(., submodel = submodel)
 		else x
 		})
-	
+
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_submodel_values CASCADE')
 	if (!'rates_model_submodel_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
 		dbExecute(
@@ -1274,7 +1273,7 @@ local({
 				PRIMARY KEY (submodel, varname, freq, vdate, date)
 				)'
 			)
-		
+
 		dbExecute(db, '
 			SELECT create_hypertable(
 				relation => \'rates_model_submodel_values\',
@@ -1282,10 +1281,10 @@ local({
 				);
 			')
 	}
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		submodel_values %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
@@ -1299,17 +1298,17 @@ local({
 				dbExecute(db, .)
 			) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	
+
+
 	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
 	message('***** Data Sent to SQL:')
 	print(sum(unlist(sql_result)))
-	
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM rates_model_submodel_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
-	
+
 	submodel_values <<- submodel_values
 })
 
