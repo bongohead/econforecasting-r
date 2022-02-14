@@ -1,0 +1,27 @@
+varname,fullname,units,transform,sa,hist_source,hist_source_key,hist_source_freq,hist_source_transform
+gdp,Real Gross Domestic Product,Billions of Real 2012 Dollars,apchg,1,fred,GDPC1,q,apchg
+ngdp,Nominal Gross Domestic Product,Billions of Real 2012 Dollars,apchg,1,fred,GDP,q,apchg
+pce,Real Personal Consumption,Billions of Real 2012 Dollars,apchg,1,fred,PCECC96,q,apchg
+pdi,Real Fixed Investment,Billions of Real 2012 Dollars,apchg,1,fred,GPDIC1,q,apchg
+pdir,Real Residential Fixed Investment,Billions of Real 2012 Dollars,apchg,1,fred,PRFIC1,q,apchg
+pdin,Real Nonresidential Fixed Investment,Billions of Real 2012 Dollars,apchg,1,fred,PNFIC1,q,apchg
+govt,Real Government Spending,Billions of Real 2012 Dollars,apchg,1,fred,GCEC1,q,apchg
+govtf,Real Federal Government Spending,Billions of Real 2012 Dollars,apchg,1,fred,FGCEC1,q,apchg
+govts,Real State & Local Government Spending,Billions of Real 2012 Dollars,apchg,1,fred,SLCEC1,q,apchg
+nx,Real Net Exports,Billions of Real 2012 Dollars,base,1,fred,NETEXC,q,none
+cpi,CPI Inflation,Index,yoy,0,fred,USACPIALLMINMEI,m,none
+pcepi,PCEPI Inflation,Index,yoy,0,fred,PCEPI,m,none
+t03m,3-Month Treasury Yield,%,base,0,fred,DTB3,d,none
+t06m,6-Month Treasury Yield,%,base,0,fred,DTB6,d,none
+t01y,1-Year Treasury Yield,%,base,0,fred,DGS1,d,none
+t05y,5-Year Treasury Yield,%,base,0,fred,DGS5,d,none
+t10y,10-Year Treasury Yield,%,base,0,fred,DGS10,d,none
+t20y,20-Year Treasury Yield,%,base,0,fred,DGS20,d,none
+t30y,30-Year Treasury Yield,%,base,0,fred,DGS30,d,none
+ffr,Federal Funds Rate,%,base,0,fred,EFFR,d,none
+sofr,Secured Overnight Financing Rate,%,base,0,fred,SOFR,d,none
+houst,Housing Starts,Millions of Houses,base,1,fred,HOUST,m,none
+aaa,Corporate Aaa Bond Yields,%,base,0,fred,DAAA,m,none
+baa,Corporate Baa Bond Yields,%,base,0,fred,DBAA,m,none
+unemp,Unemployment Rate,%,base,0,fred,UNRATE,m,none
+recess,Probability of Recession,%,base,0,none,,,
