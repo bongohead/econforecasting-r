@@ -315,7 +315,7 @@ local({
 	
 	# Check min dates
 	# The latest min date for PCA inputs should be no earlier than the last PCA input variable
-	message('**** Variables Dates:')
+	message('***** Variables Dates:')
 	hist$agg %>%
 		group_by(., varname) %>%
 		summarize(., min_dt = min(date)) %>%
@@ -1617,7 +1617,7 @@ local({
 ## 6. Final Checks ------------------------------------------------------------
 local({
 
-	message(str_glue('*** Getting Final Checks: {format(now(), "%H:%M")}'))
+	message(str_glue('*** Getting Final Checks | {format(now(), "%H:%M")}'))
 
 	plots =
 		model$pred_flat %>%
