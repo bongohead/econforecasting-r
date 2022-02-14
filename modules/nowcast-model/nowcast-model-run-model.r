@@ -3,15 +3,15 @@
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'MODEL-NOWCAST'
-DIR = Sys.getenv('EF_DIR')
-RESET_SQL = T
+JOB_NAME = 'nowcast_model_run_model'
+EF_DIR = Sys.getenv('EF_DIR')
+RESET_SQL = TRUE
 TEST_MODE = FALSE
-IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007
+IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007, can start at 2008-01-01
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
-	sink_path = file.path(DIR, 'logs', paste0(JOB_NAME, '.log'))
+	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
 	sink_conn = file(sink_path, open = 'at')
 	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
 	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
@@ -36,7 +36,7 @@ library(xtable) # Needed for knitting latex docs
 library(ggthemes) # Needed for knitting latex docs
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(DIR, 'model-inputs', 'constants.r'))
+source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
 db = dbConnect(
 	RPostgres::Postgres(),
 	dbname = CONST$DB_DATABASE,
@@ -52,22 +52,22 @@ models = list()
 
 ## Load Variable Defs ----------------------------------------------------------
 variable_params = read_excel(
-	file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
+	file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
 	sheet = 'variables'
 	)
 release_params = read_excel(
-	file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
+	file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
 	sheet = 'releases'
 	)
 
 ## Set Backtest Dates  ----------------------------------------------------------
 local({
 	# Include all days in last 3 months plus one random day per month before that
-	contiguous = seq(today() - days({if (TEST_MODE == T) 30 else 120}), today(), by = '1 day')
+	contiguous = seq(today() - days({if (TEST_MODE == T) 30 else 90}), today(), by = '1 day')
 
 	old =
 		seq(
-			{if (TEST_MODE) as_date('2021-01-01') else as_date('2018-01-01')},
+			{if (TEST_MODE) as_date('2021-01-01') else as_date('2020-01-01')},
 			add_with_rollback(floor_date(min(contiguous), 'months'), months(-1)),
 			by = '1 month'
 		) %>%
@@ -85,7 +85,7 @@ local({
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
 
-	message(str_glue('*** Getting Releases History: {format(now(), "%H:%M")}'))
+	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
 
 	fred_releases =
 		variable_params %>%
@@ -168,9 +168,9 @@ local({
 
 ## 2. Yahoo Finance ----------------------------------------------------------
 local({
-
-	message('*** Importing Yahoo Finance Data')
-
+	
+	message(str_glue('*** Importing Yahoo Finance Data | {format(now(), "%H:%M")}'))
+	
 	yahoo_data =
 		variable_params %>%
 		purrr::transpose(.) %>%
@@ -246,9 +246,9 @@ local({
 
 ## 4. Aggregate Frequencies ----------------------------------------------------------
 local({
-
-	message('*** Aggregating Monthly & Quarterly Data')
-
+	
+	message(str_glue('*** Aggregating Monthly & Quarterly Data | {format(now(), "%H:%M")}'))
+	
 	hist_agg_0 = bind_rows(hist$raw)
 
 	monthly_agg =
@@ -311,8 +311,8 @@ local({
 ## 5. Split By Vintage Date ----------------------------------------------------------
 local({
 
-	message('*** Splitting by Vintage Date')
-
+	message(str_glue('*** Splitting By Vintage Date | {format(now(), "%H:%M")}'))
+	
 	# Check min dates
 	# The latest min date for PCA inputs should be no earlier than the last PCA input variable
 	message('**** Variables Dates:')
@@ -361,8 +361,8 @@ local({
 ## 6. Add Stationary Transformations ----------------------------------------------------------
 local({
 
-	message('*** Adding Stationary Transformations')
-
+	message(str_glue('*** Adding Stationary Transforms | {format(now(), "%H:%M")}'))
+	
 	stat_groups =
 		hist$base %>%
 		split(., by = c('varname', 'freq', 'bdate')) %>%
@@ -407,7 +407,9 @@ local({
 
 ## 7. Create Monthly/Quarterly Matrices ----------------------------------------------------------
 local({
-
+	
+	message(str_glue('*** Creating Wide Matrices | {format(now(), "%H:%M")}'))
+	
 	wide =
 		hist$flat %>%
 		split(., by = 'freq', keep.by = F) %>%
@@ -435,6 +437,9 @@ local({
 
 ## 1. Dates -----------------------------------------------------------------
 local({
+	
+	message(str_glue('*** Getting State-Space Sources | {format(now(), "%H:%M")}'))
+	gc()
 
 	quarters_forward = 12
 	pca_varnames = filter(variable_params, nc_dfm_input == T)$varname
@@ -501,7 +506,7 @@ local({
 ## 2. Extract PCA Factors -----------------------------------------------------------------
 local({
 
-	message('*** Extracting PCA Factors')
+	message(str_glue('*** Extracting PCA Factors | {format(now(), "%H:%M")}'))
 
 	results = lapply(bdates, function(this_bdate) {
 
@@ -840,7 +845,8 @@ local({
 local({
 
 	message('*** Running Kalman Filter')
-
+	gc()
+	
 	results = lapply(bdates, function(this_bdate) {
 
 		m = models[[as.character(this_bdate)]]
@@ -1018,7 +1024,8 @@ local({
 local({
 
 	message('*** Forecasting Monthly Variables')
-
+	gc()
+	
 	dfm_varnames = filter(variable_params, nc_method == 'dfm.m')$varname
 	ar_lags = 1 # Lag can be included from 1-4
 
@@ -1344,7 +1351,6 @@ local({
 			glm_cv_plots = glm_cv_plots,
 			dfm_q_df = dfm_df
 			)
-
 		})
 
 	for (x in results) {
@@ -1877,7 +1883,6 @@ local({
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_hist_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
-
 })
 
 ## Create Docs  ----------------------------------------------------------
@@ -1886,14 +1891,14 @@ local({
 	message('*** Creating Docs')
 
 	knitr::knit2pdf(
-		input = file.path(DIR, 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
-		output = file.path(DIR, 'logs', 'nowcast-model-documentation.tex'),
+		input = file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
+		output = file.path(EF_DIR, 'logs', 'nowcast-model-documentation.tex'),
 		clean = TRUE
 		)
 
 	fs::file_move(
-		file.path(DIR, 'logs', 'nowcast-model-documentation.pdf'),
-		file.path(DIR, 'nowcast-model-documentation.pdf')
+		file.path(EF_DIR, 'logs', 'nowcast-model-documentation.pdf'),
+		file.path(EF_DIR, 'nowcast-model-documentation.pdf')
 		)
 
 })
