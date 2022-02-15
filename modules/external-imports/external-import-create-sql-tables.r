@@ -36,7 +36,7 @@ db = dbConnect(
 ## Variables Table ---------------------------------------------------------
 external_import_variables = read_csv(
 	file.path(EF_DIR, 'modules', 'external-imports', 'external-import-variables.csv'),
-	col_types = 'cccclccc'
+	col_types = 'ccclccc'
 	)
 
 ## Sources Table ---------------------------------------------------------
@@ -59,7 +59,6 @@ local({
 			varname VARCHAR(50) CONSTRAINT external_import_variables_pk PRIMARY KEY,
 			fullname VARCHAR(255) CONSTRAINT external_import_variables_fullname_uk UNIQUE NOT NULL,
 			units VARCHAR(50) NOT NULL,
-			transform VARCHAR(50) NOT NULL,
 			sa BOOLEAN NOT NULL,
 			hist_source VARCHAR(50) NOT NULL,
 			hist_source_key VARCHAR(50),
@@ -72,7 +71,7 @@ local({
 	external_import_variables %>%
 		transmute(
 			.,
-			varname, fullname, units, transform, sa,
+			varname, fullname, units, sa,
 			hist_source, hist_source_key, hist_source_freq, hist_source_transform
 			) %>%
 		create_insert_query(
@@ -82,7 +81,6 @@ local({
 		    SET
 		    fullname=EXCLUDED.fullname,
 		    units=EXCLUDED.units,
-		    transform=EXCLUDED.transform,
 		    sa=EXCLUDED.sa,
 		    hist_source=EXCLUDED.hist_source,
 		    hist_source_key=EXCLUDED.hist_source_key,
@@ -171,7 +169,7 @@ local({
 			date DATE NOT NULL,
 			value NUMERIC(20, 4) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (vdate, freq, varname, date),
+			PRIMARY KEY (sourcename, vdate, freq, varname, date),
 			CONSTRAINT external_import_forecast_values_varname_fk FOREIGN KEY (varname)
 				REFERENCES external_import_variables (varname)
 				ON DELETE CASCADE ON UPDATE CASCADE,
