@@ -42,7 +42,8 @@ external_import_variables = read_csv(
 ## Sources Table ---------------------------------------------------------
 external_import_sources = tribble(
 	~ sourcename, ~ fullname, ~ raw, ~ vintage_freq,
-	 'spf', 'Survey of Professional Forecasters', T, 'q'
+		'spf', 'Survey of Professional Forecasters', T, 'q',
+		'einf', 'Expected Inflations Model', F, 'm'
 	)
 
 
@@ -186,4 +187,25 @@ local({
 			time_column_name => \'vdate\'
 			);
 		')
+})
+
+
+## Import Notes ---------------------------------------------------------
+local({
+	
+	dbExecute(db, 'DROP TABLE IF EXISTS external_import_logs CASCADE')
+	
+	dbExecute(
+		db,
+		'CREATE TABLE external_import_logs (
+			sourcename VARCHAR(50) NOT NULL,
+			import_date DATE NOT NULL,
+			rows_added INTEGER NOT NULL,
+			PRIMARY KEY (sourcename, import_date),
+			CONSTRAINT external_import_logs_sourcename_fk FOREIGN KEY (sourcename)
+				REFERENCES external_import_sources (sourcename)
+				ON DELETE CASCADE ON UPDATE CASCADE
+		)'
+	)
+	
 })
