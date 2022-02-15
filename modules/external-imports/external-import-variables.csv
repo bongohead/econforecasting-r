@@ -9,6 +9,8 @@ govt,Real Government Spending,Annualized % Change,1,fred,GCEC1,q,apchg
 govtf,Real Federal Government Spending,Annualized % Change,1,fred,FGCEC1,q,apchg
 govts,Real State & Local Government Spending,Annualized % Change,1,fred,SLCEC1,q,apchg
 nx,Real Net Exports,Billions of Real 2012 Dollars,1,fred,NETEXC,q,none
+ex,Real Exports,Annualized % Change,1,fred,EXPGSC1,q,apchg
+im,Real Imports,Annualized % Change,1,fred,IMPGSC1,q,apchg
 cbi,Real Change in Private Inventories,Billions of Real 2012 Dollars,1,fred,CBIC1,q,none
 cpi,CPI Inflation,Index,0,fred,USACPIALLMINMEI,m,yoy
 pcepi,PCEPI Inflation,Index,0,fred,PCEPI,m,yoy
@@ -24,5 +26,7 @@ sofr,Secured Overnight Financing Rate,%,0,fred,SOFR,d,none
 houst,Housing Starts,Millions of Houses,1,fred,HOUST,m,none
 aaa,Corporate Aaa Bond Yields,%,0,fred,DAAA,m,none
 baa,Corporate Baa Bond Yields,%,0,fred,DBAA,m,none
-unemp,Unemployment Rate,%,0,fred,UNRATE,m,none
+unemp,Unemployment Rate,%,1,fred,UNRATE,m,none
+lfpr,Labor Force Participation Rate,%,1,fred,CIVPART,m,none
+oil,Price of Oil (WTI Crude),Dollars per Barrel,0,fred,DCOILWTICO,d,none
 recess,Probability of Recession,%,0,none,,,
