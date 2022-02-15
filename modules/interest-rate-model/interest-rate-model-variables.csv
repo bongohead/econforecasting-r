@@ -1,0 +1,24 @@
+varname,fullname,units,sa,hist_source,hist_source_key,hist_source_freq,hist_source_transform
+t01m,1-Month Treasury Yield,%,0,fred,DGS1MO,d,none
+t03m,3-Month Treasury Yield,%,0,fred,DGS3MO,d,none
+t06m,6-Month Treasury Yield,%,0,fred,DGS6MO,d,none
+t01y,1-Year Treasury Yield,%,0,fred,DGS1,d,none
+t02y,2-Year Treasury Yield,%,0,fred,DGS2,d,none
+t05y,5-Year Treasury Yield,%,0,fred,DGS5,d,none
+t07y,7-Year Treasury Yield,%,0,fred,DGS7,d,none
+t10y,10-Year Treasury Yield,%,0,fred,DGS10,d,none
+t20y,20-Year Treasury Yield,%,0,fred,DGS20,d,none
+t30y,30-Year Treasury Yield,%,0,fred,DGS30,d,none
+ffr,Federal Funds Rate,%,0,fred,EFFR,d,none
+sofr,Secured Overnight Financing Rate,%,0,fred,SOFR,d,none
+bsby,BSBY Rate,%,0,bloom,BSBYON,d,none
+bsby01m,1-Month BSBY Rate,%,0,bloom,BSBY1M,d,none
+bsby03m,3-Month BSBY Rate,%,0,bloom,BSBY3M,d,none
+bsby06m,6-Month BSBY Rate,%,0,bloom,BSBY6M,d,none
+bsby01y,1-Year BSBY Rate,%,0,bloom,BSBY12M,d,none
+ameribor,AMERIBOR Rate,%,0,afx,ON,d,none
+ameribor01m,1-Month AMERIBOR Rate,%,0,afx,1M,d,none
+ameribor03m,3-Month AMERIBOR Rate,%,0,afx,3M,d,none
+ameribor06m,6-Month AMERIBOR Rate,%,0,afx,6M,d,none
+ameribor01y,1-Year AMERIBOR Rate,%,0,afx,1Y,d,none
+ameribor02y,2-Year AMERIBOR Rate,%,0,afx,2Y,d,none
