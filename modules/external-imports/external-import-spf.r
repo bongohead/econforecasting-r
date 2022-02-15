@@ -73,76 +73,102 @@ local({
 	
 	# method: sv is for 'single value, refers to level'
 	spf_params = tribble(
-		~ varname, ~ spfname, ~ method, ~ single_value,
-		't03m', 'TBILL', 'level', F,
-		't10y', 'TBOND', 'level', F,
-		'inf', 'CORECPI', 'level', F,
-		'gdp', 'RGDP', 'growth', F,
-		'ngdp', 'NGDP', 'growth', F,
-		'pce', 'RCONSUM', 'growth', F,
-		'govts', 'RSLGOV', 'growth', F,
-		'govts', 'RFEDGOV', 'growth', F,
-		'pdir', 'RRESINV', 'growth', F,
-		'pdin', 'RNRESIN', 'growth', F,
-		'inf', 'CPI', 'level', F,
-		'infpce', 'PCE', 'level', F,
-		'unemp', 'UNEMP', 'level', F,
-		'cprofits', 'CPROF', 'growth', F,
-		'houst', 'HOUSING', 'growth', F,
-		'aaa', 'BOND', 'level', F,
-		'baa', 'BAABOND', 'level', F,
-		'inf5y', 'CPI5YR', 'level', T,
-		'inf10y', 'CPI10', 'level', T,
-		'infpce5y', 'PCE5YR', 'level', T,
-		'infpce10y', 'PCE10', 'level', T
+		~ varname, ~ spfname, ~ transform, ~ single_value,
+		't03m', 'TBILL', 'base', F,
+		't10y', 'TBOND', 'base', F,
+		'gdp', 'RGDP', 'apchg', F,
+		'ngdp', 'NGDP', 'apchg', F,
+		'pce', 'RCONSUM', 'apchg', F,
+		'govts', 'RSLGOV', 'apchg', F,
+		'govtf', 'RFEDGOV', 'apchg', F,
+		'pdir', 'RRESINV', 'apchg', F,
+		'pdin', 'RNRESIN', 'apchg', F,
+		'cbi', 'RCBI', 'base', F,
+		'cpi', 'CPI', 'base', F,
+		'pcepi', 'PCE', 'base', F,
+		'unemp', 'UNEMP', 'base', F,
+		'houst', 'HOUSING', 'base', F,
+		'aaa', 'BOND', 'base', F,
+		'baa', 'BAABOND', 'base', F,
+		# 'inf5y', 'CPI5YR', 'base', T,
+		# 'inf10y', 'CPI10', 'base', T,
+		# 'infpce5y', 'PCE5YR', 'base', T,
+		# 'infpce10y', 'PCE10', 'base', T
 		)
 	
-	spf_data_1 = purrr::map_dfr(c('level', 'growth'), function(m) {
-		
-		httr::GET(
-			paste0(
-				'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
-				'survey-of-professional-forecasters/historical-data/median', m, '.xlsx?la=en'
+	httr::GET(
+		paste0(
+			'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+			'survey-of-professional-forecasters/historical-data/medianlevel.xlsx?la=en'
 			),
-			httr::write_disk(file.path(tempdir(), paste0('spf-', m, '.xlsx')), overwrite = TRUE)
+		httr::write_disk(file.path(tempdir(), paste0('spf.xlsx')), overwrite = TRUE)
 		)
-		
+	spf_data_1_import =
 		spf_params %>%
-			filter(., method == m) %>%
-			purrr::transpose(.) %>%
-			lapply(., function(x) {
-				message(x$varname)
-				readxl::read_excel(file.path(tempdir(), paste0('spf-', m, '.xlsx')), na = '#N/A', sheet = x$spfname) %>%
-					select(
-						.,
-						c('YEAR', 'QUARTER', {
-							if (x$single_value == T) x$spfname
-							else if (m == 'level') paste0(x$spfname, 2:6)
-							else if (m == 'growth') paste0('d', str_to_lower(x$spfname), 2:6)
-							else stop('Error')
-						})
-					) %>%
-					mutate(., release_date = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q')) %>%
-					select(., -YEAR, -QUARTER) %>%
-					tidyr::pivot_longer(., -release_date, names_to = 'fcPeriods') %>%
-					mutate(., fcPeriods = {if (x$single_value == F) as.numeric(str_sub(fcPeriods, -1)) - 2 else 0}) %>%
-					mutate(., date = add_with_rollback(release_date, months(fcPeriods * 3))) %>%
-					na.omit(.) %>%
-					inner_join(., vintage_dates, by = 'release_date') %>%
-					transmute(
-						.,
-						varname = x$varname,
-						freq = 'q',
-						vdate,
-						date,
-						value
-					)
-			}) %>%
-			bind_rows(.) %>%
-			return(.)
-		
-	})
+		purrr::transpose(.) %>%
+		map_dfr(., function(x) {
+			message(x$varname)
+			readxl::read_excel(file.path(tempdir(), paste0('spf.xlsx')), na = '#N/A', sheet = x$spfname) %>%
+				select(
+					.,
+					c('YEAR', 'QUARTER', {
+						if (x$single_value == T && x$transform == 'base') x$spfname
+						else if (x$transform == 'apchg') paste0(x$spfname, 1:6)
+						else if (x$transform == 'base') paste0(x$spfname, 2:6)
+						else stop('Error')
+					})
+				) %>%
+				mutate(., release_date = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q')) %>%
+				select(., -YEAR, -QUARTER) %>%
+				tidyr::pivot_longer(., -release_date, names_to = 'fcPeriods') %>%
+				mutate(., fcPeriods = {if (x$single_value == F) as.numeric(str_sub(fcPeriods, -1)) - 2 else 0}) %>%
+				mutate(., date = add_with_rollback(release_date, months(fcPeriods * 3))) %>%
+				arrange(., date) %>%
+				na.omit(.) %>%
+				inner_join(., vintage_dates, by = 'release_date') %>%
+				transmute(
+					.,
+					varname = x$varname,
+					vdate,
+					date,
+					value
+				)
+		})
 	
+	spf_data_1 = 
+		spf_data_1_import %>%
+		group_split(., vdate) %>%
+		# Add in calculated variables
+		map_dfr(., function(x)
+			x %>%
+				pivot_wider(., id_cols = c('vdate', 'date'), names_from = 'varname', values_from = 'value' ) %>% 
+				arrange(., date) %>%
+				mutate(
+					.,
+					pdi = pdir + pdin,
+					govt = govts + govtf
+					) %>%
+				pivot_longer(., -c('vdate', 'date'), names_to = 'varname', values_to = 'value')
+			) %>%
+		na.omit(.) %>%
+		group_split(., varname, vdate) %>%
+		map_dfr(., function(x) {
+			transform = x$varname[[1]] %in% c('gdp', 'ngdp', 'pce', 'pdi', 'pdir', 'pdin', 'govts', 'govtf', 'govt')
+			x %>%
+				mutate(., value = {if (transform == TRUE) apchg(value, 4) else value})
+			}) %>%
+		na.omit(.) %>%
+		transmute(
+			.,
+			sourcename = 'spf',
+			freq = 'q',
+			varname,
+			vdate,
+			date,
+			value
+			)
+
+
 	## Download recession data
 	httr::GET(
 		paste0(
@@ -162,15 +188,15 @@ local({
 		inner_join(., vintage_dates, by = 'release_date') %>%
 		transmute(
 			.,
-			varname = 'recess',
+			sourcename = 'spf',
 			freq = 'q',
+			varname = 'recess',
 			vdate,
 			date,
 			value
 		)
 	
-	spf_data = bind_rows(spf_data_1, spf_data_2)
-	
+	spf_data = bind_rows(spf_data_1, spf_data_2) 
 	
 	raw_data <<- spf_data
 })
@@ -179,34 +205,20 @@ local({
 ## Export SQL Server ------------------------------------------------------------------
 local({
 	
-	export_data =
-		raw_data %>%
-		transmute(
-			.,
-			sourcename = 'spf',
-			freq = 'q',
-			varname,
-			vdate,
-			date,
-			value
-			)
-	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_sources_data')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_import_forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
-		hist$flat_last %>%
-		.[form == 'd1' & freq == 'q' & varname %chin% filter(variable_params, dispgroup == 'GDP')$varname] %>%
-		select(., varname, freq, form, date, value) %>%
-		as_tibble(.) %>%
+		raw_data %>%
+		transmute(., sourcename, vdate, freq, varname, date, value) %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'nowcast_model_hist_values',
-				'ON CONFLICT (varname, freq, form, date) DO UPDATE SET value=EXCLUDED.value'
-			) %>%
+				'external_import_forecast_values',
+				'ON CONFLICT (sourcename, vdate, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
+				) %>%
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
@@ -216,7 +228,7 @@ local({
 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
 	message('***** Data Sent to SQL: ', sum(unlist(sql_result)))
 	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_hist_values')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_import_forecast_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
