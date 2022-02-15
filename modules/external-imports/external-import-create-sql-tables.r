@@ -43,7 +43,8 @@ external_import_variables = read_csv(
 external_import_sources = tribble(
 	~ sourcename, ~ fullname, ~ raw, ~ vintage_freq,
 		'spf', 'Survey of Professional Forecasters', T, 'q',
-		'einf', 'Expected Inflations Model', F, 'm'
+		'einf', 'Expected Inflations Model', F, 'm',
+		'cbo', 'U.S. Congressional Budget Office', T, 'q'
 	)
 
 

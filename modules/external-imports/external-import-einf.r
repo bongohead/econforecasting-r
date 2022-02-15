@@ -240,3 +240,8 @@ local({
 		) %>%
 		dbExecute(db, .)
 })
+
+## Finalize ------------------------------------------------------------------
+dbDisconnect(db)
+
+message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
