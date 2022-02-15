@@ -232,4 +232,10 @@ local({
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
+	create_insert_query(
+		tibble(sourcename = 'spf', import_date = today(), rows_added = final_count - initial_count),
+		'external_import_logs',
+		'ON CONFLICT (sourcename, import_date) DO UPDATE SET rows_added=EXCLUDED.rows_added'
+		) %>%
+		dbExecute(db, .)
 })
