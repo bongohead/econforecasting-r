@@ -22,3 +22,8 @@ ameribor03m,3-Month AMERIBOR Rate,%,0,afx,3M,d,none
 ameribor06m,6-Month AMERIBOR Rate,%,0,afx,6M,d,none
 ameribor01y,1-Year AMERIBOR Rate,%,0,afx,1Y,d,none
 ameribor02y,2-Year AMERIBOR Rate,%,0,afx,2Y,d,none
+mort30y,30-Year Mortgage Rate,%,0,fred,MORTGAGE30US,w,none
+mort15y,15-Year Mortgage Rate,%,0,fred,MORTGAGE15US,w,none
+mort05y,5-Year Adjustable-Rate Mortgage,%,0,fred,MORTGAGE5US,w,none
+aaa,Aaa Corporate Bond Yield,%,0,fred,DAAA,d,none
+baa,Baa Corporate Bond Yield,%,0,fred,DBAA,d,none

@@ -7,7 +7,7 @@ This code is developed locally on a Windows machine and deployed locally to an U
 ---
 # CHANGELOG
 
-## [v.20] (Model Re-Release)
+## [v.20] (Model Modularization & Re-Release) (2022-02-15)
 This continues modularization & adds an initial web release on beta.econforecasting.com.
 - Added SPF, CBO, WSJ external forecasts
 - Added reticulate Python integration
@@ -15,10 +15,15 @@ This continues modularization & adds an initial web release on beta.econforecast
 - Added nowcast model with correct aggregations and stationary transformations (by vintage date)
 - Added nowcast model DB storage
 - Added UUP import to replace FRED USD source (vintage dates start too late)
+- Added modules system
+- Added split of external forecast inputs
+- Added centralized logging system
+- Added split of consensus futures model from extenral forecasts
 - Cleaned up old files
 - Deprecated Quandl data input
 - Fixed bug in get_fred_data related to observation date pulls
 - Fixed STLFSI with updated version
+- Fixed SQL table key issues
 
 ## [v0.19] (Model Backtesting and Vintage Analysis)
 This is a full model rewrite. The rewrite for the full-scale model is delayed, but immediate releases of external forecasts & composite external forecasts are intended for the version. In addition, alternate indices are included in the release. The code is restructured to build a more comprehensive backend built off TimescaleDB/Postgres with proper vintage storage, but with more intermediary and partial releases. 
@@ -50,7 +55,7 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Fixed issue with WSJ scraping not working on prod site (needed headers)
 
 
-## 2021-09-03 [v0.16] (CSM Forecasting & Finalize Model Rewrite)
+## [v0.16] (CSM Forecasting & Initial Model Rewrite) (2021-09-03)
 - Added CSM forecasting code
 - Added model stacking for PCA->DFM->Kalman Filter process to reduce variance due to factor selection
 - Added qualitative forecasts for mortgage rates and mortgage spreads
@@ -70,7 +75,7 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Improved structuring of columns on inputs.xlsx for better notation of structural input types and output types
 - Removed CFNAI and WEI from DFM inputs
 
-## 2021-07-26 [v0.15]
+## [v0.15] (2021-07-26)
 - Added rewrite of model flow: (1) data, (2) nowcasts, (3) qual forecasts, (4) csm
 - Added table of releases to inputs
 - Added refactoring of release date pulling process
@@ -84,7 +89,7 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Improved nowcast variables to match structure of other variable data (obj$[[form]]$[[freq]])
 - Removed some old unused files
 
-## 2021-06-24 [v0.14]
+## [v0.14] (2021-06-24)
 - Added better data import system
 - Added better data transform system
 - Added cleaner EOM aggregation system
@@ -98,7 +103,7 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Fixed bug with CME scrape (removed cookie set)
 - Removed JOLTS new hires from inputs (missing data in 2010)
 
-## 2021-05-25 [v0.13]
+## [v0.13] (2021-05-25)
 - Added importing of releases & release dates for input data series into nowcast models
 - Added SQL export of releases & release dates
 - Added new shipments, new business applications
@@ -110,14 +115,14 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Fixed bug caused by optimizing DNS yield curve parametrization over MAPE instead of MAE (MAPE was returning Inf values)
 - Removed WEI index
 
-## 2021-05-07 [v0.12]
+## [v0.12] (2021-05-07)
 - Added structural basics with impulse response
 - Added headers to CME scraping; user-agent now required to access JSON files
 - Added task scheduler for Windows automation of scripts
 - Added updated project management spreadsheet
 - Fixed bug in documentation (xtables)
 
-## 2021-03-19 [v0.11]
+## [v0.11] (2021-03-19)
 - Added backtest code for nowcasts
 - Added code for iterating over vintage dates
 - Added JOLTS data to model inputs
@@ -129,7 +134,7 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Fixed bug related to knitr::purl
 - Fixed bug related to SQL insert
 
-## 2021-03-06 [v0.10]
+## [v0.10] (2021-03-06)
 - Added import spreadsheet
 - Added GDP subcomponents
 - Added deseasonalization information
@@ -153,7 +158,7 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Fixed bug with monthly aggregation
 - Fixed bug with specific vintage date pulls from ALFRED database
 
-## 2021-02-13 [v0.09]
+## [v0.09] (2021-02-13)
 - Added mortgage models
 - Added misc stationary transform functions for structural modeling
 - Added addLags() function
@@ -161,12 +166,12 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Added expected inflation models
 - Added prep for Kalman smoothing & interpolation
 
-## 2021-02-09 [v0.08]
+## [v0.08] (2021-02-09)
 - Added monthly aggregation for daily-data forecasts
 - Added SOFR web scraping
 - Fixed some issues with inconsistent variable names
 
-## 2021-02-03 [v0.05]
+## [v0.05] (2021-02-03)
 - Added dynamic Nelson-Siegel interest rate decomposition & forecasting model
 - Added code to allow for SPF pulling for more variables
 - Added code to pull historical data of multiple frequencies
@@ -174,29 +179,29 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 - Added SQL insert function
 - Improved overall code organization in forecasts.rmd
 
-## 2021-01-29 [v0.04]
+## [v0.04] (2021-01-29)
 - Added historical data scraping code
 - Added code for fed funds rate
 - Fixed bug in data upload
 - Fixed bug in getDataFred()
 - Fixed bug in package description compilation
 
-## 2021-01-13 [v0.03]
+## [v0.03] (2021-01-13)
 - Added code for calculating asset contagion index
 - Added code for splitting RESET_ALL runs from update runs
 - Added code for truncating tables on RESET_ALL runs
 
-## 2021-01-09 [v0.02]
+## [v0.02] (2021-01-09)
 - Added code for remote SQL connection
 - Added code for calculation of cross-asset rolling correlation statistics
 - Added code for remote SFTP and COPY batch insert of asset-correlation data
 
-## 2021-01-08 [v0.01]
+## [v0.01] (2021-01-08)
 - Added web scraping code for CBO
 - Added web scraping code for FRED
 - Added web scraping code for WSJ
 - Added web scraping code for Philadelphia Fed 
 
-## 2021-01-07 [v0.00]
+## [v0.00] (2021-01-07)
 - Added initial package setup
 - Added initial web scraping frameworks etup

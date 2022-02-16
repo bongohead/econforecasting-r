@@ -3,6 +3,7 @@
 export(add_lagged_columns)
 export(apchg)
 export(create_insert_query)
+export(create_job_log)
 export(diff)
 export(diff1)
 export(diff2)
