@@ -1,6 +1,6 @@
 DROP TABLE IF EXISTS public.job_logs;
 CREATE TABLE public.job_logs (
-	logname varchar(50) CONSTRAINT job_logs_logname_uk UNIQUE NOT NULL,
+	logname varchar(50) NOT NULL,
 	module varchar(50) NOT NULL,
 	log_date date NOT NULL,
 	log_group varchar(50) NOT NULL,

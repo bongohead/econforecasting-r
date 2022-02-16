@@ -14,7 +14,9 @@ if (interactive() == FALSE) {
 
 ## Load Libs ----------------------------------------------------------
 library(tidyverse)
+library(jsonlite)
 library(httr)
+library(rvest)
 library(DBI)
 library(RPostgres)
 library(econforecasting)
@@ -156,14 +158,17 @@ local({
 	message('***** Rows Added: ', final_count - initial_count)
 
 	create_insert_query(
-		tibble(sourcename = 'wsj', import_date = today(), rows_added = final_count - initial_count),
-		'external_import_logs',
-		'ON CONFLICT (sourcename, import_date) DO UPDATE SET rows_added=EXCLUDED.rows_added'
-		) %>%
+		tribble(
+			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
+			JOB_NAME, 'external-import', today(), 'job-success',
+			toJSON(list(rows_added = final_count - initial_count, last_vdate = max(raw_data$vdate)))
+		),
+		'job_logs',
+		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
+	) %>%
 		dbExecute(db, .)
 })
 
 ## Finalize ------------------------------------------------------------------
 dbDisconnect(db)
-
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))

@@ -19,11 +19,15 @@ if (interactive() == FALSE) {
 
 ## Load Libs ----------------------------------------------------------
 library(tidyverse)
+library(jsonlite)
 library(httr)
+library(rvest)
 library(DBI)
+library(RPostgres)
 library(econforecasting)
-library(highcharter)
 library(lubridate)
+library(highcharter)
+library(forecast)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -134,7 +138,7 @@ local({
 
 	message('**** Storing SQL Data')
 	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_hist_values CASCADE')
-	
+
 	hist_values =
 		imap_dfr(hist, function(x, sourcename) {
 			if (!'sourcename' %in% colnames(x)) x %>% mutate(., sourcename = sourcename)
@@ -374,8 +378,8 @@ local({
 	print(series_chart)
 
 	bind_rows(
-		tibble(logname = 'cme_raw_import', log_info = jsonlite::toJSON(cme_raw_data)),
-		tibble(logname = 'cme_cleaned_import', log_info = jsonlite::toJSON(cme_data))
+		tibble(logname = 'cme-raw-import', log_info = jsonlite::toJSON(cme_raw_data)),
+		tibble(logname = 'cme-cleaned-import', log_info = jsonlite::toJSON(cme_data))
 		) %>%
 		mutate(., module = 'interest-rate-model', log_date = today(), log_group = 'data-store') %>%
 		create_insert_query(
@@ -385,7 +389,7 @@ local({
 				DO UPDATE SET log_info=EXCLUDED.log_info, log_dttm=CURRENT_TIMESTAMP'
 			) %>%
 		dbExecute(db, .)
-		
+
 	submodels$cme <<- final_df
 })
 
@@ -408,7 +412,7 @@ local({
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yield_curve_names_map =
 		input_sources %>%
-		filter(., str_detect(varname, 't\\d{2}[m|y]')) %>%
+		filter(., str_detect(varname, 't\\d{2}[m|y]') & str_length(varname) == 4) %>%
 		select(., varname) %>%
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
 
@@ -539,7 +543,7 @@ local({
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
 	# date since reliant purely on historical data
-	tdns_forecasts =
+	dns_coefs_forecast =
 		treasury_forecasts %>%
 		select(., varname, date, value) %>%
 		pivot_wider(., names_from = 'varname') %>%
@@ -549,10 +553,13 @@ local({
 			tdns1 = t10y,
 			tdns2 = -1 * (t10y - t03m),
 			tdns3 = .3 * (2 * t02y - t03m - t10y)
-		) %>%
-		pivot_longer(., -date, names_to = 'varname') %>%
-		transmute(., varname, freq = 'm', date, vdate = today(), value)
+		)
 
+	tdns <<- list(
+		dns_coefs_hist = dns_coefs_hist,
+		optim_lambda = optim_lambda,
+		dns_coefs_forecast = dns_coefs_forecast
+		)
 	submodels$tdns <<- treasury_forecasts
 })
 
@@ -616,6 +623,68 @@ local({
 	submodels$cboe <<- ameribor_forecasts
 })
 
+## MOR: Mortgage Model ----------------------------------------------------------
+local({
+
+	# Calculate historical mortgage curve spreads
+	input_df =
+		hist$fred %>%
+		filter(., varname %in% c('t10y', 't20y', 't30y', 'mort15y', 'mort30y')) %>%
+		mutate(., date = floor_date(date, 'months')) %>%
+		group_by(., varname, date) %>%
+		summarize(., value = mean(value), .groups = 'drop') %>%
+		pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value') %>%
+		mutate(., t15y = (t10y + t20y)/2) %>%
+		mutate(., spread15 = mort15y - t15y, spread30 = mort30y - t30y) %>%
+		inner_join(., tdns$dns_coefs_hist, by = 'date') %>%
+		select(date, spread15, spread30, tdns1, tdns2) %>%
+		arrange(., date) %>%
+		mutate(., spread15.l1 = lag(spread15, 1), spread30.l1 = lag(spread30, 1)) %>%
+		na.omit(.)
+
+	pred_df =
+		tdns$dns_coefs_forecast %>%
+		bind_rows(tail(filter(input_df, date < .$date[[1]]), 1), .)
+
+	# Include average of historical month as "forecast" period
+	coefs15 = matrix(lm(spread15 ~ spread15.l1, input_df)$coef, nrow = 1)
+	coefs30 = matrix(lm(spread30 ~ spread30.l1, input_df)$coef, nrow = 1)
+
+	spread_forecast = reduce(2:nrow(pred_df), function(accum, x) {
+		accum[x, 'spread15'] =
+			coefs15 %*% matrix(as.numeric(
+				# c(1, accum[[x, 'tdns1']], ... if included tdns1 as a covariate
+				c(1, accum[x - 1, 'spread15']),
+				nrow = 1
+				))
+		accum[x, 'spread30'] =
+			coefs15 %*% matrix(as.numeric(
+				c(1, accum[x - 1, 'spread30']),
+				nrow = 1
+			))
+		return(accum)
+		},
+		.init = pred_df
+		) %>%
+		.[2:nrow(.),] %>%
+		select(., date, spread15, spread30)
+
+	mor_data =
+		inner_join(
+			spread_forecast,
+			submodels$tdns %>%
+				filter(., varname %in% c('t10y', 't20y', 't30y')) %>%
+				filter(., vdate == max(vdate)) %>%
+				pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value'),
+			by = 'date'
+		) %>%
+		mutate(., mort15y = (t10y + t30y)/2 + spread15, mort30y = t30y + spread30) %>%
+		select(., date, mort15y, mort30y) %>%
+		pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
+		transmute(., varname, freq = 'm', vdate = today(), date, value)
+
+	submodels$mor <<- mor_data
+})
 
 # Finalize ----------------------------------------------------------
 
@@ -628,7 +697,7 @@ local({
 		as_tibble(tbl(db, sql('SELECT * FROM interest_rate_model_forecast_values'))),
 		by = c('vdate', 'freq', 'varname', 'date')
 	)
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
 
@@ -655,20 +724,19 @@ local({
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_forecast_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
-	
+
 	tribble(
 		~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-		'interest-rate-model-run', 'interest-rate-model', today(),
-			'job-success', jsonlite::toJSON(list(rows_added = final_count - initial_count))
+		JOB_NAME, 'interest-rate-model', today(), 'job-success',
+			toJSON(list(rows_added = final_count - initial_count))
 		) %>%
 		create_insert_query(
 			.,
 			'job_logs',
-			'ON CONFLICT (logname, module, log_date, log_group)
-				DO UPDATE SET log_info=EXCLUDED.log_info, log_dttm=CURRENT_TIMESTAMP'
+			'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
 		) %>%
 		dbExecute(db, .)
-	
+
 	submodel_values <<- submodel_values
 })
 
