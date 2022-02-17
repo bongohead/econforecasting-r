@@ -30,3 +30,5 @@ unemp,Unemployment Rate,%,1,fred,UNRATE,m,none
 lfpr,Labor Force Participation Rate,%,1,fred,CIVPART,m,none
 oil,Price of Oil (WTI Crude),Dollars per Barrel,0,fred,DCOILWTICO,d,none
 recess,Probability of Recession,%,0,none,,,
+mort30y,30-Year Mortgage Rate,%,1,none,MORTGAGE30US,w,none
+mort05y,5-Year Mortgage Rate,%,1,none,MORTGAGE5US,w,none

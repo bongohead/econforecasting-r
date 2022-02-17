@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'nowcast-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
-RESET_SQL = TRUE
+RESET_SQL = F
 IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007, can start at 2008-01-01
 
 ## Cron Log ----------------------------------------------------------
@@ -62,7 +62,7 @@ release_params = read_excel(
 ## Set Backtest Dates  ----------------------------------------------------------
 local({
 	# Include all days in last 3 months plus one random day per month before that
-	contiguous = seq(today() - days(90), today(), by = '1 day')
+	contiguous = seq(today() - days(150), today(), by = '1 day')
 
 	old =
 		seq(

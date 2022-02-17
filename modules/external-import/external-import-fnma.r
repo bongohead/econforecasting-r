@@ -42,12 +42,12 @@ db = dbConnect(
 local({
 
 	message('***** Downloading Fannie Mae Data')
-	
+
 	fnma_dir = file.path(tempdir(), 'fnma')
 	fs::dir_create(fnma_dir)
-	
+
 	message('***** FNMA dir: ', fnma_dir)
-	
+
 	fnma_links =
 		httr::GET('https://www.fanniemae.com/research-and-insights/forecast/forecast-monthly-archive') %>%
 		httr::content(., type = 'parsed') %>%
@@ -64,7 +64,7 @@ local({
 			)
 		)) %>%
 		na.omit(.)
-	
+
 	fnma_details =
 		fnma_links %>%
 		mutate(., group = (1:nrow(.) - 1) %/% 3) %>%
@@ -73,9 +73,9 @@ local({
 		purrr::transpose(.) %>%
 		.[1:12] %>%
 		purrr::imap_dfr(., function(x, i) {
-			
+
 			# if (i %% 10 == 0) message('Downloading ', i)
-			
+
 			vdate =
 				httr::GET(paste0('https://www.fanniemae.com', x$article)) %>%
 				httr::content(., type = 'parsed') %>%
@@ -83,33 +83,33 @@ local({
 				rvest::html_node(., "div[data-block-plugin-id='field_block:node:news:field_date'] > div") %>%
 				rvest::html_text(.) %>%
 				mdy(.)
-			
+
 			httr::GET(
 				paste0('https://www.fanniemae.com', x$econ_forecast),
 				httr::write_disk(file.path(fnma_dir, paste0('econ_', vdate, '.pdf')), overwrite = TRUE)
 			)
-			
+
 			httr::GET(
 				paste0('https://www.fanniemae.com', x$housing_forecast),
 				httr::write_disk(file.path(fnma_dir, paste0('housing_', vdate, '.pdf')), overwrite = TRUE)
 			)
-			
+
 			tibble(
 				vdate = vdate,
 				econ_forecast_path = normalizePath(file.path(fnma_dir, paste0('econ_', vdate, '.pdf'))),
 				housing_forecast_path = normalizePath(file.path(fnma_dir, paste0('housing_', vdate, '.pdf')))
 			)
 		})
-	
+
 	camelot = import('camelot')
-	
+
 	fnma_clean_macro =
 		fnma_details %>%
 		purrr::transpose(.) %>%
 		purrr::imap_dfr(., function(x, i) {
-			
+
 			message(str_glue('Importing macro {i}'))
-			
+
 			raw_import = camelot$read_pdf(
 				x$econ_forecast_path,
 				pages = '1',
@@ -119,13 +119,13 @@ local({
 				#table_areas = list('100, 490, 700, 250')
 			)[0]$df %>%
 				as_tibble(.)
-			
+
 			col_names =
 				purrr::transpose(raw_import[3, ])[[1]] %>%
 				str_replace_all(., coll(c('.' = 'Q'))) %>%
 				paste0('20', .) %>%
 				{ifelse(. == '20', 'varname', .)}
-			
+
 			clean_import =
 				raw_import[4:nrow(raw_import), ] %>%
 				set_names(., col_names) %>%
@@ -153,19 +153,19 @@ local({
 				) %>%
 				na.omit(.) %>%
 				transmute(., vdate = as_date(x$vdate), varname, date, value)
-			
+
 			if (length(unique(clean_import$varname)) < 12) stop('Missing variable')
-			
+
 			return(clean_import)
 		})
-	
+
 	fnma_clean_housing =
 		fnma_details %>%
 		purrr::transpose(.) %>%
 		purrr::imap_dfr(., function(x, i) {
-			
+
 			message(str_glue('Importing housing {i}'))
-			
+
 			raw_import = camelot$read_pdf(
 				x$housing_forecast_path,
 				pages = '1',
@@ -173,13 +173,13 @@ local({
 				column_tol = -1
 			)[0]$df %>%
 				as_tibble(.)
-			
+
 			col_names =
 				purrr::transpose(raw_import[3, ])[[1]] %>%
 				str_replace_all(., coll(c('.' = 'Q'))) %>%
 				paste0('20', .) %>%
 				{ifelse(. == '20', 'varname', .)}
-			
+
 			clean_import =
 				raw_import[4:nrow(raw_import), ] %>%
 				set_names(., col_names) %>%
@@ -198,42 +198,42 @@ local({
 				) %>%
 				na.omit(.) %>%
 				transmute(., vdate = as_date(x$vdate), varname, date, value)
-			
+
 			if (length(unique(clean_import$varname)) < 3) stop('Missing variable')
-			
+
 			return(clean_import)
 		})
-	
+
 	fnma_data =
 		bind_rows(fnma_clean_macro, fnma_clean_housing) %>%
 		transmute(
 			.,
-			sourcename = 'einf',
+			sourcename = 'fnma',
 			freq = 'q',
-			varname = 'cpi',
+			varname,
 			vdate,
 			date,
 			value
 		)
-	
+
 	message('***** Missing Variables:')
 	message(
 		c('gdp', 'pce', 'pdir', 'pdin', 'govt', 'nx', 'cbi', 'cpi', 'pcepi', 'unemp', 'ffr', 't01y', 't10y',
 			'houst', 'mort30y', 'mort05y') %>%
-			keep(., ~ !. %in% unique(fnma_final$varname)) %>%
+			keep(., ~ !. %in% unique(fnma_data$varname)) %>%
 			paste0(., collapse = ' | ')
 		)
-	
+
 	raw_data <<- fnma_data
 })
 
 
 ## Export SQL Server ------------------------------------------------------------------
 local({
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_import_forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		raw_data %>%
 		transmute(., sourcename, vdate, freq, varname, date, value) %>%
@@ -248,12 +248,12 @@ local({
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	
+
+
 	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
 	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
 	message('***** Data Sent to SQL: ', sum(unlist(sql_result)))
-	
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_import_forecast_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)

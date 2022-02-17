@@ -6,7 +6,6 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'interest-rate-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
-RESET_SQL = F
 
 ## Log Job ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -137,7 +136,6 @@ local({
 local({
 
 	message('**** Storing SQL Data')
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS rates_model_hist_values CASCADE')
 
 	hist_values =
 		imap_dfr(hist, function(x, sourcename) {
@@ -154,17 +152,11 @@ local({
 		# vdate is the same as date
 		mutate(., vdate = date)
 
-	hist_values_sql = anti_join(
-		hist_values,
-		as_tibble(tbl(db, sql('SELECT * FROM interest_rate_model_hist_values'))),
-		by = c('sourcename', 'vdate', 'freq', 'varname', 'date')
-		)
-
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_hist_values')$count)
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
-		hist_values_sql %>%
+		hist_values %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
