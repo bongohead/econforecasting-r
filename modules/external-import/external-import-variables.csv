@@ -1,34 +1,34 @@
-varname,fullname,units,sa,hist_source,hist_source_key,hist_source_freq,hist_source_transform
-gdp,Real Gross Domestic Product,Annualized % Change,1,fred,GDPC1,q,apchg
-ngdp,Nominal Gross Domestic Product,Annualized % Change,1,fred,GDP,q,apchg
-pce,Real Personal Consumption,Annualized % Change,1,fred,PCECC96,q,apchg
-pdi,Real Fixed Investment,Annualized % Change,1,fred,GPDIC1,q,apchg
-pdir,Real Residential Fixed Investment,Annualized % Change,1,fred,PRFIC1,q,apchg
-pdin,Real Nonresidential Fixed Investment,Annualized % Change,1,fred,PNFIC1,q,apchg
-govt,Real Government Spending,Annualized % Change,1,fred,GCEC1,q,apchg
-govtf,Real Federal Government Spending,Annualized % Change,1,fred,FGCEC1,q,apchg
-govts,Real State & Local Government Spending,Annualized % Change,1,fred,SLCEC1,q,apchg
-nx,Real Net Exports,Billions of Real 2012 Dollars,1,fred,NETEXC,q,none
-ex,Real Exports,Annualized % Change,1,fred,EXPGSC1,q,apchg
-im,Real Imports,Annualized % Change,1,fred,IMPGSC1,q,apchg
-cbi,Real Change in Private Inventories,Billions of Real 2012 Dollars,1,fred,CBIC1,q,none
-cpi,CPI Inflation,Index,0,fred,USACPIALLMINMEI,m,yoy
-pcepi,PCEPI Inflation,Index,0,fred,PCEPI,m,yoy
-t03m,3-Month Treasury Yield,%,0,fred,DTB3,d,none
-t06m,6-Month Treasury Yield,%,0,fred,DTB6,d,none
-t01y,1-Year Treasury Yield,%,0,fred,DGS1,d,none
-t05y,5-Year Treasury Yield,%,0,fred,DGS5,d,none
-t10y,10-Year Treasury Yield,%,0,fred,DGS10,d,none
-t20y,20-Year Treasury Yield,%,0,fred,DGS20,d,none
-t30y,30-Year Treasury Yield,%,0,fred,DGS30,d,none
-ffr,Federal Funds Rate,%,0,fred,EFFR,d,none
-sofr,Secured Overnight Financing Rate,%,0,fred,SOFR,d,none
-houst,Housing Starts,Millions of Houses,1,fred,HOUST,m,none
-aaa,Corporate Aaa Bond Yields,%,0,fred,DAAA,m,none
-baa,Corporate Baa Bond Yields,%,0,fred,DBAA,m,none
-unemp,Unemployment Rate,%,1,fred,UNRATE,m,none
-lfpr,Labor Force Participation Rate,%,1,fred,CIVPART,m,none
-oil,Price of Oil (WTI Crude),Dollars per Barrel,0,fred,DCOILWTICO,d,none
-recess,Probability of Recession,%,0,none,,,
-mort30y,30-Year Mortgage Rate,%,1,none,MORTGAGE30US,w,none
-mort05y,5-Year Mortgage Rate,%,1,none,MORTGAGE5US,w,none
+varname,fullname,hist_source,hist_source_key,hist_source_freq,hist_source_transform
+gdp,Real Gross Domestic Product,fred,GDPC1,q,apchg
+ngdp,Nominal Gross Domestic Product,fred,GDP,q,apchg
+pce,Real Personal Consumption,fred,PCECC96,q,apchg
+pdi,Real Fixed Investment,fred,GPDIC1,q,apchg
+pdir,Real Residential Fixed Investment,fred,PRFIC1,q,apchg
+pdin,Real Nonresidential Fixed Investment,fred,PNFIC1,q,apchg
+govt,Real Government Spending,fred,GCEC1,q,apchg
+govtf,Real Federal Government Spending,fred,FGCEC1,q,apchg
+govts,Real State & Local Government Spending,fred,SLCEC1,q,apchg
+nx,Real Net Exports,fred,NETEXC,q,none
+ex,Real Exports,fred,EXPGSC1,q,apchg
+im,Real Imports,fred,IMPGSC1,q,apchg
+cbi,Real Change in Private Inventories,fred,CBIC1,q,none
+cpi,CPI Inflation,fred,USACPIALLMINMEI,m,yoy
+pcepi,PCEPI Inflation,fred,PCEPI,m,yoy
+t03m,3-Month Treasury Yield,fred,DTB3,d,none
+t06m,6-Month Treasury Yield,fred,DTB6,d,none
+t01y,1-Year Treasury Yield,fred,DGS1,d,none
+t05y,5-Year Treasury Yield,fred,DGS5,d,none
+t10y,10-Year Treasury Yield,fred,DGS10,d,none
+t20y,20-Year Treasury Yield,fred,DGS20,d,none
+t30y,30-Year Treasury Yield,fred,DGS30,d,none
+ffr,Federal Funds Rate,fred,EFFR,d,none
+sofr,Secured Overnight Financing Rate,fred,SOFR,d,none
+houst,Housing Starts,fred,HOUST,m,none
+aaa,Corporate Aaa Bond Yields,fred,DAAA,m,none
+baa,Corporate Baa Bond Yields,fred,DBAA,m,none
+unemp,Unemployment Rate,fred,UNRATE,m,none
+lfpr,Labor Force Participation Rate,fred,CIVPART,m,none
+oil,Price of Oil (WTI Crude),fred,DCOILWTICO,d,none
+recess,Probability of Recession,none,,,
+mort30y,30-Year Mortgage Rate,none,MORTGAGE30US,w,none
+mort05y,5-Year Mortgage Rate,none,MORTGAGE5US,w,none
