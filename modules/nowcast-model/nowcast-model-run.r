@@ -5,7 +5,6 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'nowcast-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
-RESET_SQL = F
 IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007, can start at 2008-01-01
 
 ## Cron Log ----------------------------------------------------------
@@ -50,14 +49,8 @@ model = list()
 models = list()
 
 ## Load Variable Defs ----------------------------------------------------------
-variable_params = read_excel(
-	file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
-	sheet = 'variables'
-	)
-release_params = read_excel(
-	file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-inputs.xlsx'),
-	sheet = 'releases'
-	)
+variable_params = as_tibble(dbGetQuery(db, 'SELECT * FROM nowcast_model_variables'))
+release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM nowcast_model_input_releases'))
 
 ## Set Backtest Dates  ----------------------------------------------------------
 local({
@@ -87,43 +80,25 @@ local({
 	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
 
 	fred_releases =
-		variable_params %>%
-		group_by(., relkey) %>%
-		summarize(., n_varnames = n(), varnames = toJSON(fullname), .groups = 'drop') %>%
-		left_join(
-			.,
-			variable_params  %>%
-				filter(., nc_dfm_input == T) %>%
-				group_by(., relkey) %>%
-				summarize(., n_dfm_varnames = n(), dfm_varnames = toJSON(fullname), .groups = 'drop'),
-			variable_params %>%
-				filter(., nc_dfm_input == T) %>%
-				group_by(., relkey) %>%
-				summarize(., n_varnames = n(), varnames = toJSON(fullname), .groups = 'drop'),
-			by = 'relkey'
-		) %>%
-		left_join(., release_params, by = 'relkey') %>%
-		# Now create a column of included release dates
-		left_join(
-			.,
-			map_dfr(purrr::transpose(filter(., relsc == 'fred')), function(x) {
-				RETRY(
-					'GET',
-					str_glue(
-						'https://api.stlouisfed.org/fred/release/dates?',
-						'release_id={x$relsckey}&realtime_start={min(bdates)}',
-						'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
-					),
-					times = 10
-					) %>%
-					content(., as = 'parsed') %>%
-					.$release_dates %>%
-					sapply(., function(y) y$date) %>%
-					tibble(relkey = x$relkey, reldates = .)
-				}) %>%
-				group_by(., relkey) %>%
-				summarize(., reldates = toJSON(reldates), .groups = 'drop'),
-			by = 'relkey'
+		release_params %>%
+		filter(., id %in% filter(variable_params, nc_dfm_input == 1)$release & source == 'fred') %>%
+		purrr::transpose(.) %>%
+		map_dfr(., function(x) 
+			RETRY(
+				'GET',
+				str_glue(
+					'https://api.stlouisfed.org/fred/release/dates?',
+					'release_id={x$source_key}&realtime_start=2010-01-01',
+					'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
+				),
+				times = 10
+				) %>%
+				content(., as = 'parsed') %>%
+				.$release_dates %>%
+				{tibble(
+					release = x$id,
+					date = sapply(., function(y) y$date) 
+					)}
 			)
 
 	releases$raw$fred <<- fred_releases
@@ -131,8 +106,31 @@ local({
 
 ## 2. Combine ----------------------------------------------------------
 local({
-
 	releases$final <<- bind_rows(releases$raw)
+})
+
+## 3. SQL ----------------------------------------------------------
+local({
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_release_dates')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		releases$final %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'nowcast_model_input_release_dates',
+				'ON CONFLICT (release, date) DO NOTHING'
+				) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_release_dates')$count)
+	message('***** Rows Added: ', final_count - initial_count)
 })
 
 # Historical Data ----------------------------------------------------------
@@ -145,18 +143,18 @@ local({
 	fred_data =
 		variable_params %>%
 		purrr::transpose(.) %>%
-		keep(., ~ .$source == 'fred') %>%
+		keep(., ~ .$hist_source == 'fred') %>%
 		imap_dfr(., function(x, i) {
 			message(str_glue('**** Pull {i}: {x$varname}'))
 			res =
 				get_fred_data(
-					x$sckey,
+					x$hist_source_key,
 					CONST$FRED_API_KEY,
-					.freq = x$freq,
+					.freq = x$hist_source_freq,
 					.return_vintages = T,
 					.obs_start = IMPORT_DATE_START,
 					) %>%
-				transmute(., varname = x$varname, freq = x$freq, date, vdate = vintage_date, value) %>%
+				transmute(., varname = x$varname, freq = x$hist_source_freq, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
 			message(str_glue('**** Count: {nrow(res)}'))
 			return(res)
@@ -173,11 +171,11 @@ local({
 	yahoo_data =
 		variable_params %>%
 		purrr::transpose(.) %>%
-		keep(., ~ .$source == 'yahoo') %>%
+		keep(., ~ .$hist_source == 'yahoo') %>%
 		map_dfr(., function(x) {
 			url =
 				paste0(
-					'https://query1.finance.yahoo.com/v7/finance/download/', x$sckey,
+					'https://query1.finance.yahoo.com/v7/finance/download/', x$hist_source_key,
 					'?period1=', as.numeric(as.POSIXct(as_date(IMPORT_DATE_START))),
 					'&period2=', as.numeric(as.POSIXct(Sys.Date() + days(1))),
 					'&interval=1d',
@@ -192,7 +190,7 @@ local({
 				mutate(
 					.,
 					varname = x$varname,
-					freq = x$freq,
+					freq = x$hist_source_freq,
 					date,
 					vdate = date,
 					value = as.numeric(value)
@@ -213,7 +211,7 @@ local({
 	# duplications of CPI values by vintage dates/obs date
 	cpi_df =
 		hist$raw$fred %>%
-		filter(., varname == 'cpi0' & freq == 'm') %>%
+		filter(., varname == 'cpi' & freq == 'm') %>%
 		select(., date, vdate, value)
 
 	cpi_data =
@@ -240,7 +238,7 @@ local({
 
 	pcepi_df =
 		hist$raw$fred %>%
-		filter(., varname == 'pcepi0' & freq == 'm') %>%
+		filter(., varname == 'pcepi' & freq == 'm') %>%
 		select(., date, vdate, value)
 
 	pcepi_data =
@@ -276,7 +274,13 @@ local({
 
 	message(str_glue('*** Aggregating Monthly & Quarterly Data | {format(now(), "%H:%M")}'))
 
-	hist_agg_0 = bind_rows(hist$raw)
+	hist_agg_0 =
+		hist$raw$calc %>%
+		bind_rows(
+			.,
+			filter(hist$raw$fred, !varname %in% unique(.$varname)),
+			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
+			)
 
 	monthly_agg =
 		# Get all daily/weekly varnames with pre-existing data
