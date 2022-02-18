@@ -74,64 +74,6 @@ local({
 		dbExecute(db, .)
 })
 
-## Releases ---------------------------------------------------------
-local({
-	
-	dbExecute(db, 'DROP TABLE IF EXISTS forecast_hist_releases CASCADE')
-	
-	dbExecute(
-		db,
-		'CREATE TABLE forecast_hist_releases (
-			id VARCHAR(50) CONSTRAINT forecast_hist_releases_pk PRIMARY KEY,
-			fullname VARCHAR(255) CONSTRAINT forecast_hist_releases_fullname_uk UNIQUE NOT NULL,
-			url VARCHAR(255) NULL,
-			vintage_update VARCHAR(255) NOT NULL,
-			source VARCHAR(255) NULL,
-			source_key VARCHAR(255) NULL,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-			)'
-	)
-	
-	forecast_variable_releases %>%
-		create_insert_query(
-			.,
-			'forecast_hist_releases',
-			'ON CONFLICT ON CONSTRAINT forecast_hist_releases_pk DO UPDATE
-		    SET
-		    fullname=EXCLUDED.fullname,
-		    url=EXCLUDED.url,
-		    vintage_update=EXCLUDED.vintage_update,
-		    source=EXCLUDED.source,
-				source_key=EXCLUDED.source_key'
-		) %>%
-		dbExecute(db, .)
-})
-
-## Release Dates ---------------------------------------------------------
-local({
-	
-	dbExecute(db, 'DROP TABLE IF EXISTS forecast_hist_release_dates CASCADE')
-	
-	dbExecute(
-		db,
-		'CREATE TABLE forecast_hist_release_dates (
-			release VARCHAR(255) NOT NULL,
-			date DATE NOT NULL,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (release, date),
-			CONSTRAINT forecast_hist_release_dates_fk FOREIGN KEY (release)
-				REFERENCES forecast_hist_releases (id) ON DELETE CASCADE ON UPDATE CASCADE
-			)'
-		)
-	
-	dbExecute(
-		db,
-		'SELECT create_hypertable(
-			relation => \'forecast_hist_release_dates\',
-			time_column_name => \'date\'
-			);
-		')
-})
 
 ## Variables ---------------------------------------------------------
 local({
@@ -335,14 +277,14 @@ local({
 	dbExecute(
 		db,
 		'CREATE TABLE interest_rate_model_input_values (
-			source VARCHAR(50) NOT NULL,
 			vdate DATE NOT NULL,
+			form VARCHAR(50) NOT NULL,
 			freq CHAR(1) NOT NULL,
 			varname VARCHAR(50) NOT NULL,
 			date DATE NOT NULL,
 			value NUMERIC(20, 4) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (source, vdate, freq, varname, date),
+			PRIMARY KEY (vdate, form, freq, varname, date),
 			CONSTRAINT interest_rate_model_input_values_varname_fk FOREIGN KEY (varname)
 				REFERENCES interest_rate_model_variables (varname)
 				ON DELETE CASCADE ON UPDATE CASCADE
@@ -359,31 +301,161 @@ local({
 })
 
 # Nowcast ---------------------------------------------------------
+
+## Get Table ---------------------------------------------------------
+nowcast_model_variables = readxl::read_excel(
+	file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-variables.xlsx'), sheet = 'variables'
+	)
+
+nowcast_model_input_releases = readxl::read_excel(
+	file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-variables.xlsx'), sheet = 'releases'
+	)
+
+# Print all releases which map to no variable
+anti_join(nowcast_model_input_releases, nowcast_model_variables, by = c('id' = 'release'))
+# Print all variables which map to no releases
+anti_join(nowcast_model_variables, nowcast_model_input_releases, by = c('release' = 'id'))
+
+
+## Releases ---------------------------------------------------------
 local({
 	
-	dbExecute(db, 'DROP TABLE IF EXISTS interest_rate_model_input_values CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_input_releases CASCADE')
 	
 	dbExecute(
 		db,
-		'CREATE TABLE interest_rate_model_input_values (
-			source VARCHAR(50) NOT NULL,
-			vdate DATE NOT NULL,
-			freq CHAR(1) NOT NULL,
-			varname VARCHAR(50) NOT NULL,
+		'CREATE TABLE nowcast_model_input_releases (
+			id VARCHAR(50) CONSTRAINT nowcast_model_input_releases_pk PRIMARY KEY,
+			fullname VARCHAR(255) CONSTRAINT nowcast_model_input_releases_fullname_uk UNIQUE NOT NULL,
+			url VARCHAR(255) NULL,
+			vintage_update VARCHAR(255) NOT NULL,
+			source VARCHAR(255) NULL,
+			source_key VARCHAR(255) NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+			)'
+	)
+	
+	nowcast_model_input_releases %>%
+		create_insert_query(
+			.,
+			'nowcast_model_input_releases',
+			'ON CONFLICT ON CONSTRAINT nowcast_model_input_releases_pk DO UPDATE
+		    SET
+		    fullname=EXCLUDED.fullname,
+		    url=EXCLUDED.url,
+		    vintage_update=EXCLUDED.vintage_update,
+		    source=EXCLUDED.source,
+				source_key=EXCLUDED.source_key'
+		) %>%
+		dbExecute(db, .)
+})
+
+## Release Dates ---------------------------------------------------------
+local({
+	
+	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_input_release_dates CASCADE')
+	
+	dbExecute(
+		db,
+		'CREATE TABLE nowcast_model_input_release_dates (
+			release VARCHAR(255) NOT NULL,
 			date DATE NOT NULL,
-			value NUMERIC(20, 4) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (source, vdate, freq, varname, date),
-			CONSTRAINT interest_rate_model_input_values_varname_fk FOREIGN KEY (varname)
-				REFERENCES interest_rate_model_variables (varname)
-				ON DELETE CASCADE ON UPDATE CASCADE
+			PRIMARY KEY (release, date),
+			CONSTRAINT nowcast_model_input_release_dates_fk FOREIGN KEY (release)
+				REFERENCES nowcast_model_input_releases (id) ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
 	
 	dbExecute(
 		db,
 		'SELECT create_hypertable(
-			relation => \'interest_rate_model_input_values\',
+			relation => \'nowcast_model_input_release_dates\',
+			time_column_name => \'date\'
+			);
+		')
+})
+
+## Variables ---------------------------------------------------------
+local({
+	
+	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_variables CASCADE')
+	
+	dbExecute(
+		db,
+		'CREATE TABLE nowcast_model_variables (
+			varname VARCHAR(50) CONSTRAINT nowcast_model_variables_pk PRIMARY KEY,
+			fullname VARCHAR(255) CONSTRAINT nowcast_model_variables_fullname_uk UNIQUE NOT NULL,
+			dispgroup VARCHAR(255) NOT NULL,
+			disporder INT NULL,
+			release VARCHAR(50) NOT NULL,
+			units VARCHAR(255) NOT NULL,
+			st VARCHAR(50) NOT NULL,
+			d1 VARCHAR(50) NOT NULL,
+			d2 VARCHAR(50) NOT NULL,
+			hist_source VARCHAR(255) NOT NULL,
+			hist_source_key VARCHAR(255) NOT NULL,
+			hist_source_freq CHAR(1) NOT NULL,
+			hist_source_transform VARCHAR(255) NOT NULL,
+			nc_dfm_input BOOLEAN NULL,
+			nc_method VARCHAR(255) NULL,
+			nc_input_reason VARCHAR(255) NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			CONSTRAINT nowcast_model_variables_release_fk FOREIGN KEY (release)
+				REFERENCES nowcast_model_input_releases (id) ON DELETE CASCADE ON UPDATE CASCADE
+			)'
+	)
+	
+	nowcast_model_variables %>%
+		create_insert_query(
+			.,
+			'nowcast_model_variables',
+			'ON CONFLICT ON CONSTRAINT nowcast_model_variables_pk DO UPDATE
+		    SET
+				fullname=EXCLUDED.fullname,
+				dispgroup=EXCLUDED.dispgroup,
+				disporder=EXCLUDED.disporder,
+				release=EXCLUDED.release,
+				units=EXCLUDED.units,
+				st=EXCLUDED.st,
+				d1=EXCLUDED.d1,
+				d2=EXCLUDED.d2,
+				hist_source=EXCLUDED.hist_source,
+				hist_source_key=EXCLUDED.hist_source_key,
+				hist_source_freq=EXCLUDED.hist_source_freq,
+				hist_source_transform=EXCLUDED.hist_source_transform,
+				nc_dfm_input=EXCLUDED.nc_dfm_input,
+				nc_method=EXCLUDED.nc_method,
+				nc_input_reason=EXCLUDED.nc_input_reason'
+		) %>%
+		dbExecute(db, .)
+})
+
+## Input Values ---------------------------------------------------------
+local({
+	
+	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_input_values CASCADE')
+	
+	dbExecute(
+		db,
+		'CREATE TABLE nowcast_model_input_values (
+			vdate DATE NOT NULL,
+			form VARCHAR(50) NOT NULL,
+			freq CHAR(1) NOT NULL,
+			varname VARCHAR(50) NOT NULL,
+			date DATE NOT NULL,
+			value NUMERIC(20, 4) NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (vdate, form, freq, varname, date),
+			CONSTRAINT nowcast_model_input_values_varname_fk FOREIGN KEY (varname)
+				REFERENCES nowcast_model_variables (varname) ON DELETE CASCADE ON UPDATE CASCADE
+			)'
+	)
+	
+	dbExecute(
+		db,
+		'SELECT create_hypertable(
+			relation => \'nowcast_model_input_values\',
 			time_column_name => \'vdate\'
 			);
 		')

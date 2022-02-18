@@ -138,21 +138,18 @@ local({
 	message('**** Storing SQL Data')
 
 	hist_values =
-		imap_dfr(hist, function(x, sourcename) {
-			if (!'sourcename' %in% colnames(x)) x %>% mutate(., sourcename = sourcename)
-			else x
-		}) %>%
+		bind_rows(hist) %>%
 		bind_rows(
 			.,
 			filter(., freq %in% c('d', 'w')) %>%
 				mutate(., date = floor_date(date, 'months'), freq = 'm') %>%
-				group_by(., sourcename, varname, freq, date) %>%
+				group_by(., varname, freq, date) %>%
 				summarize(., value = mean(value), .groups = 'drop')
 			) %>%
 		# vdate is the same as date
-		mutate(., vdate = date)
+		mutate(., vdate = date, form = 'd1')
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_hist_values')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_input_values')$count)
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -162,21 +159,14 @@ local({
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'interest_rate_model_hist_values',
-				'ON CONFLICT (sourcename, vdate, varname, freq, date) DO UPDATE SET value=EXCLUDED.value'
+				'interest_rate_model_input_values',
+				'ON CONFLICT (vdate, form, varname, freq, date) DO UPDATE SET value=EXCLUDED.value'
 			) %>%
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-
-	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
-	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-	message('***** Data Sent to SQL:')
-	print(sum(unlist(sql_result)))
-
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_hist_values')$count)
-	message('***** Initial Count: ', final_count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_input_values')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 
 	hist_values <<- hist_values
@@ -683,14 +673,11 @@ local({
 ## Store in SQL ----------------------------------------------------------
 local({
 
-	submodel_values = bind_rows(submodels)
-	sql_data = anti_join(
-		submodel_values,
-		as_tibble(tbl(db, sql('SELECT * FROM interest_rate_model_forecast_values'))),
-		by = c('vdate', 'freq', 'varname', 'date')
-	)
+	submodel_values =
+		bind_rows(submodels) %>%
+		transmute(., forecast = 'int', form = 'd1', vdate, freq, varname, date, value)
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_forecast_values')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -700,21 +687,14 @@ local({
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'interest_rate_model_forecast_values',
-				'ON CONFLICT (vdate, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
+				'forecast_values',
+				'ON CONFLICT (forecast, vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
 				) %>%
 				dbExecute(db, .)
 			) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-
-	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
-	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-	message('***** Data Sent to SQL:')
-	print(sum(unlist(sql_result)))
-
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_forecast_values')$count)
-	message('***** Initial Count: ', final_count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 
 	tribble(
