@@ -1,16 +1,7 @@
 # Initialize ----------------------------------------------------------
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'interest-rate-model-create-sql-tables'
+JOB_NAME = 'create-sql-tables'
 EF_DIR = Sys.getenv('EF_DIR')
-
-## Log Job ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
 
 ## Load Libs ----------------------------------------------------------
 library(tidyverse)
@@ -38,7 +29,6 @@ interest_rate_model_variables = read_csv(
 	file.path(EF_DIR, 'modules', 'interest-rate-model', 'interest-rate-model-variables.csv'),
 	col_types = 'ccclccc'
 	)
-
 
 # SQL ---------------------------------------------------------
 
