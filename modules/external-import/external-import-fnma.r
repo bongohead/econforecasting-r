@@ -208,7 +208,8 @@ local({
 		bind_rows(fnma_clean_macro, fnma_clean_housing) %>%
 		transmute(
 			.,
-			sourcename = 'fnma',
+			forecast = 'fnma',
+			form = 'd1',
 			freq = 'q',
 			varname,
 			vdate,
@@ -231,31 +232,25 @@ local({
 ## Export SQL Server ------------------------------------------------------------------
 local({
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_import_forecast_values')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
 		raw_data %>%
-		transmute(., sourcename, vdate, freq, varname, date, value) %>%
+		transmute(., forecast, form, vdate, freq, varname, date, value) %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'external_import_forecast_values',
-				'ON CONFLICT (sourcename, vdate, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
+				'forecast_values',
+				'ON CONFLICT (forecast, form, vdate, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
 				) %>%
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-
-	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
-	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-	message('***** Data Sent to SQL: ', sum(unlist(sql_result)))
-
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM external_import_forecast_values')$count)
-	message('***** Initial Count: ', final_count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 
 	create_insert_query(
