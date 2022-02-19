@@ -6,6 +6,7 @@
 JOB_NAME = 'nowcast-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
 IMPORT_DATE_START = '2007-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007, can start at 2008-01-01
+STORE_HIST = FALSE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -467,30 +468,52 @@ local({
 ## 8. SQL ---------------------------------------------------------------------
 local({
 
-	message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
+	if (STORE_HIST) {
+		
+		message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
+		
+		initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
+		message('***** Initial Count: ', initial_count)
+		
+		sql_result =
+			hist$flat %>%
+			unique(., by = c('vdate', 'form', 'freq', 'varname', 'date', 'value')) %>%
+			select(., vdate, form, freq, varname, date, value) %>%
+			as_tibble(.) %>%
+			mutate(., split = ceiling((1:nrow(.))/10000)) %>%
+			group_split(., split, .keep = FALSE) %>%
+			sapply(., function(x)
+				create_insert_query(
+					x,
+					'nowcast_model_input_values',
+					'ON CONFLICT (vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
+					) %>%
+					dbExecute(db, .)
+			) %>%
+			{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
-	message('***** Initial Count: ', initial_count)
-	
-	sql_result =
-		hist$flat %>%
-		select(., vdate, form, freq, varname, date, value) %>%
-		as_tibble(.) %>%
-		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
-			create_insert_query(
-				x,
-				'nowcast_model_input_values',
-				'ON CONFLICT (vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
-				) %>%
-				dbExecute(db, .)
-		) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
-	message('***** Rows Added: ', final_count - initial_count)
+		final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
+		message('***** Rows Added: ', final_count - initial_count)
+		
+	}
 })
+
+## 9. Clear Memory ---------------------------------------------------------------------
+# Cleans up ~ 500MB
+# check_mem = function() {
+# 	tibble(
+# 		obj = names(models[[1]]),
+# 		size = sapply(names(models[[1]]), function(x) 
+# 			round(as.numeric(object.size(map(models, ~ .[[x]]))/1e6), 2)
+# 			)
+# 		) %>% arrange(., desc(size))
+# }
+hist$flat = NULL
+hist$flat_last = NULL
+hist$raw = NULL
+hist$base = NULL
+hist$agg = NULL
+gc()
 
 
 # State-Space Model -----------------------------------------------------------------
@@ -508,8 +531,10 @@ local({
 
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
-			select(., date, all_of(pca_varnames))
-
+			select(., date, all_of(pca_varnames)) %>%
+			# If the first row has any NA values, start with first row of non-NA variables 
+			{if(any(is.na(.[1, ]))) .[na.omit(mutate(., idx = 1:nrow(.)))$idx[[1]]:nrow(.), ] else .}
+		
 		big_t_dates = filter(pca_variables_df, !if_any(everything(), is.na))$date
 		big_tau_dates = filter(pca_variables_df, if_any(everything(), is.na))$date
 		big_tstar_dates =
@@ -649,7 +674,7 @@ local({
 			bind_cols(., fHat[, 1:big_r] %>% as.data.frame(.) %>% setNames(., paste0('f', 1:big_r)))
 
 
-		zPlots =
+		z_plots =
 			imap(colnames(zDf) %>% .[. != 'date'], function(x, i)
 				select(zDf, all_of(c('date', x))) %>%
 					setNames(., c('date', 'value')) %>%
@@ -688,11 +713,9 @@ local({
 			big_r = big_r,
 			pca_input_df = xDf,
 			z_df = zDf,
-			z_plots = zPlots
+			z_plots = z_plots
 		)
 	})
-
-
 
 	for (x in results) {
 		models[[as.character(x$bdate)]]$factor_weights_df <<- x$factor_weights_df
@@ -809,6 +832,8 @@ local({
 	message('*** Running DFM')
 
 	results = lapply(bdates, function(this_bdate) {
+		
+		message(str_glue('***** Running DFM for {this_bdate}'))
 
 		m = models[[as.character(this_bdate)]]
 
@@ -821,7 +846,6 @@ local({
 			as.data.frame(.) %>%
 			rownames_to_column(., 'coefname') %>%
 			as_tibble(.)
-
 
 		fitted_plots =
 			lm(y_mat ~ . - 1, x_df) %>%
@@ -843,7 +867,7 @@ local({
 						title = paste0('Fitted values vs actual for factor ', i)
 					) +
 					scale_x_date(date_breaks = '1 year', date_labels = '%Y')
-			)
+				)
 
 		gof_df =
 			lm(y_mat ~ . - 1, x_df) %>%
@@ -866,18 +890,16 @@ local({
 			lapply(., function(x) as.numeric(x)^2 %>% diag(.)) %>%
 			{purrr::reduce(., function(x, y) x + y)/length(.)}
 
-		r_mat_diag = tibble(varname = model$pca_varnames, variance = diag(r_mat_0))
+		r_mat_diag = data.table(varname = model$pca_varnames, variance = diag(r_mat_0))
 
 		r_mats =
-			lapply(m$big_tau_dates, function(d)
+			lapply(m$big_tau_dates, function(d) {
+				d_hist = as.data.table(hist$wide$m$st[[as.character(this_bdate)]])[date == d]
 				sapply(model$pca_varnames, function(v)
-					hist$wide$m$st[[as.character(this_bdate)]] %>%
-						filter(., date == (d)) %>%
-						.[[v]] %>%
-						{if (is.na(.)) 1e20 else filter(r_mat_diag, varname == v)$variance}
-					) %>%
+					d_hist[[v]] %>% {if (is.na(.)) 1e20 else (r_mat_diag[varname == v])$variance}
+					) %>% 
 					diag(.)
-			) %>%
+			}) %>%
 			c(lapply(1:length(m$big_t_dates), function(x) r_mat_0), .)
 
 		list(
@@ -1712,232 +1734,30 @@ local({
 
 # Finalize ----------------------------------------------------------------
 
-## Send Params to SQL ----------------------------------------------------------------
-local({
-
-	message(str_glue('*** Sending Params to SQL: {format(now(), "%H:%M")}'))
-
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_releases CASCADE')
-
-	if (!'nowcast_model_releases' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		dbExecute(
-			db,
-			'CREATE TABLE nowcast_model_releases (
-				relkey VARCHAR(255) CONSTRAINT nowcast_model_relkey_pk PRIMARY KEY,
-				relname VARCHAR(255) CONSTRAINT nowcast_model_relname_uk UNIQUE NOT NULL,
-				relsc VARCHAR(255) NOT NULL,
-				relsckey VARCHAR(255),
-				relurl VARCHAR(255),
-				relnotes TEXT,
-				n_varnames INTEGER,
-				varnames JSON,
-				n_dfm_varnames INTEGER,
-				dfm_varnames JSON,
-				reldates JSON,
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-				)'
-			)
-	}
-	releases$final %>%
-		transmute(
-			.,
-			relkey, relname, relsc, relsckey , relurl, relnotes,
-			n_varnames = ifelse(is.na(n_varnames), 0, n_varnames), varnames,
-			n_dfm_varnames = ifelse(is.na(n_dfm_varnames), 0, n_dfm_varnames), dfm_varnames,
-			reldates
-		) %>%
-		create_insert_query(
-			.,
-			'nowcast_model_releases',
-			'ON CONFLICT ON CONSTRAINT nowcast_model_relkey_pk DO UPDATE SET
-		    relname=EXCLUDED.relname,
-		    relsc=EXCLUDED.relsc,
-		    relsckey=EXCLUDED.relsckey,
-		    relurl=EXCLUDED.relurl,
-		    relnotes=EXCLUDED.relnotes,
-		    n_varnames=EXCLUDED.n_varnames,
-		    varnames=EXCLUDED.varnames,
-		    n_dfm_varnames=EXCLUDED.n_dfm_varnames,
-		    dfm_varnames=EXCLUDED.dfm_varnames,
-			reldates=EXCLUDED.reldates'
-			) %>%
-		dbExecute(db, .)
-
-
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_variables CASCADE')
-	if (!'nowcast_model_variables' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		dbExecute(
-			db,
-			'CREATE TABLE nowcast_model_variables (
-				varname VARCHAR(255) CONSTRAINT nowcast_model_varname_pk PRIMARY KEY,
-				fullname VARCHAR(255) CONSTRAINT nowcast_model_fullname_uk UNIQUE NOT NULL,
-				dispgroup VARCHAR(255),
-				disprank INT,
-				disptabs INT,
-				disporder INT,
-				source VARCHAR(255) NOT NULL,
-				sckey VARCHAR(255),
-				relkey VARCHAR(255) NOT NULL,
-				units VARCHAR(255) NOT NULL,
-				freq CHAR(1) NOT NULL,
-				st VARCHAR(10) NOT NULL,
-				d1 VARCHAR(10) NOT NULL,
-				d2 VARCHAR(10) NOT NULL,
-				nc_dfm_input BOOLEAN,
-				nc_method VARCHAR(10) NOT NULL,
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				CONSTRAINT nowcast_model_variables_fk FOREIGN KEY (relkey) REFERENCES nowcast_model_releases (relkey)
-					ON DELETE CASCADE ON UPDATE CASCADE
-				)'
-			)
-	}
-	variable_params %>%
-		transmute(
-			.,
-			varname, fullname, dispgroup, disprank, disptabs, disporder,
-			source, sckey, relkey, units, freq,
-			st, d1, d2, nc_dfm_input, nc_method,
-			) %>%
-		create_insert_query(
-			.,
-			'nowcast_model_variables',
-			'ON CONFLICT ON CONSTRAINT nowcast_model_varname_pk DO UPDATE
-		    SET
-		    fullname=EXCLUDED.fullname,
-		    dispgroup=EXCLUDED.dispgroup,
-		    disprank=EXCLUDED.disprank,
-		    disptabs=EXCLUDED.disptabs,
-		    disporder=EXCLUDED.disporder,
-		    source=EXCLUDED.source,
-		    sckey=EXCLUDED.sckey,
-		    relkey=EXCLUDED.relkey,
-		    units=EXCLUDED.units,
-		    freq=EXCLUDED.freq,
-		    st=EXCLUDED.st,
-		    d1=EXCLUDED.d1,
-		    d2=EXCLUDED.d2,
-		    nc_dfm_input=EXCLUDED.nc_dfm_input,
-		    nc_method=EXCLUDED.nc_method'
-			) %>%
-		dbExecute(db, .)
-})
-## Store History   ----------------------------------------------------------
-local({
-
-	message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
-
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_hist_values CASCADE')
-
-	if (!'nowcast_model_hist_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		dbExecute(
-			db,
-			'CREATE TABLE nowcast_model_hist_values (
-				varname VARCHAR(255) NOT NULL,
-				freq CHAR(1) NOT NULL,
-				form VARCHAR(255) NOT NULL,
-				date DATE NOT NULL,
-				value NUMERIC(20, 4) NOT NULL,
-				created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-				PRIMARY KEY (varname, freq, form, date),
-				CONSTRAINT nowcast_model_hist_values_fk FOREIGN KEY (varname)
-					REFERENCES nowcast_model_variables (varname)
-					ON DELETE CASCADE ON UPDATE CASCADE
-				)'
-		)
-
-		dbExecute(db, '
-				SELECT create_hypertable(
-					relation => \'nowcast_model_hist_values\',
-					time_column_name => \'date\'
-					);
-				')
-	}
-
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_hist_values')$count)
-	message('***** Initial Count: ', initial_count)
-
-	sql_result =
-		hist$flat_last %>%
-		.[form == 'd1' & freq == 'q' & varname %chin% filter(variable_params, dispgroup == 'GDP')$varname] %>%
-		select(., varname, freq, form, date, value) %>%
-		as_tibble(.) %>%
-		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
-			create_insert_query(
-				x,
-				'nowcast_model_hist_values',
-				'ON CONFLICT (varname, freq, form, date) DO UPDATE SET value=EXCLUDED.value'
-			) %>%
-				dbExecute(db, .)
-		) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-
-
-	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
-	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-	message('***** Data Sent to SQL: ', sum(unlist(sql_result)))
-
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_hist_values')$count)
-	message('***** Initial Count: ', final_count)
-	message('***** Rows Added: ', final_count - initial_count)
-})
-
-## Store Forecasts ----------------------------------------------------------------
+## 1. SQL ----------------------------------------------------------------
 local({
 
 	message(str_glue('*** Sending Values to SQL: {format(now(), "%H:%M")}'))
 
-	if (RESET_SQL) dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_forecast_values CASCADE')
-
-	if (!'nowcast_model_forecast_values' %in% dbGetQuery(db, 'SELECT * FROM pg_catalog.pg_tables')$tablename) {
-		dbExecute(
-			db,
-			'CREATE TABLE nowcast_model_forecast_values (
-					bdate DATE NOT NULL,
-					varname VARCHAR(255) NOT NULL,
-					freq CHAR(1) NOT NULL,
-					form VARCHAR(255) NOT NULL,
-					date DATE NOT NULL,
-					value NUMERIC(20, 4) NOT NULL,
-					created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-					PRIMARY KEY (bdate, varname, freq, form, date),
-					CONSTRAINT nowcast_model_values_fk FOREIGN KEY (varname) REFERENCES nowcast_model_variables (varname)
-						ON DELETE CASCADE ON UPDATE CASCADE
-					)'
-			)
-
-		dbExecute(db, '
-				SELECT create_hypertable(
-					relation => \'nowcast_model_forecast_values\',
-					time_column_name => \'bdate\'
-					);
-				')
-	}
-
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_forecast_values')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
 		model$pred_flat %>%
-		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		transmute(., forecast = 'now', vdate = bdate, form, freq, varname, date, value) %>%
+		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'nowcast_model_forecast_values',
+				'forecast_values',
 				'ON CONFLICT (bdate, varname, freq, form, date) DO UPDATE SET value=EXCLUDED.value'
 				) %>%
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-
-	if (any(is.null(unlist(sql_result)))) stop('Error with one or more SQL queries')
-	sql_result %>% imap(., function(x, i) paste0(i, ': ', x)) %>% paste0(., collapse = '\n') %>% cat(.)
-	message('***** Data Sent to SQL: ', sum(unlist(sql_result)))
-
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_forecast_values')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 
@@ -1951,11 +1771,9 @@ local({
 		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
 		) %>%
 		dbExecute(db, .)
-
-	model$sql_values <<- model
 })
 
-## Create Docs  ----------------------------------------------------------
+## 2. Create Docs  ----------------------------------------------------------
 local({
 
 	message('*** Creating Docs')
@@ -1973,6 +1791,6 @@ local({
 
 })
 
-## Close Connections ----------------------------------------------------------
+## 3. Close Connections ----------------------------------------------------------
 dbDisconnect(db)
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
