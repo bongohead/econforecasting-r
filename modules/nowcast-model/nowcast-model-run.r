@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'nowcast-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
-IMPORT_DATE_START = '2008-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007, can start at 2008-01-01
+IMPORT_DATE_START = '2007-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007, can start at 2008-01-01
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -405,11 +405,11 @@ local({
 
 			if (i %% 1000 == 0) message(str_glue('**** Transforming {i} of {length(stat_groups)}'))
 
-			variable_param = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
-			if (is.null(variable_param)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
+			variable_def = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
+			if (is.null(variable_def)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
 
 			last_obs_by_vdate_t = lapply(c('st', 'd1', 'd2'), function(this_form) {
-				transform = variable_param[[this_form]]
+				transform = variable_def[[this_form]]
 				copy(x) %>%
 					.[,
 						value := {
@@ -419,7 +419,7 @@ local({
 							else if (transform == 'dlog') dlog(value)
 							else if (transform == 'diff1') diff1(value)
 							else if (transform == 'pchg') pchg(value)
-							else if (transform == 'apchg') apchg(value, {if (variable_param$freq == 'q') 4 else 12})
+							else if (transform == 'apchg') apchg(value, {if (variable_def$hist_source_freq == 'q') 4 else 12})
 							else stop('Error')
 						}] %>%
 					.[, form := this_form]
@@ -463,6 +463,35 @@ local({
 	hist$wide <<- wide
 	hist$wide_last <<- wide_last
 })
+
+## 8. SQL ---------------------------------------------------------------------
+local({
+
+	message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		hist$flat %>%
+		select(., vdate, form, freq, varname, date, value) %>%
+		as_tibble(.) %>%
+		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'nowcast_model_input_values',
+				'ON CONFLICT (vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
+				) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
+	message('***** Rows Added: ', final_count - initial_count)
+})
+
 
 # State-Space Model -----------------------------------------------------------------
 
