@@ -56,11 +56,11 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM nowcast_model_input_rel
 ## Set Backtest Dates  ----------------------------------------------------------
 local({
 	# Include all days in last 3 months plus one random day per month before that
-	contiguous = seq(today() - days(150), today(), by = '1 day')
+	contiguous = seq(today() - days(90), today(), by = '1 day')
 
 	old =
 		seq(
-			as_date('2020-01-01'),
+			as_date('2021-01-01'),
 			add_with_rollback(floor_date(min(contiguous), 'months'), months(-1)),
 			by = '1 month'
 		) %>%
@@ -503,7 +503,7 @@ local({
 # check_mem = function() {
 # 	tibble(
 # 		obj = names(models[[1]]),
-# 		size = sapply(names(models[[1]]), function(x) 
+# 		size = sapply(names(models[[1]]), function(x)
 # 			round(as.numeric(object.size(map(models, ~ .[[x]]))/1e6), 2)
 # 			)
 # 		) %>% arrange(., desc(size))
@@ -659,7 +659,7 @@ local({
 				)
 
 		# 2 factors needed since 1 now represents COVID shock
-		big_r = 2
+		big_r = 1
 			# screeDf %>%
 			# filter(., ic1 == min(ic1)) %>%
 			# .$factors #+ 2
@@ -833,8 +833,6 @@ local({
 
 	results = lapply(bdates, function(this_bdate) {
 		
-		message(str_glue('***** Running DFM for {this_bdate}'))
-
 		m = models[[as.character(this_bdate)]]
 
 		y_mat = as.matrix(select(m$pca_input_df, -date))
@@ -878,7 +876,6 @@ local({
 			group_by(., varname) %>%
 			summarize(., MAE = mean(abs(value)), MSE = mean(value^2))
 
-
 		a_mat = coef_df %>% filter(., coefname != 'constant') %>% select(., -coefname) %>% t(.)
 		d_mat = coef_df %>% filter(., coefname == 'constant') %>% select(., -coefname) %>% t(.)
 
@@ -897,10 +894,13 @@ local({
 				d_hist = as.data.table(hist$wide$m$st[[as.character(this_bdate)]])[date == d]
 				sapply(model$pca_varnames, function(v)
 					d_hist[[v]] %>% {if (is.na(.)) 1e20 else (r_mat_diag[varname == v])$variance}
-					) %>% 
+					) %>%
 					diag(.)
 			}) %>%
-			c(lapply(1:length(m$big_t_dates), function(x) r_mat_0), .)
+			c(lapply(1:length(m$big_t_dates), function(x) r_mat_0), .) %>%
+			# As of 2/19/22: Only store diagonal r_mat elements! 
+			# Call diag() to restructure them as diag matrices
+			lapply(., function(x) diag(x))
 
 		list(
 			bdate = this_bdate,
@@ -931,13 +931,14 @@ local({
 
 	results = lapply(bdates, function(this_bdate) {
 
+		# message(str_glue('***** Running KF {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
 
 		b_mat = m$b_mat
 		c_mat = m$c_mat
 		a_mat = m$a_mat
 		d_mat = m$d_mat
-		r_mats = m$r_mats
+		r_mats = map(m$r_mats, diag)
 		q_mat = m$q_mat
 		y_mats =
 			bind_rows(
@@ -1115,7 +1116,7 @@ local({
 	# Single core takes about 1s per date for ar_lags = 2
 	results = lapply(bdates, function(this_bdate) {
 
-		message(str_glue('**** Forecasting {this_bdate}'))
+		# message(str_glue('**** Forecasting {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
 
 		# Only include variables which are available at that date
@@ -1451,7 +1452,7 @@ local({
 	# Detransform monthly and quarterly forecasts
 	results = lapply(bdates, function(this_bdate) {
 
-		message(str_glue('... Detransforming {this_bdate}'))
+		# message(str_glue('... Detransforming {this_bdate}'))
 
 		m = models[[as.character(this_bdate)]]
 
@@ -1535,7 +1536,7 @@ local({
 
 	results = lapply(bdates, function(this_bdate) {
 
-		message(str_glue('... Forecasting {this_bdate}'))
+		# message(str_glue('... Forecasting {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
 
 		pred_q_ut1 =
@@ -1589,7 +1590,7 @@ local({
 
 	results = lapply(bdates, function(this_bdate) {
 
-		message(str_glue('... Aggregating {this_bdate}'))
+		# message(str_glue('... Aggregating {this_bdate}'))
 		m = models[[as.character(this_bdate)]]
 
 		pred_ut = lapply(c('m', 'q') %>% set_names(., .), function(freq)
@@ -1695,7 +1696,6 @@ local({
 	model$pred_wide <<- pred_wide
 })
 
-
 ## 6. Final Checks ------------------------------------------------------------
 local({
 
@@ -1745,13 +1745,14 @@ local({
 	sql_result =
 		model$pred_flat %>%
 		transmute(., forecast = 'now', vdate = bdate, form, freq, varname, date, value) %>%
+		filter(., varname %in% dbGetQuery(db, 'SELECT * FROM forecast_variables')$varname) %>%
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
 				'forecast_values',
-				'ON CONFLICT (bdate, varname, freq, form, date) DO UPDATE SET value=EXCLUDED.value'
+				'ON CONFLICT (forecast, vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
 				) %>%
 				dbExecute(db, .)
 		) %>%
