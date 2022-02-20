@@ -659,7 +659,7 @@ local({
 				)
 
 		# 2 factors needed since 1 now represents COVID shock
-		big_r = 1
+		big_r = 2
 			# screeDf %>%
 			# filter(., ic1 == min(ic1)) %>%
 			# .$factors #+ 2
@@ -1219,7 +1219,8 @@ local({
 	ar_lags = 1 # Number of AR lag terms to include.
 	use_net = T # Use elastic net?
 	use_intercept = T # Include an intercept? Works with either elastic net or ols
-
+	alpha_search_grid = c(0, .5, 1) # L1 penalty, only for elastic net
+	
 	results = lapply(bdates, function(this_bdate) {
 
 		message(str_glue('***** Forecasting {this_bdate}'))
@@ -1260,9 +1261,9 @@ local({
 			forecast_dates = tail(seq(tail(input_df_0$date, 1), tail(m$big_tstar_dates, 1), by = '3 months'), -1)
 
 			input_df =
-				input_df_0 #%>%
+				input_df_0 %>%
 				# Add date filters here if needed
-				# .[! date %in% from_pretty_date(c('2020Q2', '2020Q3', '2020Q4'), 'q')]
+				.[! date %in% from_pretty_date(c('2020Q2', '2020Q3'), 'q')]
 
 			y_mat =
 				input_df %>%
@@ -1288,7 +1289,7 @@ local({
 
 			if (use_net == T) {
 
-				glm_result = lapply(c(1), function(.alpha) {
+				glm_result = lapply(alpha_search_grid, function(.alpha) {
 					cv = glmnet::cv.glmnet(
 						x = x_mat,
 						y = y_mat,
@@ -1413,7 +1414,7 @@ local({
 				coef_df = coef_df
 				)
 			})
-
+		
 		dfm_df =
 			dfm_results %>%
 			map(., ~ .$forecast_df) %>%
@@ -1458,7 +1459,16 @@ local({
 
 		this_m_hist = hist$wide$m$base[[as.character(this_bdate)]]
 		this_q_hist = hist$wide$q$base[[as.character(this_bdate)]]
-
+		
+		# Keep amount same as the last difference between pdi and pdir+pdin
+		cbi_val =
+			na.omit(select(m$dfm_q_df, all_of(c('date', 'pdinstruct', 'pdinequip', 'pdinip', 'pdir')))) %>%
+			.$date %>%
+			.[[1]] %>%
+			{tail(as.data.table(this_q_hist)[date < .], 1)} %>%
+			.[, zzz := pdi - pdinstruct - pdinequip - pdinip - pdir] %>%
+			.$zzz
+		
 		m_df =
 			m$dfm_m_df %>%
 			as.data.table(.) %>%
@@ -1513,7 +1523,9 @@ local({
 			rbindlist(.) %>%
 			.[, st := NULL] %>%
 			dcast(., date ~ varname, value.var = 'value', fill = NA) %>%
-			as_tibble(.)
+			as_tibble(.) %>%
+			# Adjust CBI val
+			mutate(., cbi = ifelse(!is.na(cbi), cbi_val, cbi))
 
 		list(
 			bdate = this_bdate,
@@ -1551,6 +1563,7 @@ local({
 				pdin = pdinstruct + pdinequip + pdinip,
 				# PDI = PDI_FIXED + CBI
 				# ~= PDI_FIXED + DLOG.PDI_FIXED * (-1/100)
+				pdi = pdin + pdir + cbi,
 				# pdi = pdin + pdir + pceschange,
 				pces = pceshousing + pceshealth + pcestransport + pcesrec + pcesfood + pcesfinal + pcesother + pcesnonprofit,
 				pcegn = pcegnfood + pcegnclothing + pcegngas + pcegnother,
@@ -1610,7 +1623,7 @@ local({
 			expand_grid(form = c('d1', 'd2'), freq = c('m', 'q')) %>%
 			purrr::transpose(.) %>%
 			lapply(., function(z) {
-
+				# message(z)
 				df =
 					pred_ut[[z$freq]] %>%
 						as.data.table(.) %>%

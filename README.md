@@ -20,6 +20,7 @@ This continues modularization & adds an initial web release on beta.econforecast
 - Added centralized logging system
 - Added split of consensus futures model from extenral forecasts
 - Added fully improved SQL table structure
+- Added better optionalization of SQL tables
 - Cleaned up old files
 - Deprecated Quandl data input
 - Fixed bug in get_fred_data related to observation date pulls
