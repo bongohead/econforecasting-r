@@ -27,15 +27,15 @@ db = dbConnect(
 
 ## Get Table Structures ---------------------------------------------------------
 forecasts = readxl::read_excel(
-	file.path(EF_DIR, 'modules', 'create-sql-tables', 'forecast-tables.xlsx'), sheet = 'forecasts'
+	file.path(EF_DIR, 'deployment', 'forecast-tables.xlsx'), sheet = 'forecasts'
 	)
 
 forecast_variables = readxl::read_excel(
-	file.path(EF_DIR, 'modules', 'create-sql-tables', 'forecast-tables.xlsx'), sheet = 'variables'
+	file.path(EF_DIR, 'deployment','forecast-tables.xlsx'), sheet = 'variables'
 ) 
 
 forecast_hist_releases = readxl::read_excel(
-	file.path(EF_DIR, 'modules', 'create-sql-tables', 'forecast-tables.xlsx'), sheet = 'releases'
+	file.path(EF_DIR, 'deployment', 'forecast-tables.xlsx'), sheet = 'releases'
 ) 
 
 # Print all releases which map to no variable
