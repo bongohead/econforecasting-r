@@ -84,7 +84,7 @@ local({
 		release_params %>%
 		filter(., id %in% filter(variable_params, nc_dfm_input == 1)$release & source == 'fred') %>%
 		purrr::transpose(.) %>%
-		map_dfr(., function(x) 
+		map_dfr(., function(x)
 			RETRY(
 				'GET',
 				str_glue(
@@ -98,7 +98,7 @@ local({
 				.$release_dates %>%
 				{tibble(
 					release = x$id,
-					date = sapply(., function(y) y$date) 
+					date = sapply(., function(y) y$date)
 					)}
 			)
 
@@ -112,10 +112,10 @@ local({
 
 ## 3. SQL ----------------------------------------------------------
 local({
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_release_dates')$count)
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		releases$final %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
@@ -129,7 +129,7 @@ local({
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_release_dates')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 })
@@ -469,12 +469,12 @@ local({
 local({
 
 	if (STORE_HIST) {
-		
+
 		message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
-		
+
 		initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
 		message('***** Initial Count: ', initial_count)
-		
+
 		sql_result =
 			hist$flat %>%
 			unique(., by = c('vdate', 'form', 'freq', 'varname', 'date', 'value')) %>%
@@ -491,10 +491,10 @@ local({
 					dbExecute(db, .)
 			) %>%
 			{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
+
 		final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
 		message('***** Rows Added: ', final_count - initial_count)
-		
+
 	}
 })
 
@@ -532,9 +532,9 @@ local({
 		pca_variables_df =
 			hist$wide$m$st[[as.character(this_bdate)]] %>%
 			select(., date, all_of(pca_varnames)) %>%
-			# If the first row has any NA values, start with first row of non-NA variables 
+			# If the first row has any NA values, start with first row of non-NA variables
 			{if(any(is.na(.[1, ]))) .[na.omit(mutate(., idx = 1:nrow(.)))$idx[[1]]:nrow(.), ] else .}
-		
+
 		big_t_dates = filter(pca_variables_df, !if_any(everything(), is.na))$date
 		big_tau_dates = filter(pca_variables_df, if_any(everything(), is.na))$date
 		big_tstar_dates =
@@ -832,7 +832,7 @@ local({
 	message('*** Running DFM')
 
 	results = lapply(bdates, function(this_bdate) {
-		
+
 		m = models[[as.character(this_bdate)]]
 
 		y_mat = as.matrix(select(m$pca_input_df, -date))
@@ -898,7 +898,7 @@ local({
 					diag(.)
 			}) %>%
 			c(lapply(1:length(m$big_t_dates), function(x) r_mat_0), .) %>%
-			# As of 2/19/22: Only store diagonal r_mat elements! 
+			# As of 2/19/22: Only store diagonal r_mat elements!
 			# Call diag() to restructure them as diag matrices
 			lapply(., function(x) diag(x))
 
@@ -1220,7 +1220,7 @@ local({
 	use_net = T # Use elastic net?
 	use_intercept = T # Include an intercept? Works with either elastic net or ols
 	alpha_search_grid = c(0, .5, 1) # L1 penalty, only for elastic net
-	
+
 	results = lapply(bdates, function(this_bdate) {
 
 		message(str_glue('***** Forecasting {this_bdate}'))
@@ -1414,7 +1414,7 @@ local({
 				coef_df = coef_df
 				)
 			})
-		
+
 		dfm_df =
 			dfm_results %>%
 			map(., ~ .$forecast_df) %>%
@@ -1459,7 +1459,7 @@ local({
 
 		this_m_hist = hist$wide$m$base[[as.character(this_bdate)]]
 		this_q_hist = hist$wide$q$base[[as.character(this_bdate)]]
-		
+
 		# Keep amount same as the last difference between pdi and pdir+pdin
 		cbi_val =
 			na.omit(select(m$dfm_q_df, all_of(c('date', 'pdinstruct', 'pdinequip', 'pdinip', 'pdir')))) %>%
@@ -1468,7 +1468,7 @@ local({
 			{tail(as.data.table(this_q_hist)[date < .], 1)} %>%
 			.[, zzz := pdi - pdinstruct - pdinequip - pdinip - pdir] %>%
 			.$zzz
-		
+
 		m_df =
 			m$dfm_m_df %>%
 			as.data.table(.) %>%

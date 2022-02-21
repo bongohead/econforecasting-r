@@ -26,6 +26,7 @@ library(DBI)
 library(RPostgres)
 library(lubridate)
 library(jsonlite)
+library(roll)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -292,8 +293,8 @@ local({
 		transmute(., varname, freq = 'm', date, vdate, value)
 
 	# Works similarly as monthly aggregation but does not create new quarterly data unless all
-	# 3 monthly data points are available, and where the vintage is at least as great as the
-	# EOQ value of the obs date
+	# 3 monthly data points are available -this can still result in premature quarterly calcs if the last
+	# month value has been agrgegated before that last month was finished
 	quarterly_agg =
 		monthly_agg %>%
 		bind_rows(., filter(hist_agg_0, freq == 'm')) %>%
@@ -335,6 +336,21 @@ local({
 		arrange(., desc(min_dt)) %>%
 		print(., n = 5)
 
+	# Get table indicating which variables can have their historical data be revised well after the fact
+	# For these variables, not necessary to build out a full history for each vdate for later stationary transforms
+	# This saves significant time
+	# Only include variables which definitely have final vintage data within 30 days of original data
+	revisable =
+		variable_params %>%
+		mutate(
+			.,
+			hist_revisable =
+			   	!dispgroup %in% c('Interest_Rates', 'Stocks_and_Commodities') &
+				!hist_source_freq %in% c('d', 'w')
+			) %>%
+		select(., varname, hist_revisable) %>%
+		as.data.table(.)
+
 	last_obs_by_vdate =
 		hist$agg %>%
 		as.data.table(.) %>%
@@ -358,10 +374,11 @@ local({
 					na.rm = T
 				) %>%
 				.[, date := as_date(date)] %>%
-				.[vdate >= today() - days(180)]
-
+				# For non revisable table, only minimal data is  needed for calculating stationary transformations
+				merge(., revisable, by = 'varname', keep.x = T) %>%
+				.[hist_revisable == T | (hist_revisable == F & vdate <= date + days(60))] %>%
+				select(., -hist_revisable)
 			return(last_obs_for_all_vdates)
-
 		}) %>%
 		rbindlist(.)
 
@@ -373,43 +390,47 @@ local({
 
 	message(str_glue('*** Adding Stationary Transforms | {format(now(), "%H:%M")}'))
 
-	stat_groups =
-		hist$base %>%
-		split(., by = c('varname', 'freq', 'vdate')) %>%
-		unname(.)
-
+	# Microbenchmark @ 1.8s per 100k rows
 	stat_final =
-		stat_groups %>%
-		imap(., function(x, i) {
-
-			if (i %% 1000 == 0) message(str_glue('**** Transforming {i} of {length(stat_groups)}'))
-
-			def = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
-			if (is.null(def)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
-
-			last_obs_by_vdate_t = lapply(c('d1', 'd2'), function(this_form) {
-				transform = def[[this_form]]
-				copy(x) %>%
-					.[,
-					  value := {
-					  	if (transform == 'none') NA
-					  	else if (transform == 'base') value
-					  	else if (transform == 'log') log(value)
-					  	else if (transform == 'dlog') dlog(value)
-					  	else if (transform == 'diff1') diff1(value)
-					  	else if (transform == 'pchg') pchg(value)
-					  	else if (transform == 'apchg') apchg(value, {if (def$hist_source_freq == 'q') 4 else 12})
-					  	else stop('Error')
-					  }] %>%
-					.[, form := this_form]
-				}) %>%
-				rbindlist(.)
-		}) %>%
-		rbindlist(.) %>%
-		bind_rows(., hist$base[, form := 'base']) %>%
+		copy(hist$base) %>%
+		merge(., variable_params[, c('varname', 'd1', 'd2')], by = c('varname'), all = T) %>%
+		melt(
+			.,
+			id.vars = c('varname', 'freq', 'vdate', 'date', 'value'),
+			variable.name = 'form',
+			value.name = 'transform'
+			) %>%
+		.[transform != 'none'] %>%
+		.[order(varname, freq, form, vdate, date)] %>%
+		.[,
+			value := frollapply(
+				value,
+				n = 2,
+				FUN = function(z) { # Z is a vector of length equal to the window size, asc order
+					if (transform[[1]] == 'base') z[[2]]
+					else if (transform[[1]] == 'log') log(z[[2]])
+					else if (transform[[1]] == 'dlog') log(z[[2]]/z[[1]])
+					else if (transform[[1]] == 'diff1') z[[2]] - z[[1]]
+					else if (transform[[1]] == 'pchg') (z[[2]]/z[[1]] - 1) * 100
+					else if (transform[[1]] == 'apchg') ((z[[2]]/z[[1]])^{if (freq[[1]] == 'q') 4 else 12} - 1) * 100
+					else stop ('Error')
+					},
+				fill = NA
+				),
+			by = c('varname', 'freq', 'form', 'vdate')
+			] %>%
+		.[, transform := NULL] %>%
+		bind_rows(., copy(hist$base)[, form := 'base']) %>%
 		na.omit(.)
 
-	stat_final_last = stat_final[vdate == max(vdate)]
+	stat_final_last =
+		stat_final %>%
+		group_by(., varname) %>%
+		mutate(., max_vdate = max(vdate)) %>%
+		filter(., vdate == max(vdate)) %>%
+		select(., -max_vdate) %>%
+		ungroup(.) %>%
+		as.data.table(.)
 
 	hist$flat <<- stat_final
 	hist$flat_last <<- stat_final_last
