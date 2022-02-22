@@ -21,11 +21,14 @@ This continues modularization & adds an initial web release on beta.econforecast
 - Added split of consensus futures model from extenral forecasts
 - Added fully improved SQL table structure
 - Added better optionalization of SQL tables
+- Added optimized stationary transforms
+- Added CPI EINF calcs
 - Cleaned up old files
 - Deprecated Quandl data input
 - Fixed bug in get_fred_data related to observation date pulls
 - Fixed STLFSI with updated version
 - Fixed SQL table key issues
+- Improved nowcast docs
 
 ## [v0.19] (Model Backtesting and Vintage Analysis)
 This is a full model rewrite. The rewrite for the full-scale model is delayed, but immediate releases of external forecasts & composite external forecasts are intended for the version. In addition, alternate indices are included in the release. The code is restructured to build a more comprehensive backend built off TimescaleDB/Postgres with proper vintage storage, but with more intermediary and partial releases. 
