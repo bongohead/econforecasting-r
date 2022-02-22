@@ -39,7 +39,7 @@ db = dbConnect(
 ## Get Data ------------------------------------------------------------------
 local({
 
-	# Note: Cleveland Fed gives one-year forward rates	
+	# Note: Cleveland Fed gives one-year forward rates
 	# Combine these with historical data to calculate historical one-year trailing rates
 	download.file(
 		paste0(
@@ -49,7 +49,7 @@ local({
 		file.path(tempdir(), 'inf.xls'),
 		mode = 'wb'
 	)
-	
+
 	# Get vintage dates for each release
 	vintage_dates_1 =
 		httr::GET(paste0(
@@ -61,7 +61,7 @@ local({
 		keep(., ~ length(rvest::html_nodes(., 'a.download')) == 1) %>%
 		map_chr(., ~ str_extract(rvest::html_text(.), '(?<=released ).*')) %>%
 		mdy(.)
-	
+
 	vintage_dates_2 =
 		httr::GET(paste0(
 			'https://www.clevelandfed.org/en/our-research/',
@@ -71,14 +71,14 @@ local({
 		rvest::html_nodes('ul.topic-list li time') %>%
 		map_chr(., ~ rvest::html_text(.)) %>%
 		mdy(.)
-	
+
 	vdate_map =
 		c(vintage_dates_1, vintage_dates_2) %>%
 		tibble(vdate = .) %>%
 		mutate(., vdate0 = floor_date(vdate, 'months')) %>%
 		group_by(., vdate0) %>% summarize(., vdate = max(vdate)) %>%
 		arrange(., vdate0)
-	
+
 	# Now parse data and get inflation expectations
 	einf_final =
 		readxl::read_excel(file.path(tempdir(), 'inf.xls'), sheet = 'Expected Inflation') %>%
@@ -116,30 +116,30 @@ local({
 			value = yttm_ahead_annualized_yield,
 		) %>%
 		na.omit(.)
-	
+
 	einf_chart =
 		einf_final %>%
 		filter(., month(vdate) %in% c(1, 6)) %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = as.factor(vdate)))
-	
+
 	print(einf_chart)
-	
-	
+
+
 	# einf_final represents one-year trailing rates
-	
+
 	# For each vintage_date, get the historical data for the last 12 months available at that vintage
 	hist_data =
-		get_fred_data('CPALTT01USM661S', CONST$FRED_API_KEY, .return_vintages = T) %>%
+		get_fred_data('CPIAUCSL', CONST$FRED_API_KEY, .return_vintages = T) %>%
 		transmute(., date, vdate = vintage_date, value)
-	
+
 	einf_results =
 		einf_final %>%
 		group_split(., vdate) %>%
 		imap_dfr(., function(x, i) {
-			
+
 			message(str_glue('Calculating expected inflation for vintage {i}'))
-			
+
 			# Get last 12 historical values
 			hist_values =
 					hist_data %>%
@@ -150,8 +150,8 @@ local({
 					arrange(., date) %>%
 					tail(., 12) %>%
 					select(., date, value)
-			
-			# Calculate monthly growth rate 
+
+			# Calculate monthly growth rate
 			# (1+ yttm_ahead_annualized_yield(t))^12 = (1 + monthly_growth_rate(t)) *
 			# (1 + yttm_ahead_annualized_yield(t+1))^(11/12)
 			growth_forecast =
@@ -159,7 +159,7 @@ local({
 				mutate(., monthly_growth =  (1 + value/100)/((1 + lead(value/100, 1))^(11/12))) %>%
 				select(., date, monthly_growth) %>%
 				filter(., !date %in% hist_values$date)
-			
+
 			# Interpolate in missing growth_forecast values if necessary by using a reverse locf
 			bind_rows(hist_values, growth_forecast) %>%
 				left_join(
@@ -201,14 +201,14 @@ local({
 			date,
 			value
 		)
-	
+
 	raw_data <<- einf_results
 })
 
 
 ## Export SQL Server ------------------------------------------------------------------
 local({
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
 
@@ -226,8 +226,8 @@ local({
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	
+
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 

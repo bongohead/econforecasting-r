@@ -175,6 +175,75 @@ local({
 	hist$raw$yahoo <<- yahoo_data
 })
 
+## 3. BLOOM  ----------------------------------------------------------
+local({
+
+	bloom_data =
+		variable_params %>%
+		purrr::transpose(.) %>%
+		keep(., ~ .$hist_source == 'bloom') %>%
+		map_dfr(., function(x) {
+
+			httr::GET(
+				paste0(
+					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
+					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
+				),
+				add_headers(c(
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0',
+					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+					'Accept-Encoding' = 'gzip, deflate, br',
+					'Accept-Language' ='en-US,en;q=0.5',
+					'Cache-Control'='no-cache',
+					'Connection'='keep-alive',
+					'DNT' = '1',
+					'Host' = 'www.bloomberg.com',
+					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
+				))
+			) %>%
+				httr::content(., 'parsed') %>%
+				.[[1]] %>%
+				.$price %>%
+				map_dfr(., ~ as_tibble(.)) %>%
+				transmute(
+					.,
+					varname = x$varname,
+					freq = 'd',
+					date = as_date(dateTime),
+					vdate = date,
+					value
+				) %>%
+				na.omit(.)
+		})
+
+	hist$raw$bloom <<- bloom_data
+})
+
+## 4. AFX  ----------------------------------------------------------
+local({
+
+	afx_data =
+		httr::GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
+		httr::content(., 'parsed') %>%
+		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
+		map_dfr(., function(x)
+			as_tibble(x) %>%
+				select(., all_of(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y'))) %>%
+				mutate(., across(-date, function(x) as.numeric(x)))
+		) %>%
+		mutate(., date = ymd(date)) %>%
+		pivot_longer(., -date, names_to = 'varname_scrape', values_to = 'value') %>%
+		inner_join(
+			.,
+			select(filter(variable_params, hist_source == 'afx'), varname, hist_source_key),
+			by = c('varname_scrape' = 'hist_source_key')
+		) %>%
+		distinct(.) %>%
+		transmute(., varname, freq = 'd', date, vdate = date, value)
+
+	hist$raw$afx <<- afx_data
+})
+
 ## 3. Calculated Variables ----------------------------------------------------------
 local({
 
@@ -264,6 +333,8 @@ local({
 			.,
 			filter(hist$raw$fred, !varname %in% unique(.$varname)),
 			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
+			filter(hist$raw$bloom, !varname %in% unique(.$varname)),
+			filter(hist$raw$afx, !varname %in% unique(.$varname)),
 		)
 
 	monthly_agg =
@@ -323,7 +394,10 @@ local({
 	hist$agg <<- hist_agg
 })
 
-## 6. Split By Vintage Date ----------------------------------------------------------
+
+# Split & Transform ----------------------------------------------------------
+
+## 1. Split By Vintage Date ----------------------------------------------------------
 local({
 
 	message(str_glue('*** Splitting By Vintage Date | {format(now(), "%H:%M")}'))
@@ -385,7 +459,7 @@ local({
 	hist$base <<- last_obs_by_vdate
 })
 
-## 7. Add Stationary Transformations ----------------------------------------------------------
+## 2. Add Stationary Transformations ----------------------------------------------------------
 local({
 
 	message(str_glue('*** Adding Stationary Transforms | {format(now(), "%H:%M")}'))
@@ -436,35 +510,35 @@ local({
 	hist$flat_last <<- stat_final_last
 })
 
-## 8. Create Monthly/Quarterly Matrices ----------------------------------------------------------
+## 3. Create Monthly/Quarterly Matrices ----------------------------------------------------------
 local({
 
-	message(str_glue('*** Creating Wide Matrices | {format(now(), "%H:%M")}'))
-
-	wide =
-		hist$flat %>%
-		split(., by = 'freq', keep.by = F) %>%
-		lapply(., function(x)
-			split(x, by = 'form', keep.by = F) %>%
-				lapply(., function(y)
-					split(y, by = 'vdate', keep.by = T) %>%
-						lapply(., function(z) {
-							# message(z$vdate[[1]])
-							dcast(select(z, -vdate), date ~ varname, value.var = 'value') %>%
-								.[, date := as_date(date)] %>%
-								.[order(date)] %>%
-								as_tibble(.)
-						})
-				)
-		)
-
-	wide_last <<- lapply(wide, function(x) lapply(x, function(y) tail(y, 1)[[1]]))
-
-	hist$wide <<- wide
-	hist$wide_last <<- wide_last
+	# message(str_glue('*** Creating Wide Matrices | {format(now(), "%H:%M")}'))
+	#
+	# wide =
+	# 	hist$flat %>%
+	# 	split(., by = 'freq', keep.by = F) %>%
+	# 	lapply(., function(x)
+	# 		split(x, by = 'form', keep.by = F) %>%
+	# 			lapply(., function(y)
+	# 				split(y, by = 'vdate', keep.by = T) %>%
+	# 					lapply(., function(z) {
+	# 						# message(z$vdate[[1]])
+	# 						dcast(select(z, -vdate), date ~ varname, value.var = 'value') %>%
+	# 							.[, date := as_date(date)] %>%
+	# 							.[order(date)] %>%
+	# 							as_tibble(.)
+	# 					})
+	# 			)
+	# 	)
+	#
+	# wide_last <<- lapply(wide, function(x) lapply(x, function(y) tail(y, 1)[[1]]))
+	#
+	# hist$wide <<- wide
+	# hist$wide_last <<- wide_last
 })
 
-## 9. Strip Duplicates ---------------------------------------------------------------------
+## 4. Strip Duplicates ---------------------------------------------------------------------
 local({
 
 	message(str_glue('*** Stripping Vintage Date Dupes | {format(now(), "%H:%M")}'))
@@ -475,7 +549,7 @@ local({
 		.[order(vdate, date), value_runlength := rleid(value), by = c('varname', 'freq', 'date', 'form')] %>%
 		# Get first rleid only for each group -
 		.[, .SD[which.min(vdate)], by = c('varname', 'freq', 'date', 'form', 'value_runlength')] %>%
-		select(., -value_runlength)
+		.[, value_runlength := NULL]
 
 	hist$flat_final <<- hist_stripped
 })
@@ -517,7 +591,7 @@ local({
 		),
 		'job_logs',
 		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-	) %>%
+		) %>%
 		dbExecute(db, .)
 })
 
