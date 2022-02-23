@@ -32,11 +32,11 @@ forecasts = readxl::read_excel(
 
 forecast_variables = readxl::read_excel(
 	file.path(EF_DIR, 'deployment','forecast-tables.xlsx'), sheet = 'variables'
-) 
+)
 
 forecast_hist_releases = readxl::read_excel(
 	file.path(EF_DIR, 'deployment', 'forecast-tables.xlsx'), sheet = 'releases'
-) 
+)
 
 # Print all releases which map to no variable
 anti_join(forecast_hist_releases, forecast_variables, by = c('id' = 'release'))
@@ -45,9 +45,9 @@ anti_join(forecast_variables, forecast_hist_releases, by = c('release' = 'id'))
 
 ## Forecasts ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS forecasts CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE forecasts (
@@ -56,10 +56,11 @@ local({
 			shortname VARCHAR(255) CONSTRAINT forecasts_shortname_uk UNIQUE NOT NULL,
 			external BOOLEAN NOT NULL,
 			update_freq CHAR(1) NOT NULL,
+			description TEXT NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 			)'
 		)
-	
+
 	forecasts %>%
 		create_insert_query(
 			.,
@@ -69,7 +70,8 @@ local({
 		    fullname=EXCLUDED.fullname,
 		    shortname=EXCLUDED.shortname,
 		    external=EXCLUDED.external,
-		    update_freq=EXCLUDED.update_freq'
+		    update_freq=EXCLUDED.update_freq,
+			description=EXCLUDED.description'
 			) %>%
 		dbExecute(db, .)
 })
@@ -77,9 +79,9 @@ local({
 
 ## Variables ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS forecast_variables CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE forecast_variables (
@@ -100,7 +102,7 @@ local({
 				REFERENCES forecast_hist_releases (id) ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
-	
+
 	forecast_variables %>%
 		create_insert_query(
 			.,
@@ -124,9 +126,9 @@ local({
 
 ## Variable Hist Values ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS forecast_hist_values CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE forecast_hist_values (
@@ -142,7 +144,7 @@ local({
 				REFERENCES forecast_variables (varname) ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
-	
+
 	dbExecute(
 		db,
 		'SELECT create_hypertable(
@@ -154,9 +156,9 @@ local({
 
 ## Variable Hist Values ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS forecast_values CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE forecast_values (
@@ -175,7 +177,7 @@ local({
 				REFERENCES forecasts (id) ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
-	
+
 	dbExecute(
 		db,
 		'SELECT create_hypertable(
@@ -195,9 +197,9 @@ external_import_variables = read_csv(
 
 ## Variables ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS external_import_variables CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE external_import_variables (
@@ -210,7 +212,7 @@ local({
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 			)'
 		)
-	
+
 	external_import_variables %>%
 		create_insert_query(
 			.,
@@ -240,7 +242,7 @@ interest_rate_model_variables = read_csv(
 local({
 
 	dbExecute(db, 'DROP TABLE IF EXISTS interest_rate_model_variables CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE interest_rate_model_variables (
@@ -253,7 +255,7 @@ local({
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 			)'
 	)
-	
+
 	interest_rate_model_variables %>%
 		create_insert_query(
 			.,
@@ -271,9 +273,9 @@ local({
 
 ## Input Values ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS interest_rate_model_input_values CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE interest_rate_model_input_values (
@@ -290,7 +292,7 @@ local({
 				ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
-	
+
 	dbExecute(
 		db,
 		'SELECT create_hypertable(
@@ -319,9 +321,9 @@ anti_join(nowcast_model_variables, nowcast_model_input_releases, by = c('release
 
 ## Releases ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_input_releases CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE nowcast_model_input_releases (
@@ -334,7 +336,7 @@ local({
 			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 			)'
 	)
-	
+
 	nowcast_model_input_releases %>%
 		create_insert_query(
 			.,
@@ -345,16 +347,16 @@ local({
 		    url=EXCLUDED.url,
 		    vintage_update=EXCLUDED.vintage_update,
 		    source=EXCLUDED.source,
-				source_key=EXCLUDED.source_key'
-		) %>%
+			source_key=EXCLUDED.source_key'
+			) %>%
 		dbExecute(db, .)
 })
 
 ## Release Dates ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_input_release_dates CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE nowcast_model_input_release_dates (
@@ -366,7 +368,7 @@ local({
 				REFERENCES nowcast_model_input_releases (id) ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
-	
+
 	dbExecute(
 		db,
 		'SELECT create_hypertable(
@@ -378,9 +380,9 @@ local({
 
 ## Variables ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_variables CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE nowcast_model_variables (
@@ -405,7 +407,7 @@ local({
 				REFERENCES nowcast_model_input_releases (id) ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
-	
+
 	nowcast_model_variables %>%
 		create_insert_query(
 			.,
@@ -433,9 +435,9 @@ local({
 
 ## Input Values ---------------------------------------------------------
 local({
-	
+
 	dbExecute(db, 'DROP TABLE IF EXISTS nowcast_model_input_values CASCADE')
-	
+
 	dbExecute(
 		db,
 		'CREATE TABLE nowcast_model_input_values (
@@ -451,7 +453,7 @@ local({
 				REFERENCES nowcast_model_variables (varname) ON DELETE CASCADE ON UPDATE CASCADE
 			)'
 	)
-	
+
 	dbExecute(
 		db,
 		'SELECT create_hypertable(
