@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'composite-model-stacking'
 EF_DIR = Sys.getenv('EF_DIR')
-IMPORT_DATE_START = '2007-01-01'
+BACKTEST_DATE_START = '2010-01-01'
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -26,6 +26,7 @@ library(DBI)
 library(RPostgres)
 library(lubridate)
 library(jsonlite)
+library(xgboost)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -84,7 +85,47 @@ release_data = tbl(db, sql(str_glue(
 	group_by(., date) %>%
 	summarize(., release_date = min(release_date))
 
-# Collapse ----------------------------------------------------------
+# Additional Models ----------------------------------------------------------
+
+## Prep Data ----------------------------------------------------------
+model_data =
+	hist_data %>%
+	as.data.table(.) %>%
+	split(., by = c('varname')) %>%
+	lapply(., function(x)  {
+		x %>%
+			.[order(vdate)] %>%
+			dcast(., varname + vdate ~  date, value.var = 'value') %>%
+			.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
+			melt(
+				.,
+				id.vars = c('varname', 'vdate'),
+				value.name = 'value',
+				variable.name = 'date',
+				na.rm = T
+			) %>%
+			.[, date := as_date(date)]
+	}) %>%
+	rbindlist(.)
+
+## ARIMA Forecasts ----------------------------------------------------------
+local({
+
+
+
+})
+
+
+## Dynamic Factor Model Forecasts
+local({
+
+
+
+
+})
+
+
+
 
 ## Get Available Dates ----------------------------------------------------------
 local({
