@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'composite-model-stacking'
 EF_DIR = Sys.getenv('EF_DIR')
-BACKTEST_DATE_START = '2010-01-01'
+TRAIN_VDATE_START = '2010-01-01'
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -52,7 +52,7 @@ hist_data = tbl(db, sql(
 	"SELECT val.varname, val.vdate, val.date, val.value
 	FROM forecast_hist_values val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE release = 'BEA.GDP' AND freq = 'q' AND form = 'd1' AND v.varname NOT IN ('cbi', 'net_exports')"
+	WHERE release = 'BEA.GDP' AND freq = 'q' AND form = 'd1' AND v.varname NOT IN ('cbi', 'nx', 'ngdp')"
 	)) %>%
 	collect(.) %>%
 	# Only keep initial release for each historical value
@@ -67,7 +67,7 @@ forecast_data = tbl(db, sql(
 	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value
 	FROM forecast_values val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE release = 'BEA.GDP' AND freq = 'q' AND form = 'd1' AND v.varname NOT IN ('cbi', 'net_exports')"
+	WHERE release = 'BEA.GDP' AND freq = 'q' AND form = 'd1' AND v.varname NOT IN ('cbi', 'nx', 'ngdp')"
 	)) %>%
 	collect(.)
 
@@ -129,9 +129,11 @@ arima_forecasts =
 			.[, constant := 1] %>%
 			.[2:nrow(.)]
 
-		x_mat = as.matrix(input_df[, c('value.l1', 'constant')])
+		input_df_cleaned = input_df[!year(date) == 2020]
 
-		y_mat = as.matrix(input_df[, 'value'])
+		x_mat = as.matrix(input_df_cleaned[, c('value.l1', 'constant')])
+
+		y_mat = as.matrix(input_df_cleaned[, 'value'])
 
 		coef_mat = solve(t(x_mat) %*% x_mat) %*% t(x_mat) %*% y_mat
 
@@ -149,7 +151,46 @@ arima_forecasts =
 	rbindlist(.) %>%
 	.[, forecast := 'arima']
 
-forecast_data_final = bind_rows(forecast_data, arima_forecasts)
+## Constant Forecasts ----------------------------------------------------------
+constant_forecasts =
+	model_data %>%
+	split(., by = c('varname', 'vdate')) %>%
+	keep(., ~ nrow(.) >= 5) %>%
+	lapply(., function(x) {
+		input_df = x[order(date)]
+
+		## 20 period forecasts
+		data.table(
+			varname = x$varname[[1]],
+			vdate = x$vdate[[1]],
+			date = seq(tail(x$date, 1), length.out = 21, by = '1 quarter')[2:21],
+			value = median(x$value)
+			)
+	}) %>%
+	rbindlist(.) %>%
+	.[, forecast := 'constant']
+
+## MA Forecasts ----------------------------------------------------------
+ma_forecasts =
+	model_data %>%
+	split(., by = c('varname', 'vdate')) %>%
+	keep(., ~ nrow(.) >= 5) %>%
+	lapply(., function(x) {
+		input_df = x[order(date)]
+
+		## 20 period forecasts
+		data.table(
+			varname = x$varname[[1]],
+			vdate = x$vdate[[1]],
+			date = seq(tail(x$date, 1), length.out = 21, by = '1 quarter')[2:21],
+			value = mean(tail(input_df$value, 4))
+		)
+	}) %>%
+	rbindlist(.) %>%
+	.[, forecast := 'ma']
+
+
+forecast_data_final = bind_rows(forecast_data, arima_forecasts, constant_forecasts, ma_forecasts)
 
 ## Dynamic Factor Model Forecasts (TBD) ----------------------------------------------------------
 
@@ -171,6 +212,7 @@ train_data =
 	) %>%
 	.[, c('error', 'days_before_release') := list(hist_value - value, as.numeric(hist_vdate - vdate))] %>%
 	.[days_before_release >= 1] %>%
+	.[vdate >= TRAIN_VDATE_START] %>%
 	# .[, c('hist_vdate', 'hist_value') := NULL] %>%
 	# Only keep initial release for each historical value
 	# For each obs date, get the forecast & vdates
@@ -234,30 +276,37 @@ test_data =
 
 
 ## Train Model ----------------------------------------------------------
-train_varnames = unique(hist_data$varname) #c('pdir', 'pdin', 'pdi', 'gdp', 'pce')
+train_varnames =
+	# unique(hist_data$varname)
+	c('gdp', 'pce')
 
 trees = lapply(train_varnames, function(this_varname) {
 
 	input_data =
 		train_data %>%
 		.[varname == this_varname] %>%
-		.[year(date) != '2020']
+		# .[!year(date) %in% c(2020)]
+		.[!date %in% as_date(c('2020-04-01', '2020-07-01'))]
 
 	tree = xgboost::xgboost(
 		data =
 			input_data %>%
 			transmute(
 				.,
-				days_before_release,
-				arima, cbo, fnma, now, spf, wsj
+				days_before_release = ifelse(days_before_release >= 500, 500, days_before_release),
+				arima, cbo, constant, fnma, ma, now, spf, wsj
 			) %>%
 			as.matrix(.),
 		label = input_data$hist_value,
 		verbose = 2,
-		max.depth = 10,
+		max_depth = 10,
+		print_every_n = 50,
 		nthread = 4,
 		nrounds = 200,
-		objective = 'reg:squarederror'
+		objective = 'reg:squarederror',
+		booster = 'gblinear'
+		#,
+		# monotone_constraints = '(0,1,1,1,1,1,1)'
 		)
 
 	return(tree)
@@ -269,12 +318,14 @@ trees = lapply(train_varnames, function(this_varname) {
 # Predicts values from test data,
 # i.e. dates that haven't been forecasted yet at all
 test_results = lapply(train_varnames, function(this_varname) {
+	message(this_varname)
 
 	oos_values =
 		predict(
 			trees[[this_varname]],
 			test_data[varname == this_varname] %>%
-				.[, c('days_before_release', 'arima', 'cbo', 'fnma', 'now', 'spf', 'wsj')] %>%
+				.[, c('days_before_release', 'arima', 'cbo', 'constant', 'fnma', 'ma', 'now', 'spf', 'wsj')] %>%
+				.[, days_before_release := fifelse(days_before_release >= 500, 500, days_before_release)] %>%
 				as.matrix(.)
 			)
 
@@ -302,9 +353,48 @@ test_results %>%
 	arrange(., desc(vdate)) %>%
 	print(., n = 100)
 
+# Finalize ----------------------------------------------------------
 
 ## SQL ----------------------------------------------------------
+local({
 
+	forecast_values =
+		test_results %>%
+		transmute(., forecast = 'comp', form = 'd1', vdate, freq = 'q', varname, date, value = predict)
 
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	message('***** Initial Count: ', initial_count)
 
+	sql_result =
+		forecast_values %>%
+		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'forecast_values',
+				'ON CONFLICT (forecast, vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
+			) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	message('***** Rows Added: ', final_count - initial_count)
+
+	tribble(
+		~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
+		JOB_NAME, 'composite-model', today(), 'job-success',
+		toJSON(list(rows_added = final_count - initial_count))
+		) %>%
+		create_insert_query(
+			.,
+			'job_logs',
+			'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
+		) %>%
+		dbExecute(db, .)
+})
+
+## Close Connections ----------------------------------------------------------
+dbDisconnect(db)
+message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
