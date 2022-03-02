@@ -7,7 +7,7 @@ This code is developed locally on a Windows machine and deployed locally to an U
 ---
 # CHANGELOG
 
-## [v.20] (Model Modularization & Re-Release) (2022-02-15)
+## [v.020 -> v1.00] (Model Modularization & Re-Release) (2022-03-02)
 This continues modularization & adds an initial web release on beta.econforecasting.com.
 - Added SPF, CBO, WSJ external forecasts
 - Added reticulate Python integration
@@ -23,7 +23,7 @@ This continues modularization & adds an initial web release on beta.econforecast
 - Added better optionalization of SQL tables
 - Added optimized stationary transforms
 - Added CPI EINF calcs
-- Added intiial composite model for PCE & GDP
+- Added intial composite model for PCE & GDP
 - Cleaned up old files
 - Deprecated Quandl data input
 - Fixed bug in get_fred_data related to observation date pulls
