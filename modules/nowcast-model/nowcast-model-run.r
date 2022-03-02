@@ -1802,6 +1802,14 @@ local({
 		file.path(EF_DIR, 'logs', 'nowcast-model-documentation.pdf'),
 		file.path(EF_DIR, 'nowcast-model-documentation.pdf')
 		)
+	
+	# Copy file to web directory if on Linux
+	if (Sys.info()[['sysname']] == 'Linux') {
+		fs::file_copy(
+			file.path(EF_DIR, 'nowcast-model-documentation.pdf'),
+			'/var/www/beta.econforecasting.com/public/static/nowcast-model-documentation.pdf'
+		)
+	}
 
 })
 

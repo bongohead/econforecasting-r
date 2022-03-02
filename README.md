@@ -23,6 +23,7 @@ This continues modularization & adds an initial web release on beta.econforecast
 - Added better optionalization of SQL tables
 - Added optimized stationary transforms
 - Added CPI EINF calcs
+- Added intiial composite model for PCE & GDP
 - Cleaned up old files
 - Deprecated Quandl data input
 - Fixed bug in get_fred_data related to observation date pulls
