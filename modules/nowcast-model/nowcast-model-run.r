@@ -1807,7 +1807,8 @@ local({
 	if (Sys.info()[['sysname']] == 'Linux') {
 		fs::file_copy(
 			file.path(EF_DIR, 'nowcast-model-documentation.pdf'),
-			'/var/www/beta.econforecasting.com/public/static/nowcast-model-documentation.pdf'
+			'/var/www/econforecasting.com/public/static/nowcast-model-documentation.pdf',
+			overwrite = T
 		)
 	}
 
