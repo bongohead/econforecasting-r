@@ -256,11 +256,11 @@ local({
 		) %>%
 		transmute(., varname = 'estr', freq = 'd', date, vdate = date, value)
 
-	hist$raw$estr <<- estr_data
+	hist$raw$ecb <<- estr_data
 })
 
 
-## 3. Calculated Variables ----------------------------------------------------------
+## 6. Calculated Variables ----------------------------------------------------------
 local({
 
 	message('*** Adding Calculated Variables')
@@ -328,7 +328,7 @@ local({
 	hist$raw$calc <<- hist_calc
 })
 
-## 4. Verify ----------------------------------------------------------
+## 7. Verify ----------------------------------------------------------
 local({
 
 	missing_varnames = variable_params$varname %>% .[!. %in% unique(bind_rows(hist$raw)$varname)]
@@ -338,7 +338,7 @@ local({
 })
 
 
-## 5. Aggregate Frequencies ----------------------------------------------------------
+## 8. Aggregate Frequencies ----------------------------------------------------------
 local({
 
 	message(str_glue('*** Aggregating Monthly & Quarterly Data | {format(now(), "%H:%M")}'))
@@ -351,7 +351,7 @@ local({
 			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
 			filter(hist$raw$bloom, !varname %in% unique(.$varname)),
 			filter(hist$raw$afx, !varname %in% unique(.$varname)),
-			filter(hist$raw$estr, !varname %in% unique(.$varname))
+			filter(hist$raw$ecb, !varname %in% unique(.$varname))
 		)
 
 	monthly_agg =
