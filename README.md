@@ -7,6 +7,11 @@ This code is developed locally on a Windows machine and deployed locally to an U
 ---
 # CHANGELOG
 
+## [v1.01] (Model Improvements) (2022-03-03)
+This adds minor modeling improvements and additions. 
+- Added ICE scraper with SONIA, ESTR rates (Euribor rates delayed due to historical data issues)
+- TBD: Add Conference Board, TD Forecasts
+
 ## [v.020 -> v1.00] (Model Modularization & Re-Release) (2022-03-02)
 This continues modularization & adds an initial web release on beta.econforecasting.com.
 - Added SPF, CBO, WSJ external forecasts

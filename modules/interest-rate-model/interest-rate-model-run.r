@@ -175,6 +175,105 @@ local({
 
 # Sub-Models  ----------------------------------------------------------
 
+## ICE: Futures  ----------------------------------------------------------
+local({
+	
+	ice_codes = tribble(
+		~ varname, ~ product_id, ~ hub_id, ~ expiry,
+		'sonia', '20343', '23428', 1,
+		'sonia', '20484', '23565', 3,
+		# 'euribor', '15275', '17455', 3,
+		'estr', '15274', '17454', 1, 
+		)
+
+	# Last vintage date data not in charts history so get here
+	# Note that this is unreliable!
+	# Temporarily commented as of 3/3/22 due to instability issues, esp. with 1m SONIA
+	# ice_raw_data_latest =
+	# 	ice_codes %>%
+	# 	purrr::transpose(.) %>%
+	# 	map_dfr(., function(x) {
+	# 		# Get top-level expiration IDs
+	# 		httr::GET(str_glue(
+	# 			'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
+	# 			'getContractsAsJson=&productId={x$product_id}&hubId={x$hub_id}')
+	# 			) %>%
+	# 			httr::content(., as = 'parsed') %>%
+	# 			# Filter out packs & bundles
+	# 			keep(., ~ str_detect(.$marketStrip, 'Pack|Bundle', negate = T)) %>%
+	# 			map_dfr(., function(z) tibble(
+	# 				varname = x$varname,
+	# 				expiry = x$expiry,
+	# 				date = floor_date(parse_date(z$marketStrip, '%b%y'), 'months'),
+	# 				market_id = as.character(z$marketId),
+	# 				value = {
+	# 					if (!is.null(z$lastPrice) & !is.null(z$lastTime)) z$lastPrice
+	# 					else NULL
+	# 				},
+	# 				vdate = {
+	# 					if (!is.null(z$lastPrice) & !is.null(z$lastTime)) as_date(parse_date_time(z$lastTime, '%m/%d/%Y %I:%M %p'))
+	# 					else NULL
+	# 				}
+	# 			))
+	# 	})
+	
+	ice_raw_data =
+		ice_codes %>%
+		purrr::transpose(.) %>%
+		map_dfr(., function(x) {
+			
+			# Get top-level expiration IDs
+			httr::GET(str_glue(
+				'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
+				'getContractsAsJson=&productId={x$product_id}&hubId={x$hub_id}'
+				)) %>%
+				httr::content(., as = 'parsed') %>%
+				# Filter out packs & bundles
+				keep(., ~ str_detect(.$marketStrip, 'Pack|Bundle', negate = T)) %>%
+				map_dfr(., function(z) tibble(
+					date = floor_date(parse_date(z$marketStrip, '%b%y'), 'months'),
+					market_id = as.character(z$marketId)
+				)) %>%
+				# Iterate through the expiration IDs
+				purrr::transpose(.) %>%
+				map_dfr(., function(z) 
+					httr::GET(str_glue(
+						'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
+						'getHistoricalChartDataAsJson=&marketId={z$market_id}&historicalSpan=2'
+						)) %>%
+						httr::content(., as = 'parsed') %>%
+						.$bars %>%
+						{tibble(vdate = map_chr(., ~ .[[1]]), value = map_dbl(., ~ .[[2]]))} %>%
+						transmute(
+							.,
+							varname = x$varname,
+							expiry = x$expiry,
+							date = as_date(z$date),
+							vdate = as_date(parse_date_time(vdate, orders = '%a %b %d %H:%M:%S %Y'), tz = 'ET'),
+							value = 100 - value
+							)
+					)
+			})
+	
+	ice_data =
+		ice_raw_data %>%
+		# Now use only one-month futures if it's the only available data
+		group_by(varname, vdate, date) %>%
+		filter(., expiry == min(expiry)) %>%
+		arrange(., date) %>%
+		ungroup(.) %>%
+		# Get rid of forecasts for old observations
+		filter(., date >= floor_date(vdate, 'month')) %>%
+		transmute(., varname, freq = 'm', vdate, date, value)
+	
+	# ice_data %>%
+	# 	filter(., vdate == max(vdate)) %>%
+	# 	ggplot(.) +
+	# 	geom_line(aes(x = date, y = value, color = varname))
+
+	submodels$ice <<- ice_data
+})
+
 ## CME: Futures  ----------------------------------------------------------
 local({
 
@@ -256,9 +355,13 @@ local({
 
 	cme_data =
 		cme_raw_data %>%
-		# Now average out so that there's only one value for each (varname, date) combo
-		group_by(varname, date) %>%
-		summarize(., value = mean(value), .groups = 'drop') %>%
+		# Now use only one-month SOFR futures if it's the only available data
+		group_split(varname, date) %>%
+		map_dfr(., function(x) {
+			if (x$varname[[1]] == 'sofr' & nrow(x) == 2 & '8463' %in% x$cme_id) filter(x, cme_id == '8463')
+			else if (nrow(x) == 1) x
+			else stop('Error - Multiple Duplicates for non SOFR Values')
+		}) %>%
 		arrange(., date) %>%
 		# Get rid of forecasts for old observations
 		filter(., date >= lubridate::floor_date(last_trade_date, 'month') & value != 100) %>%
