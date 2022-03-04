@@ -244,6 +244,22 @@ local({
 	hist$raw$afx <<- afx_data
 })
 
+## 5. ECB ---------------------------------------------------------------------
+local({
+	
+	# https://sdw.ecb.europa.eu/quickview.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR
+	estr_data = read_csv(
+		'https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR&type=csv',
+		skip = 6,
+		col_names = c('date', 'value', 'obs', 'calc1', 'calc2'),
+		col_types = 'DdcDD'
+		) %>%
+		transmute(., varname = 'estr', freq = 'd', date, vdate = date, value)
+
+	hist$raw$estr <<- estr_data
+})
+
+
 ## 3. Calculated Variables ----------------------------------------------------------
 local({
 
@@ -335,6 +351,7 @@ local({
 			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
 			filter(hist$raw$bloom, !varname %in% unique(.$varname)),
 			filter(hist$raw$afx, !varname %in% unique(.$varname)),
+			filter(hist$raw$estr, !varname %in% unique(.$varname))
 		)
 
 	monthly_agg =
