@@ -71,171 +71,67 @@ local({
 })
 
 
-local({
+cor_values = lapply(unique(funds$usage), function(this_usage) {
 	
-	cor_values = lapply(unique(funds$usage), function(this_usage) {
-		
-		eligible_funds = funds[usage == this_usage]
-		
-		eligible_data = input_data[usage == this_usage][, usage := NULL]
-		
-		# Calculate all possible combinations of tickers; then merge data into it
-		merged_data =
-			cross_df(list(ticker_1 = 1:nrow(eligible_funds), ticker_2 = 1:nrow(eligible_funds))) %>%
-			as.data.table(.) %>%
-			.[ticker_2 > ticker_1] %>%
-			.[, ticker_1 := map_chr(.$ticker_1, ~ eligible_funds[[., 'ticker']])] %>%
-			.[, ticker_2 := map_chr(.$ticker_2, ~ eligible_funds[[., 'ticker']])] %>%
-			# Rename on 
-			merge(
-				.,
-				rename(eligible_data, value_1 = value),
-				by.x = 'ticker_1', by.y = 'ticker', all = F, allow.cartesian = T
-				) %>%
-			merge(
-				.,
-				rename(eligible_data, value_2 = value),
-				by.x = c('ticker_2', 'date'), by.y = c('ticker', 'date'), all = F, allow.cartesian = F
-				)
+	eligible_funds = funds[usage == this_usage]
 	
-		cors =
-			merged_data %>%
-			.[order(ticker_1, ticker_2, date)] %>%
-			.[,
-				c('cor_30', 'cor_60', 'cor_90') := list(
-					roll_cor(value_1, value_2, width = 30),
-					roll_cor(value_1, value_2, width = 60),
-					roll_cor(value_1, value_2, width = 90)
-					),
-				by = c('ticker_1', 'ticker_2')
-				] %>%
-			melt(
-				.,
-				id.vars = c('date', 'ticker_1', 'ticker_2'),
-				measure = patterns('cor_'),
-				variable.name = 'window',
-				value.name = 'value',
-				variable.factor = FALSE,
-				na.rm = TRUE
+	eligible_data = input_data[usage == this_usage][, usage := NULL]
+	
+	# Calculate all possible combinations of tickers; then merge data into it
+	merged_data =
+		cross_df(list(ticker_1 = 1:nrow(eligible_funds), ticker_2 = 1:nrow(eligible_funds))) %>%
+		as.data.table(.) %>%
+		.[ticker_2 > ticker_1] %>%
+		.[, ticker_1 := map_chr(.$ticker_1, ~ eligible_funds[[., 'ticker']])] %>%
+		.[, ticker_2 := map_chr(.$ticker_2, ~ eligible_funds[[., 'ticker']])] %>%
+		# Rename on 
+		merge(
+			.,
+			rename(eligible_data, value_1 = value),
+			by.x = 'ticker_1', by.y = 'ticker', all = F, allow.cartesian = T
 			) %>%
-			.[, window := as.integer(str_sub(window, -2))] %>%
-			.[, usage := this_usage]
-		
-		return(cors)
-	})
-	
-})
-
-# Calculate Correlations
-
-	# Takes data frame of date, return, i.return
-	# 1.27 seconds vs .3 seconds for roll_cor
-	# calculateCorr30 = function(df) {
-	# 	sapply(30:nrow(df), function(endRow)
-	# 		df[(endRow-30):endRow] %>%
-	# 			{cor(.[[2]], .[[3]])}
-	# 		)
-	# }
-	# microbenchmark(calculateCorr30(df), times = 10)
-	# microbenchmark(roll::roll_cor(df[[2]], df[[3]], width = 30))
-	seriesAllDt =
-		# Split by usage
-		acFundDf %>%
-		dplyr::group_by(usage) %>%
-		dplyr::group_split(.) %>%
-		setNames(., map(., ~ .$usage[[1]])) %>%
-		purrr::imap(., function(acFundDfByUsage, usage) 
-			# Get all combinations of tickers
-			lapply(1:(length(acFundDfByUsage$ticker) - 1), function(n)
-				lapply((n+1):length(acFundDfByUsage$ticker), function(m)
-					list(ticker1 = acFundDfByUsage$ticker[[n]], ticker2 = acFundDfByUsage$ticker[[m]])
-				)
-			) %>%
-				unlist(., recursive = FALSE) %>%
-				# Calculate correlations
-				purrr::imap_dfr(., function(x, i) {
-					
-					if (i %% 100 == 0) message(i)
-					# Join raw data tables together
-					dataDt =
-						rawDataDfs[[paste0(usage, '.', x$ticker1)]][rawDataDfs[[paste0(usage, '.', x$ticker2)]], nomatch = 0, on = 'date']	
-					
-					seriesDt =
-						dataDt %>%	
-						# Calculate correlation starting with day 30
-						.[, '30' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 30)] %>%
-						.[, '90' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 90)] %>%
-						.[, '180' := roll::roll_cor(dataDt[[2]], dataDt[[3]], width = 180)] %>%
-						.[, -c('return', 'i.return')] %>%
-						data.table::melt(
-							.,
-							id.vars = c('date'), variable.name = 'roll', value.name = 'value', variable.factor = FALSE,
-							na.rm = TRUE
-						) %>%
-						.[, usage := usage] %>%
-						.[, roll := as.numeric(roll)] %>%
-						.[, method := 'p'] %>%
-						.[, ticker1 := x$ticker1] %>%
-						.[, ticker2 := x$ticker2]
-					
-					return(seriesDt)
-				})
-		) %>%
-		dplyr::bind_rows(.)
-	
-	seriesAllRes =
-		seriesAllDt %>%
-		split(., by = c('usage', 'roll', 'method', 'ticker1', 'ticker2')) %>%
-		lapply(., function(x) {
-			
-			fundSeriesMapDf =
-				tibble(
-					usage = x$usage[[1]],
-					fk_fund1 = dplyr::filter(acFundDf, ticker == x$ticker1[[1]], usage == x$usage[[1]])$id,
-					fk_fund2 = dplyr::filter(acFundDf, ticker == x$ticker2[[1]], usage == x$usage[[1]])$id,
-					method = x$method[[1]],
-					roll = x$roll[[1]],
-					obs_start = min(x$date),
-					obs_end = max(x$date),
-					obs_count = nrow(x),
-					last_updated = Sys.Date()
-				) #%>%
-			#dplyr::mutate(., nk = paste0(fk_fund1, '.', fk_fund2, '.', method, '.', window))
-			
-			seriesDf = x %>% .[, -c('roll', 'method', 'ticker1', 'ticker2', 'usage')]
-			
-			list(
-				fundSeriesMapDf = fundSeriesMapDf,
-				seriesDf = seriesDf
+		merge(
+			.,
+			rename(eligible_data, value_2 = value),
+			by.x = c('ticker_2', 'date'), by.y = c('ticker', 'date'), all = F, allow.cartesian = F
 			)
-		})
-	
-	
-	fundSeriesMapDf = purrr::map_dfr(seriesAllRes, ~.$fundSeriesMapDf) 
-	seriesAllRes <<- seriesAllRes
-	fundSeriesMapDf <<- fundSeriesMapDf
-})
-```
 
-# Calculate Correlation Index
-```{r}
-local({
+	cors =
+		merged_data %>%
+		.[order(ticker_1, ticker_2, date)] %>%
+		.[,
+			c('cor_30', 'cor_60', 'cor_90') := list(
+				roll_cor(value_1, value_2, width = 30),
+				roll_cor(value_1, value_2, width = 60),
+				roll_cor(value_1, value_2, width = 90)
+				),
+			by = c('ticker_1', 'ticker_2')
+			] %>%
+		melt(
+			.,
+			id.vars = c('date', 'ticker_1', 'ticker_2'),
+			measure = patterns('cor_'),
+			variable.name = 'window',
+			value.name = 'value',
+			variable.factor = FALSE,
+			na.rm = TRUE
+		) %>%
+		.[, window := as.integer(str_sub(window, -2))] %>%
+		.[, usage := this_usage]
 	
-	indexDf =
-		seriesAllRes %>%
-		purrr::keep(., ~.$fundSeriesMap[[1, 'roll']] == 90) %>%
-		purrr::imap_dfr(., ~ .$seriesDf[, 'usage' := .$fundSeriesMap$usage[[1]]]) %>%
-		.[, list(value = mean(value), count = .N), by = c('date', 'usage')] %>%
-		.[, -c('count')] %>%
-		.[, value := round(value, 4)] 
-	
-	# Consider filtering by dates where all obs available
-	indexDf %>% ggplot(.) + geom_line(aes(x = date, y = value))
-	
-	
-	indexDf <<- indexDf
-})
-```
+	return(cors)
+	}) %>%
+	rbindlist(.)
+
+
+cor_index =
+	cor_values %>%
+	.[window == 90] %>%
+	.[, list(value = mean(value), count = .N), by = c('date', 'usage')] %>%
+	.[, value := round(value, 4)] %>%
+	ggplot(.) + 
+	geom_line(aes(x = date, y = value, color = usage))
+
 
 
 # Send to SQL
