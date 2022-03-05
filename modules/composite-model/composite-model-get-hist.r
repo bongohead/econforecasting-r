@@ -247,16 +247,17 @@ local({
 ## 5. ECB ---------------------------------------------------------------------
 local({
 	
+	# Migrated to ECBESTRVOLWGTTRMDMNRT!
 	# https://sdw.ecb.europa.eu/quickview.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR
-	estr_data = read_csv(
-		'https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR&type=csv',
-		skip = 6,
-		col_names = c('date', 'value', 'obs', 'calc1', 'calc2'),
-		col_types = 'DdcDD'
-		) %>%
-		transmute(., varname = 'estr', freq = 'd', date, vdate = date, value)
-
-	hist$raw$ecb <<- estr_data
+	# estr_data = read_csv(
+	# 	'https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR&type=csv',
+	# 	skip = 6,
+	# 	col_names = c('date', 'value', 'obs', 'calc1', 'calc2'),
+	# 	col_types = 'DdcDD'
+	# 	) %>%
+	# 	transmute(., varname = 'estr', freq = 'd', date, vdate = date, value)
+	# 
+	# hist$raw$ecb <<- estr_data
 })
 
 
@@ -350,8 +351,7 @@ local({
 			filter(hist$raw$fred, !varname %in% unique(.$varname)),
 			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
 			filter(hist$raw$bloom, !varname %in% unique(.$varname)),
-			filter(hist$raw$afx, !varname %in% unique(.$varname)),
-			filter(hist$raw$ecb, !varname %in% unique(.$varname))
+			filter(hist$raw$afx, !varname %in% unique(.$varname))
 		)
 
 	monthly_agg =
