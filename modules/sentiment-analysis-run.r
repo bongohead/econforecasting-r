@@ -30,6 +30,8 @@ library(RPostgres)
 library(lubridate)
 library(jsonlite)
 library(tidytext)
+library(reticulate)
+use_virtualenv(file.path(EF_DIR, '.virtualenvs', 'econforecasting'))
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -45,7 +47,7 @@ db = dbConnect(
 # Get Data ----------------------------------------------------------------
 
 ## Reddit Token --------------------------------------------------------
-token = 
+token =
 	POST(
 		'https://www.reddit.com/api/v1/access_token',
 		add_headers(c(
@@ -54,99 +56,172 @@ token =
 				'Basic ', base64(txt = paste0(CONST$REDDIT_ID, ':', CONST$REDDIT_SECRET), mode = 'character')
 				)
 			)),
-		body = list(grant_type = 'client_credentials', username = CONST$REDDIT_USERNAME, password = CONST$REDDIT_PASSWORD),
+		body = list(
+			grant_type = 'client_credentials',
+			username = CONST$REDDIT_USERNAME,
+			password = CONST$REDDIT_PASSWORD
+			),
 		encoding = 'json'
 		) %>%
 	httr::content(., 'parsed') %>%
 	.$access_token
 
 ## Pull Data --------------------------------------------------------
-pulled_data = accumulate(1:100, function(accum, i) {
-	
-	message('***** Pull ', i, ' of 100')
-	query = list(
-		t = 'month',
-		# g = 'GLOBAL',
-		limit = 100,
-		show = 'all',
-		after = {if (i == 1) NULL else tail(accum, 1)$after}
-		) %>%
-		compact(.) %>%
-		paste0(names(.), '=', .) %>%
-		paste0(collapse = '&')
-	
-	message(query)
-	
-	http_result =
-		GET(
-			paste0('https://oauth.reddit.com/r/all/top?', query),
-			add_headers(c(
-				'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
-				'Authorization' = paste0('bearer ', token)
-				))
-			)
-	
-	calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
-	reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
-	print(calls_remaining)
-	if (calls_remaining == 0) Sys.sleep(reset_seconds)
-	message(str_glue('Calls Remaining: {calls_remaining} | Seconds to Reset: {reset_seconds}s'))
+scrape_boards = tribble(
+	~ board, ~ category,
+	'news', 'News',
+	'worldnews', 'News',
+	'jobs', 'Labor Market',
+	'Economics', 'Financial Markets',
+	'investing', 'Financial Markets',
+	'wallstreetbets', 'Financial Markets',
+	'StockMarket', 'Financial Markets',
+	'AskReddit', 'General',
+	'pics', 'General',
+	'videos', 'General'
+	)
 
-	result = content(http_result, 'parsed')
-	if (is.null(result$data$after)) stop('Missing after')
+pulled_data = lapply(scrape_boards$board, function(board) {
 	
-	parsed =
-		lapply(result$data$children, function(y) 
-			y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
-		) %>%
-		rbindlist(., fill = T) %>%
-		select(
-			.,
-			name, # Unique identifier
-			subreddit, selftext, title, upvote_ratio, ups,
-			score, post_hint, is_self, created, domain, url_overridden_by_dest
+	message('***** Pull for: ', board)
+	
+	# Only top possible for top
+	reduce(1:10, function(accum, i) {
+		
+		message('***** Pull ', i)
+		query = list(
+			t = 'year',
+			# g = 'GLOBAL',
+			limit = 100,
+			show = 'all',
+			after = {if (i == 1) NULL else tail(accum, 1)$after}
 			) %>%
-		as.data.table(.) %>%
-		.[, c('i', 'after') := list(i, result$data$after)]
-
-	return(rbindlist(list(accum, parsed)))
-	}, .init = data.table()) %>%
-	rbindlist(.)
+			compact(.) %>%
+			paste0(names(.), '=', .) %>%
+			paste0(collapse = '&')
+		
+		# message(query)
+		
+		http_result =
+			GET(
+				paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+				add_headers(c(
+					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
+					'Authorization' = paste0('bearer ', token)
+					))
+				)
+		
+		calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
+		reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
+		if (calls_remaining == 0) Sys.sleep(reset_seconds)
+		message(str_glue('Calls Remaining: {calls_remaining} | Seconds to Reset: {reset_seconds}s'))
+	
+		result = content(http_result, 'parsed')
+		if (is.null(result$data$after)) message('***** WARNING: MISSING AFTER')
+		
+		parsed =
+			lapply(result$data$children, function(y) 
+				y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
+			) %>%
+			rbindlist(., fill = T) %>%
+			select(., any_of(c(
+				'name', # Unique identifier
+				'subreddit', 'selftext', 'title', 'upvote_ratio', 'ups',
+				'score', 'is_self', 'created', 'domain', 'url_overridden_by_dest'
+				))) %>%
+			as.data.table(.) %>%
+			.[, i := i] %>%
+			.[, after := result$data$after %||% NA]
+		
+		rbindlist(list(accum, parsed), fill = TRUE)
+		
+		}, .init = data.table()) %>%
+		.[, created_dttm := as_datetime(created)] %>%
+		.[, created_date := as_date(created_dttm)] %>%
+		.[, created := NULL] %>%
+		return(.)
+	}) %>%
+	rbindlist(., fill = T)
 
 # Verify no duplicated after posts
 pulled_data %>%
-	group_by(., i) %>%
+	group_by(., subreddit, i) %>%
 	summarize(., uniq_after = paste0(unique(after), collapse = ','))
 
-## Analysis --------------------------------------------------------
-dict =
-	get_sentiments('nrc') %>%
-	as.data.table(.) %>%
-	.[, sentiment := fcase(
-		sentiment %chin% c('trust', 'positive', 'joy', 'anticipation', 'surprise'), 1,
-		sentiment %chin% c('disgust', 'sadness', 'fear', 'negative', 'anger'), 0,
-		default = 0
-		)]
-
+# Verify no duplicated unique posts (name should be unique)
 pulled_data %>%
+	as_tibble(.) %>%
+	group_by(., name) %>%
+	summarize(., n = n())
+
+## BERT Analysis --------------------------------------------------------
+happytransformer = import('happytransformer')
+happy_tc = happytransformer$HappyTextClassification(
+	'DISTILBERT', # 'ROBERTA',
+	'distilbert-base-uncased-finetuned-sst-2-english', # 'siebert/sentiment-roberta-large-english',
+	num_labels = 2
+	)
+
+fwrite(set_names(pulled_data[, 'title'], 'text'), file.path(tempdir(), 'text.csv'))
+classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
+
+bert_result = data.table(
+	i = 1:nrow(pulled_data),
+	bert_label = map_chr(classified_text, ~ .$label),
+	bert_score = map_chr(classified_text, ~ .$score)
+	)[, bert_label := ifelse(bert_label == 'POSITIVE', 1, -1)]
+
+
+## Dictionary Analysis --------------------------------------------------------
+dict =
+	list(
+		get_sentiments('nrc') %>%
+			as.data.table(.) %>%
+			.[, sentiment := fcase(
+				sentiment %chin% c('trust', 'positive', 'joy', 'anticipation', 'surprise'), 1,
+				sentiment %chin% c('disgust', 'sadness', 'fear', 'negative', 'anger'), -1
+				)],
+		get_sentiments('bing') %>%
+			as.data.table(.) %>%
+			.[, sentiment := ifelse(sentiment == 'positive', 1, -1)]
+		) %>%
+	rbindlist(.) %>%
+	.[, list(sentiment = head(sentiment, 1)), by = 'word']
+
+dict_result =
+	pulled_data %>%
 	as.data.table(.) %>%
-	.[, created_dttm := as_datetime(created)] %>%
-	.[, created_date := as_date(created_dttm)] %>%
-	.[, c('created_dttm', 'created_date', 'subreddit', 'domain', 'title')] %>%
+	.[, c('name', 'title')] %>% # Name is the unique post identifier
 	tidytext::unnest_tokens(., word, title) %>%
 	.[!word %chin% stop_words$word]  %>%
 	merge(., dict, by = 'word', all = F, allow.cartesian = T) %>%
-	.[, list(sentiment_score = sum(sentiment)/.N), by =
-# 		dplyr::left_join(
-# 			.,
-# 			dplyr::group_by(., date) %>%
-# 				dplyr::summarize(., dateTotal = n(), .groups = 'drop'),
-# 			by = 'date'
-# 		) %>%
-# 		dplyr::group_by(., sentiment, date) %>%
-# 		dplyr::summarize(., count = n(), dateTotal = unique(dateTotal), .groups = 'drop') %>%
-# 		dplyr::mutate(., percent = count/dateTotal) %>%
-# 		ggplot(.) + geom_line(aes(x = date, y = percent, color = sentiment, group = sentiment))
+	.[, list(dict_score = sum(sentiment)/.N), by = 'name'] %>%
+	.[, dict_score := ifelse(dict_score >= 0, 1, -1)] 
+
+## Score Analysis --------------------------------------------------------
+
+pulled_data %>%
+	merge(., dict_result, all.x = T) %>%
+	.[, list(mean_score = mean(dict_score, na.rm = T)), by = 'created_date'] %>%
+	.[order(created_date)] %>%
+	.[, score_date := 1:nrow(.)] %>%
+	ggplot(.) +
+	geom_line(aes(x = created_date, y = mean_score))
+	
+	# .[, created_dttm := as_datetime(created)] %>%
+	# 	.[, created_date := as_date(created_dttm)] %>%
+		
+#%>%
+		# dplyr::left_join(
+		# 	.,
+		# 	dplyr::group_by(., date) %>%
+		# 		dplyr::summarize(., dateTotal = n(), .groups = 'drop'),
+		# 	by = 'date'
+		# ) %>%
+		# dplyr::group_by(., sentiment, date) %>%
+		# dplyr::summarize(., count = n(), dateTotal = unique(dateTotal), .groups = 'drop') %>%
+		# dplyr::mutate(., percent = count/dateTotal) %>%
+		# ggplot(.) + geom_line(aes(x = date, y = percent, color = sentiment, group = sentiment))
 
 
 # Pull Data
@@ -163,7 +238,8 @@ pulled_data %>%
 # 			#if (page %% 20 == 1)
 # 			message('Downloading data for page ', page)
 # 			pageContent =
-# 				httr::GET(paste0('https://www.reuters.com/news/archive/businessnews?view=page&page=', page, '&pageSize=10')) %>%
+# 				httr::GET(paste0('https://www.reuters.com/news/archive/businessnews?view=page&page=',
+# page, '&pageSize=10')) %>%
 # 				httr::content(.) %>%
 # 				rvest::html_node(., 'div.column1')
 # 			
@@ -293,14 +369,4 @@ pulled_data %>%
 # 		ggplot(.) +
 # 		geom_line(aes(x = date, y = sentimentIndexLagged))
 # 	
-# 	
-# 	# Benfords Law
-# 	rawDf %>%
-# 		dplyr::mutate(
-# 			.,
-# 			article = paste0(article1, ' ', article2),
-# 			date = ifelse(str_detect(date, coll('EDT')) == TRUE, format(Sys.Date(), '%b %d %Y'), date),
-# 			date = as.Date(parse_date_time2(date, '%b %d %Y'))
-# 		) %>%
-# 		tidytext::unnest_tokens(., word, article) %>% dplyr::filter(., str_detect(word, '^[0-9]*$')) %>% dplyr::mutate(., start = str_sub(word, 1, 1)) %>% dplyr::group_by(., start) %>% dplyr::summarize(., n = n()) %>% ggplot(.) + geom_col(aes(x = start, y = n))
 # })
