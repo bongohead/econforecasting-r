@@ -1,16 +1,19 @@
-#' Reddit scraper (sentiment analysis)
+#' Scrape Text for Sentiment Analysis
 #' 
-#' Chek curl example for correct headers to send: https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example
-#' After token is fetched: https://www.reddit.com/dev/api
-#' Page scraping query arguments: https://www.reddit.com/dev/api#listings
+#' For Reddit:
+#' - Check curl example for correct headers to send: 
+#' - https://github.com/reddit-archive/reddit/wiki/OAuth2-Quick-Start-Example
+#' - After token is fetched: https://www.reddit.com/dev/api
+#' - Page scraping query arguments: https://www.reddit.com/dev/api#listings
 
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'sentiment-analysis-get-data'
+JOB_NAME = 'sentiment-analysis-pull-data'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = TRUE
-BACKFILL = TRUE
+BACKFILL_REDDIT = TRUE
+BACKFILL_REUTERS = TRUE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -56,6 +59,7 @@ if (RESET_SQL) {
 	dbExecute(
 		db,
 		'CREATE TABLE sentiment_analysis_scrape_reddit (
+		id SERIAL PRIMARY KEY,
 		method VARCHAR(255) NOT NULL,
 		name VARCHAR(255) NOT NULL,
 		subreddit VARCHAR(255) NOT NULL,
@@ -68,7 +72,7 @@ if (RESET_SQL) {
 		is_self BOOLEAN,
 		domain TEXT,
 		url_overridden_by_dest TEXT,
-		PRIMARY KEY (method, name)
+		UNIQUE (method, name)
 		)'
 	)
 		
@@ -247,7 +251,7 @@ local({
 	
 ## Top (By Board, Year) --------------------------------------------------------
 local({
-if (BACKFILL == TRUE) {
+if (BACKFILL_REDDIT == TRUE) {
 	
 	message(str_glue('*** Pulling Top By Board (Old): {format(now(), "%H:%M")}'))
 	
@@ -386,10 +390,13 @@ local({
 	dbExecute(
 		db,
 		'CREATE TABLE sentiment_analysis_scrape_reuters (
+		id SERIAL PRIMARY KEY,
+		method VARCHAR(255) NOT NULL,
 		title TEXT NOT NULL,
+		created_dt DATE NOT NULL,
 		description TEXT NOT NULL,
-		created DATE NOT NULL,
-		scraped_dttm TIMESTAMP WITH TIME ZONE NOT NULL
+		scraped_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
+		UNIQUE (method, title, created_dt)
 		)'
 	)
 	
@@ -400,10 +407,10 @@ local({
 	
 	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
 	
-	scraped_dates = dbGetQuery(db, 'SELECT MAX(created) FROM sentiment_analysis_scrape_reuters')$date
+	page_to = {if (BACKFILL_REUTERS == TRUE) 3000 else 20}
 	
 	reuters_data =
-		reduce(1:3000, function(accum, page) {
+		reduce(1:page_to, function(accum, page) {
 			
 			if (page %% 20 == 1) message('Downloading data for page ', page)
 			
@@ -429,10 +436,14 @@ local({
 				) %>%
 				bind_rows(accum, .)
 			
-			if (any(as_date(res$created) %in% as_date(scraped_dates))) return(done(res))
 			return(res)
 		}, .init = tibble()) %>%
-		filter(., !created %in% scraped_dates)
+		transmute(
+			.,
+			method = 'business', title, created_dt = created, description, scraped_dttm = now('America/New_York')
+			) %>%
+		# Duplicates can be caused by shifting pages
+		distinct(., title, created_dt, .keep_all = T)
 	
 	reuters <<- list()
 	reuters$data <<- reuters_data
@@ -452,7 +463,13 @@ local({
 		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
-			create_insert_query(x) %>%
+			create_insert_query(
+				x,
+				'sentiment_analysis_scrape_reuters',
+				'ON CONFLICT (method, title, created_dt) DO UPDATE SET
+				description=EXCLUDED.description,
+				scraped_dttm=EXCLUDED.scraped_dttm'
+				) %>%
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
