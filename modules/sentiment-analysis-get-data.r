@@ -26,6 +26,7 @@ library(econforecasting)
 library(tidyverse)
 library(data.table)
 library(httr)
+library(rvest)
 library(RCurl)
 library(DBI)
 library(RPostgres)
@@ -59,8 +60,8 @@ if (RESET_SQL) {
 		name VARCHAR(255) NOT NULL,
 		subreddit VARCHAR(255) NOT NULL,
 		title TEXT NOT NULL,
-		created_dttm TIMESTAMP NOT NULL,
-		scraped_dttm TIMESTAMP NOT NULL,
+		created_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
+		scraped_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
 		selftext TEXT,
 		upvote_ratio NUMERIC(4, 2),
 		ups NUMERIC(20, 0),
@@ -142,12 +143,12 @@ local({
 		}
 		
 		}, .init = tibble()) %>%
-		mutate(., created = as_datetime(created)) %>%
+		mutate(., created = with_tz(as_datetime(created), 'America/New_York')) %>%
 		transmute(
 			.,
 			method = 'top_1000_today_all', name,
 			subreddit, title, 
-			created_dttm = created, scraped_dttm = now(),
+			created_dttm = created, scraped_dttm = now('America/New_York'),
 			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
 			)
 	
@@ -224,7 +225,7 @@ local({
 			}
 			
 			}, .init = data.table()) %>%
-			.[, created := as_datetime(created)] %>%
+			.[, created := with_tz(as_datetime(created), 'America/New_York')] %>%
 			return(.)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
@@ -232,7 +233,7 @@ local({
 			.,
 			method = 'top_200_today_by_board', name,
 			subreddit, title, 
-			created_dttm = created, scraped_dttm = now(),
+			created_dttm = created, scraped_dttm = now('America/New_York'),
 			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
 		)
 	
@@ -292,7 +293,7 @@ if (BACKFILL == TRUE) {
 			}
 			
 			}, .init = data.table()) %>%
-			.[, created := as_datetime(created)] %>%
+			.[, created := with_tz(as_datetime(created), 'America/New_York')] %>%
 			return(.)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
@@ -300,7 +301,7 @@ if (BACKFILL == TRUE) {
 			.,
 			method = 'top_1000_old_by_board', name,
 			subreddit, title, 
-			created_dttm = created, scraped_dttm = now(),
+			created_dttm = created, scraped_dttm = now('America/New_York'),
 			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
 		)
 	
@@ -317,7 +318,7 @@ if (BACKFILL == TRUE) {
 })
 
 
-## SQL Data --------------------------------------------------------
+## Store --------------------------------------------------------
 local({
 	
 	message(str_glue('*** Sending Reddit Data to SQL: {format(now(), "%H:%M")}'))
@@ -329,7 +330,8 @@ local({
 		reddit$data %>%
 		bind_rows(.) %>%
 		as_tibble(.) %>%
-		mutate(., across(where(is.POSIXt), as.character)) %>%
+		# Format into SQL Standard style https://www.postgresql.org/docs/9.1/datatype-datetime.html
+		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
@@ -358,7 +360,7 @@ local({
 	create_insert_query(
 		tribble(
 			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'composite-model', today(), 'job-success',
+			JOB_NAME, 'sentiment-analysis-pull-reddit', today(), 'job-success',
 			toJSON(list(rows_added = final_count - initial_count))
 		),
 		'job_logs',
@@ -368,71 +370,104 @@ local({
 	
 })
 
-# News --------------------------------------------------------
+# Reuters --------------------------------------------------------
 
-## Reuters --------------------------------------------------------
+## Reset SQL --------------------------------------------------------
 local({
 	
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_reuters CASCADE')
+	
+	dbExecute(
+		db,
+		'CREATE TABLE sentiment_analysis_scrape_reuters (
+		title TEXT NOT NULL,
+		description TEXT NOT NULL,
+		created DATE NOT NULL,
+		scraped_dttm TIMESTAMP WITH TIME ZONE NOT NULL
+		)'
+	)
+	
+})
+
+## Pull Data --------------------------------------------------------
+local({
+	
+	scraped_dates = dbGetQuery(db, 'SELECT MAX(created) FROM sentiment_analysis_scrape_reuters')$date
 	
 	reuters_data =
-		# Iterate through pages
-		# Go up to 3000
-		purrr::reduce(1:3000, function(accum, page) {
+		reduce(1:3000, function(accum, page) {
 			#if (page %% 20 == 1)
 			message('Downloading data for page ', page)
-			pageContent =
-				httr::GET(paste0('https://www.reuters.com/news/archive/businessnews?view=page&page=',
-												 page, '&pageSize=10')) %>%
-				httr::content(.) %>%
-				rvest::html_node(., 'div.column1')
+			page_content =
+				GET(paste0(
+					'https://www.reuters.com/news/archive/businessnews?view=page&page=',
+					 page, '&pageSize=10'
+					)) %>%
+				content(.) %>%
+				html_node(., 'div.column1')
 			
 			res =
 				tibble(
 					page = page,
-					article1 = html_text(html_nodes(pageContent, 'h3.story-title'), trim = TRUE),
-					article2 = html_text(html_nodes(pageContent, 'div.story-content > p'), trim = TRUE),
-					date = html_text(html_nodes(pageContent, 'span.timestamp'), trim = TRUE)
+					title = html_text(html_nodes(page_content, 'h3.story-title'), trim = TRUE),
+					description = html_text(html_nodes(page_content, 'div.story-content > p'), trim = TRUE),
+					created = html_text(html_nodes(page_content, 'span.timestamp'), trim = TRUE)
 				) %>%
 				mutate(
 					.,
-					date = ifelse(str_detect(date, coll('EDT')) == TRUE, format(Sys.Date(), '%b %d %Y'), date),
-					date = as.Date(parse_date_time2(date, '%b %d %Y'))
+					created = ifelse(str_detect(created, 'am |pm '), format(today(), '%b %d %Y'), created),
+					created = as_date(parse_date_time2(created, '%b %d %Y'))
 				) %>%
 				bind_rows(accum, .)
 			
-			if (any(as.Date(res$date) %in% sentMeta$date)) return(done(res))
+			if (any(as_date(res$created) %in% as_date(scraped_dates))) return(done(res))
 			return(res)
 		}, .init = tibble()) %>%
-		dplyr::filter(., date < as.Date(Sys.Date()) & !date %in% sentMeta$date)
+		filter(., !created %in% scraped_dates)
 	
+	reuters <<- list()
+	reuters$data <<- reuters_data
 })
 
+## Store --------------------------------------------------------
+local({
+	
+	message(str_glue('*** Sending Reuters Data to SQL: {format(now(), "%H:%M")}'))
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_reuters')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		reuters$data %>%
+		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
+		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(x) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_reuters')$count)
+	message('***** Rows Added: ', final_count - initial_count)
+	
+	create_insert_query(
+		tribble(
+			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
+			JOB_NAME, 'sentiment-analysis-pull-reuters', today(), 'job-success',
+			toJSON(list(rows_added = final_count - initial_count))
+		),
+		'job_logs',
+		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
+		) %>%
+		dbExecute(db, .)
+})
 
 
 
 
 # Finalize --------------------------------------------------------
 
-## Send to SQL --------------------------------------------------------
-local({
-	
-	if (RESET_SQL == TRUE) {
-		dbExecute(
-			db,
-			'CREATE TABLE sentiment_analysis_raw_reddit (
-			vdate DATE NOT NULL,
-			form VARCHAR(50) NOT NULL,
-			freq CHAR(1) NOT NULL,
-			varname VARCHAR(50) NOT NULL,
-			date DATE NOT NULL,
-			value NUMERIC(20, 4) NOT NULL,
-			created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (vdate, form, freq, varname, date),
-			CONSTRAINT forecast_hist_values_fk FOREIGN KEY (varname)
-				REFERENCES forecast_variables (varname) ON DELETE CASCADE ON UPDATE CASCADE
-			)'
-		)
-	}
-	
-})
-
+## Close Connections --------------------------------------------------------
+dbDisconnect(db)
+message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
