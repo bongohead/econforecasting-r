@@ -44,9 +44,9 @@ db = dbConnect(
 	password = CONST$DB_PASSWORD
 )
 
-# Get Data ----------------------------------------------------------------
+# Reddit ----------------------------------------------------------------
 
-## Reddit Token --------------------------------------------------------
+## Token --------------------------------------------------------
 token =
 	POST(
 		'https://www.reddit.com/api/v1/access_token',
@@ -66,59 +66,100 @@ token =
 	httr::content(., 'parsed') %>%
 	.$access_token
 
-## Pull Data --------------------------------------------------------
+## Top (All) --------------------------------------------------------
+top_1000_today_all = reduce(1:10, function(accum, i) {
+	
+	query =
+		list(t = 'day', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
+		compact(.) %>%
+		paste0(names(.), '=', .) %>%
+		paste0(collapse = '&')
+
+	http_result = GET(
+		paste0('https://oauth.reddit.com/top?', query),
+		add_headers(c(
+			'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
+			'Authorization' = paste0('bearer ', token)
+			))
+		)
+	
+	calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
+	reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
+	if (calls_remaining == 0) Sys.sleep(reset_seconds)
+	message(str_glue('Calls Remaining: {calls_remaining} | Seconds to Reset: {reset_seconds}s'))
+	result = content(http_result, 'parsed')
+	if (is.null(result$data$after)) message('***** WARNING: MISSING AFTER')
+	
+	parsed =
+		lapply(result$data$children, function(y) 
+			y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
+		) %>%
+		bind_rows(.) %>%
+		select(., any_of(c(
+			'name', # Unique identifier
+			'subreddit', 'selftext', 'title', 'upvote_ratio', 'ups',
+			'score', 'is_self', 'created', 'domain', 'url_overridden_by_dest'
+		))) %>%
+		bind_cols(i = i, after = result$data$after %||% NA, .)
+		
+	bind_rows(accum, parsed)
+	}, .init = tibble()) %>%
+	mutate(., created = as_datetime(created)) %>%
+	transmute(
+		.,
+		method = 'top_1000_today_all',
+		scraped = now(),
+		name, subreddit,
+		selftext, title, upvote_ratio, ups, score, is_self, created, domain, url_overridden_by_dest
+		)
+
+## Top (By Board) --------------------------------------------------------
 scrape_boards = tribble(
 	~ board, ~ category,
 	'news', 'News',
 	'worldnews', 'News',
+	'politics', 'News',
 	'jobs', 'Labor Market',
+	'careerguidance', 'Labor Market',
+	'personalfinance', 'Labor Market',
 	'Economics', 'Financial Markets',
 	'investing', 'Financial Markets',
 	'wallstreetbets', 'Financial Markets',
 	'StockMarket', 'Financial Markets',
 	'AskReddit', 'General',
 	'pics', 'General',
-	'videos', 'General'
+	'videos', 'General',
+	'funny', 'General'
 	)
 
-pulled_data = lapply(scrape_boards$board, function(board) {
+top_200_today_by_board = lapply(scrape_boards$board, function(board) {
 	
-	message('***** Pull for: ', board)
+	message('*** Pull for: ', board)
 	
 	# Only top possible for top
-	reduce(1:10, function(accum, i) {
+	reduce(1:2, function(accum, i) {
 		
 		message('***** Pull ', i)
-		query = list(
-			t = 'year',
-			# g = 'GLOBAL',
-			limit = 100,
-			show = 'all',
-			after = {if (i == 1) NULL else tail(accum, 1)$after}
-			) %>%
+		query =
+			list(t = 'day', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
 			compact(.) %>%
 			paste0(names(.), '=', .) %>%
 			paste0(collapse = '&')
 		
 		# message(query)
-		
-		http_result =
-			GET(
-				paste0('https://oauth.reddit.com/r/', board, '/top?', query),
-				add_headers(c(
-					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
-					'Authorization' = paste0('bearer ', token)
-					))
-				)
+		http_result = GET(
+			paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+			add_headers(c(
+				'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
+				'Authorization' = paste0('bearer ', token)
+				))
+			)
 		
 		calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
 		reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
 		if (calls_remaining == 0) Sys.sleep(reset_seconds)
-		message(str_glue('Calls Remaining: {calls_remaining} | Seconds to Reset: {reset_seconds}s'))
-	
 		result = content(http_result, 'parsed')
-		if (is.null(result$data$after)) message('***** WARNING: MISSING AFTER')
-		
+
 		parsed =
 			lapply(result$data$children, function(y) 
 				y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
@@ -128,31 +169,126 @@ pulled_data = lapply(scrape_boards$board, function(board) {
 				'name', # Unique identifier
 				'subreddit', 'selftext', 'title', 'upvote_ratio', 'ups',
 				'score', 'is_self', 'created', 'domain', 'url_overridden_by_dest'
-				))) %>%
+			))) %>%
 			as.data.table(.) %>%
 			.[, i := i] %>%
 			.[, after := result$data$after %||% NA]
 		
-		rbindlist(list(accum, parsed), fill = TRUE)
+		if (is.null(result$data$after)) {
+			message('----- Break, missing AFTER')
+			return(done(rbindlist(list(accum, parsed), fill = TRUE)))
+		} else {
+			return(rbindlist(list(accum, parsed), fill = TRUE))
+		}
 		
 		}, .init = data.table()) %>%
-		.[, created_dttm := as_datetime(created)] %>%
-		.[, created_date := as_date(created_dttm)] %>%
-		.[, created := NULL] %>%
+		.[, created := as_datetime(created)] %>%
 		return(.)
 	}) %>%
-	rbindlist(., fill = T)
+	rbindlist(., fill = TRUE) %>%
+	transmute(
+		.,
+		method = 'top_200_today_by_board',
+		scraped = now(),
+		name, subreddit,
+		selftext, title, upvote_ratio, ups, score, is_self, created, domain, url_overridden_by_dest
+		)
+	
+## Top (By Board, Year) --------------------------------------------------------
+if (BACKFILL = TRUE) {
+	top_1000_old_by_board = lapply(scrape_boards$board, function(board) {
+		
+		message('*** Pull for: ', board)
+		
+		# Only top possible for top
+		reduce(1:10, function(accum, i) {
+			
+			message('***** Pull ', i)
+			query =
+				list(t = 'year', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
+				compact(.) %>%
+				paste0(names(.), '=', .) %>%
+				paste0(collapse = '&')
+			
+			http_result = GET(
+				paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+				add_headers(c(
+					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
+					'Authorization' = paste0('bearer ', token)
+				))
+			)
+			
+			calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
+			reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
+			if (calls_remaining == 0) Sys.sleep(reset_seconds)
+			result = content(http_result, 'parsed')
+			
+			parsed =
+				lapply(result$data$children, function(y) 
+					y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
+				) %>%
+				rbindlist(., fill = T) %>%
+				select(., any_of(c(
+					'name', # Unique identifier
+					'subreddit', 'selftext', 'title', 'upvote_ratio', 'ups',
+					'score', 'is_self', 'created', 'domain', 'url_overridden_by_dest'
+				))) %>%
+				as.data.table(.) %>%
+				.[, i := i] %>%
+				.[, after := result$data$after %||% NA]
+			
+			if (is.null(result$data$after)) {
+				message('----- Break, missing AFTER')
+				return(done(rbindlist(list(accum, parsed), fill = TRUE)))
+			} else {
+				return(rbindlist(list(accum, parsed), fill = TRUE))
+			}
+			
+			}, .init = data.table()) %>%
+			.[, created := as_datetime(created)] %>%
+			return(.)
+		}) %>%
+		rbindlist(., fill = TRUE) %>%
+		transmute(
+			.,
+			method = 'top_1000_old_by_board',
+			scraped = now(),
+			name, subreddit,
+			selftext, title, upvote_ratio, ups, score, is_self, created, domain, url_overridden_by_dest
+		)
+	
+	# Verify no duplicated after posts
+	pulled_data %>%
+		group_by(., subreddit, i) %>%
+		summarize(., uniq_after = paste0(unique(after), collapse = ','), .groups = 'drop') %>%
+		print(., n = 20)
+	
+	# Verify no duplicated unique posts (name should be unique)
+	pulled_data %>%
+		as_tibble(.) %>%
+		group_by(., name) %>%
+		summarize(., n = n()) %>%
+		arrange(., desc(n)) %>%
+		print(.)
+}
 
-# Verify no duplicated after posts
-pulled_data %>%
-	group_by(., subreddit, i) %>%
-	summarize(., uniq_after = paste0(unique(after), collapse = ','))
+## Consolidate 
 
-# Verify no duplicated unique posts (name should be unique)
-pulled_data %>%
-	as_tibble(.) %>%
-	group_by(., name) %>%
-	summarize(., n = n())
+
+
+# News --------------------------------------------------------
+
+## Reuters --------------------------------------------------------
+
+
+
+
+
+
+# Finalize --------------------------------------------------------
+
+## Send to SQL --------------------------------------------------------
+
 
 ## BERT Analysis --------------------------------------------------------
 happytransformer = import('happytransformer')
@@ -166,7 +302,6 @@ fwrite(set_names(pulled_data[, 'title'], 'text'), file.path(tempdir(), 'text.csv
 classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
 
 bert_result = data.table(
-	i = 1:nrow(pulled_data),
 	bert_label = map_chr(classified_text, ~ .$label),
 	bert_score = map_chr(classified_text, ~ .$score)
 	)[, bert_label := ifelse(bert_label == 'POSITIVE', 1, -1)]
@@ -199,14 +334,18 @@ dict_result =
 	.[, dict_score := ifelse(dict_score >= 0, 1, -1)] 
 
 ## Score Analysis --------------------------------------------------------
-
-pulled_data %>%
+scored_data =
+	pulled_data %>%
 	merge(., dict_result, all.x = T) %>%
-	.[, list(mean_score = mean(dict_score, na.rm = T)), by = 'created_date'] %>%
-	.[order(created_date)] %>%
-	.[, score_date := 1:nrow(.)] %>%
+	bind_cols(., bert_result[, c('bert_label', 'bert_score')])
+
+
+scored_data %>%
+	.[, list(score = mean(bert_label, na.rm = T)), by = c('created_date', 'subreddit')] %>%
+	.[order(subreddit, created_date)] %>%
+	.[, score := frollmean(score, n = 30, fill = NA), by = 'subreddit'] %>%
 	ggplot(.) +
-	geom_line(aes(x = created_date, y = mean_score))
+	geom_line(aes(x = created_date, y = score, color = subreddit))
 	
 	# .[, created_dttm := as_datetime(created)] %>%
 	# 	.[, created_date := as_date(created_dttm)] %>%
