@@ -103,6 +103,8 @@ local({
 ## Top (All) --------------------------------------------------------
 local({
 	
+	message(str_glue('*** Pulling Top All: {format(now(), "%H:%M")}'))
+	
 	top_1000_today_all = reduce(1:9, function(accum, i) {
 		
 		query =
@@ -157,6 +159,8 @@ local({
 
 ## Top (By Board) --------------------------------------------------------
 local({
+	
+	message(str_glue('*** Pulling Top By Board: {format(now(), "%H:%M")}'))
 	
 	scrape_boards = tribble(
 		~ board, ~ category,
@@ -244,6 +248,8 @@ local({
 ## Top (By Board, Year) --------------------------------------------------------
 local({
 if (BACKFILL == TRUE) {
+	
+	message(str_glue('*** Pulling Top By Board (Old): {format(now(), "%H:%M")}'))
 	
 	top_1000_old_by_board = lapply(reddit$scrape_boards$board, function(board) {
 		
@@ -392,12 +398,15 @@ local({
 ## Pull Data --------------------------------------------------------
 local({
 	
+	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
+	
 	scraped_dates = dbGetQuery(db, 'SELECT MAX(created) FROM sentiment_analysis_scrape_reuters')$date
 	
 	reuters_data =
 		reduce(1:3000, function(accum, page) {
-			#if (page %% 20 == 1)
-			message('Downloading data for page ', page)
+			
+			if (page %% 20 == 1) message('Downloading data for page ', page)
+			
 			page_content =
 				GET(paste0(
 					'https://www.reuters.com/news/archive/businessnews?view=page&page=',
@@ -462,9 +471,6 @@ local({
 		) %>%
 		dbExecute(db, .)
 })
-
-
-
 
 # Finalize --------------------------------------------------------
 
