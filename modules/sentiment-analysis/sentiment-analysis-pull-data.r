@@ -11,9 +11,9 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'sentiment-analysis-pull-data'
 EF_DIR = Sys.getenv('EF_DIR')
-RESET_SQL = TRUE
+RESET_SQL = FALSE
 BACKFILL_REDDIT = TRUE
-BACKFILL_REUTERS = TRUE
+BACKFILL_REUTERS = FALSE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
