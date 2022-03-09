@@ -88,7 +88,8 @@ local({
 	# Pull data NULL
 	unscored_bert = dbGetQuery(db,
 		"(
-			SELECT 'reddit' AS source, reddit1.id, reddit1.title AS text
+			SELECT
+				'reddit' AS source, reddit1.id, reddit1.title AS text_part_title, reddit1.selftext as text_part_content
 			FROM sentiment_analysis_scrape_reddit reddit1
 			LEFT JOIN 
 				(
@@ -99,7 +100,8 @@ local({
 		)
 		UNION ALL
 		(
-			SELECT 'reuters' AS source, reuters1.id, reuters1.description AS text
+			SELECT 
+				'reuters' AS source, reuters1.id, reuters1.title AS text_part_title, reuters1.description AS text_part_content
 			FROM sentiment_analysis_scrape_reuters reuters1
 			LEFT JOIN 
 				(
@@ -107,12 +109,15 @@ local({
 				) reuters2
 				ON reuters1.id = reuters2.scrape_id
 			WHERE reuters2.scrape_id IS NULL
-		)") %>% as_tibble(.)
+		)") %>%
+		as_tibble(.) %>%
+		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
 	
 	
 	unscored_dict = dbGetQuery(db,
 		"(
-			SELECT 'reddit' AS source, reddit1.id, reddit1.title AS text
+			SELECT
+				'reddit' AS source, reddit1.id, reddit1.title AS text_part_title, reddit1.selftext as text_part_content
 			FROM sentiment_analysis_scrape_reddit reddit1
 			LEFT JOIN 
 				(
@@ -123,7 +128,8 @@ local({
 		)
 		UNION ALL
 		(
-			SELECT 'reuters' AS source, reuters1.id, reuters1.description AS text
+			SELECT
+				'reuters' AS source, reuters1.id, reuters1.title AS text_part_title, reuters1.description AS text_part_content
 			FROM sentiment_analysis_scrape_reuters reuters1
 			LEFT JOIN 
 				(
@@ -131,7 +137,9 @@ local({
 				) reuters2
 				ON reuters1.id = reuters2.scrape_id
 			WHERE reuters2.scrape_id IS NULL
-		)") %>% as_tibble(.)
+		)") %>%
+		as_tibble(.) %>%
+		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
 	
 	unscored_bert <<- unscored_bert
 	unscored_dict <<- unscored_dict
@@ -172,8 +180,8 @@ local({
 		
 		result =
 			x %>%
-			.[, c('id', 'text')] %>% # Name is the unique post identifier
-			tidytext::unnest_tokens(., word, text) %>%
+			.[, c('id', 'text_part_all_text')] %>% # Name is the unique post identifier
+			tidytext::unnest_tokens(., word, text_part_all_text) %>%
 			.[!word %chin% stop_words$word]  %>%
 			merge(., dict, by = 'word', all = F, allow.cartesian = T) %>%
 			.[, list(score = sum(sentiment)/.N), by = 'id'] %>%
@@ -183,14 +191,22 @@ local({
 			
 		sql_data =
 			result %>%
-			transmute(., scrape_id = id, score_model = 'DICT', score = score, score_conf = NULL, scored_dttm = now()) %>%
+			transmute(
+				.,
+				scrape_id = id,
+				text_part = 'all_text',
+				score_model = 'DICT',
+				score,
+				score_conf = NULL,
+				scored_dttm = now()
+				) %>%
 			mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z')))
 
 		sql_data %>%
 			create_insert_query(
 				.,
 				paste0('sentiment_analysis_score_', x$source[[1]]),
-				'ON CONFLICT (scrape_id, score_model) DO UPDATE SET
+				'ON CONFLICT (scrape_id, text_part, score_model) DO UPDATE SET
 					score=EXCLUDED.score,
 					score_conf=EXCLUDED.score_conf,
 					scored_dttm=EXCLUDED.scored_dttm'
@@ -215,6 +231,7 @@ local({
 	batches =
 		unscored_bert %>%
 		as.data.table(.) %>%
+		.[, text_part_all_text := str_sub(text_part_all_text, 1, 2000)] %>%
 		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
 		split(., by = c('source', 'split'), .keep = FALSE)
 	
@@ -223,7 +240,7 @@ local({
 		
 		message('***** BERT Scoring Batch ', i, ' of ', length(batches))
 		
-		fwrite(x[, 'text'], file.path(tempdir(), 'text.csv'))
+		fwrite(set_names(x[, 'text_part_all_text'], 'text'), file.path(tempdir(), 'text.csv'))
 		classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
 		
 		result = data.table(
@@ -236,14 +253,22 @@ local({
 		
 		sql_data =
 			result %>%
-			transmute(., scrape_id, score_model = 'DISTILBERT', score, score_conf, scored_dttm = now()) %>%
+			transmute(
+				.,
+				scrape_id,
+				text_part = 'all_text',
+				score_model = 'DISTILBERT',
+				score,
+				score_conf,
+				scored_dttm = now()
+				) %>%
 			mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z')))
 		
 		sql_data %>%
 			create_insert_query(
 				.,
 				paste0('sentiment_analysis_score_', x$source[[1]]),
-				'ON CONFLICT (scrape_id, score_model) DO UPDATE SET
+				'ON CONFLICT (scrape_id, text_part, score_model) DO UPDATE SET
 					score=EXCLUDED.score,
 					score_conf=EXCLUDED.score_conf,
 					scored_dttm=EXCLUDED.scored_dttm'
