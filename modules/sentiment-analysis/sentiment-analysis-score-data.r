@@ -53,11 +53,12 @@ if (RESET_SQL) {
 		db,
 		'CREATE TABLE sentiment_analysis_score_reddit (
 		scrape_id INT NOT NULL,
+		text_part VARCHAR(255) NOT NULL,
 		score_model VARCHAR(255) NOT NULL, 
 		score INT NOT NULL,
 		score_conf DECIMAL(20, 4) NULL,
 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
-		PRIMARY KEY (scrape_id, score_model),
+		PRIMARY KEY (scrape_id, text_part, score_model),
 		CONSTRAINT sentiment_analysis_scrape_reddit_fk FOREIGN KEY (scrape_id)
 				REFERENCES sentiment_analysis_scrape_reddit (id) ON DELETE CASCADE ON UPDATE CASCADE
 		)'
@@ -67,11 +68,12 @@ if (RESET_SQL) {
 		db,
 		'CREATE TABLE sentiment_analysis_score_reuters (
 		scrape_id INT NOT NULL,
+		text_part VARCHAR(255) NOT NULL,
 		score_model VARCHAR(255) NOT NULL, 
 		score INT NOT NULL,
 		score_conf DECIMAL(20, 4) NULL,
 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
-		PRIMARY KEY (scrape_id, score_model),
+		PRIMARY KEY (scrape_id, text_part, score_model),
 		CONSTRAINT sentiment_analysis_score_reuters_fk FOREIGN KEY (scrape_id)
 				REFERENCES sentiment_analysis_scrape_reuters (id) ON DELETE CASCADE ON UPDATE CASCADE
 		)'
