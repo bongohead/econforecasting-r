@@ -12,7 +12,7 @@
 JOB_NAME = 'sentiment-analysis-pull-data'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
-BACKFILL_REDDIT = TRUE
+BACKFILL_REDDIT = FALSE
 BACKFILL_REUTERS = FALSE
 
 ## Cron Log ----------------------------------------------------------
@@ -178,10 +178,12 @@ local({
 		'investing', 'Financial Markets',
 		'wallstreetbets', 'Financial Markets',
 		'StockMarket', 'Financial Markets',
+		'stocks', 'Financial Markets',
 		'AskReddit', 'General',
 		'pics', 'General',
 		'videos', 'General',
-		'funny', 'General'
+		'funny', 'General',
+		'dogs', 'Other'
 		)
 	
 	top_200_today_by_board = lapply(scrape_boards$board, function(board) {
