@@ -12,7 +12,7 @@
 JOB_NAME = 'sentiment-analysis-pull-data'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
-BACKFILL_REDDIT = FALSE
+BACKFILL_REDDIT = TRUE
 BACKFILL_REUTERS = FALSE
 
 ## Cron Log ----------------------------------------------------------
@@ -251,9 +251,8 @@ local({
 	reddit$data$top_200_today_by_board <<- top_200_today_by_board
 })
 	
-## Top (By Board, Year) --------------------------------------------------------
+## Top (By Board, Month) --------------------------------------------------------
 local({
-if (BACKFILL_REDDIT == TRUE) {
 	
 	message(str_glue('*** Pulling Top By Board (Old): {format(now(), "%H:%M")}'))
 	
@@ -326,7 +325,7 @@ if (BACKFILL_REDDIT == TRUE) {
 		print(.)
 	
 	reddit$data$top_1000_month_by_board <<- top_1000_month_by_board
-}
+	
 })
 
 ## Top (By Board, Year) --------------------------------------------------------
