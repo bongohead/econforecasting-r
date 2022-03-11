@@ -103,69 +103,103 @@ local({
 		) %>%
 		as_tibble(.) 
 
+	reddit_scored <<- reddit_scored
+	reuters_scored <<- reuters_scored
 })
 
 
-reddit_scored %>%
-	group_by(., subreddit) %>%
-	mutate(., subreddit_count = n()) %>%
-	filter(., subreddit_count >= 500) %>%
-	ungroup(.) %>%
-	group_by(., created_dt, subreddit) %>%
-	summarize(., mean_score = mean(score), .groups = 'drop') %>% 
-	group_split(., subreddit) %>%
-	map_dfr(., function(x)
-		left_join(
-			tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
-			x,
-			by = 'created_dt'
+## Plot By Board -----------------------------------------------------------
+local({
+	
+	plot =
+		reddit_scored %>%
+		group_by(., subreddit) %>%
+		mutate(., subreddit_count = n()) %>%
+		filter(., subreddit_count >= 1000 & created_dt >= as_date('2022-02-01')) %>%
+		ungroup(.) %>%
+		group_by(., created_dt, subreddit) %>%
+		summarize(., mean_score = mean(score), .groups = 'drop') %>% 
+		group_split(., subreddit) %>%
+		map_dfr(., function(x)
+			left_join(
+				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
+				x,
+				by = 'created_dt'
+				) %>%
+				mutate(., subreddit = x$subreddit[[1]], mean_score = coalesce(mean_score, 0)) %>%
+				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
 			) %>%
-			mutate(., subreddit = x$subreddit[[1]], mean_score = coalesce(mean_score, 0)) %>%
-			mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
+		ggplot(.) + 
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = subreddit))
+	
+	print(plot)
+	subreddit_plot <<- plot
+})
+
+
+
+## Plot By Category --------------------------------------------------------
+local({
+	
+	board_mapping = tribble(
+		~ subreddit, ~ category,
+		'news', 'News',
+		'worldnews', 'News',
+		'politics', 'News',
+		'jobs', 'Labor Market',
+		'careerguidance', 'Labor Market',
+		'personalfinance', 'Labor Market',
+		'Economics', 'Financial Markets',
+		'investing', 'Financial Markets',
+		'wallstreetbets', 'Financial Markets',
+		'StockMarket', 'Financial Markets',
+		'stocks', 'Financial Markets',
+		'AskReddit', 'General',
+		'pics', 'General',
+		'videos', 'General',
+		'funny', 'General',
+		'dogs', 'Dog'
+		)
+	
+	input_data = 
+		reddit_scored %>%
+		filter(
+			.,
+			method %in% c('top_200_today_by_board', 'top_1000_month_by_board'),
+			score_model == 'DISTILBERT',
+			created_dt >= as_date('2022-02-10'),
+			subreddit %in% board_mapping$subreddit
+			)
+
+	# Weight each post by the relative amount of votes is got compared to the median value that day
+	input_data %>%
+		group_by(., subreddit, created_dt) %>%
+		summarize(., subreddit_mean_score = mean(ups), .groups = 'drop') %>%
+		mutate(., subreddit_mean_scored_7dlma = zoo::rollmean(subreddit_mean_score, 7, fill =  NA, na.paid, align = 'right')) %>%
+		print(., n = 100)
+		
+		
+	reddit_scored %>%
+		filter(., score_model == 'DISTILBERT' & created_dt >= as_date('2022-02-10')) %>%
+		group_by(., subreddit) %>%
+		mutate(., subreddit_median_score = mean(score)) %>%
+		inner_join(., board_mapping, by = 'subreddit') %>%
+		group_by(., created_dt, category) %>%
+		summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
+		group_split(., category) %>%
+		map_dfr(., function(x)
+			left_join(
+				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
+				x,
+				by = 'created_dt'
+			) %>%
+				mutate(., category = x$category[[1]], mean_score = coalesce(mean_score, 0)) %>%
+				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
 		) %>%
-	ggplot(.) + 
-	geom_line(aes(x = created_dt, y = mean_score_7dma, color = subreddit))
+		ggplot(.) + 
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
 
-
-
-board_mapping = tribble(
-	~ subreddit, ~ category,
-	'news', 'News',
-	'worldnews', 'News',
-	'politics', 'News',
-	'jobs', 'Labor Market',
-	'careerguidance', 'Labor Market',
-	# 'personalfinance', 'Labor Market',
-	'Economics', 'Financial Markets',
-	'investing', 'Financial Markets',
-	'wallstreetbets', 'Financial Markets',
-	'StockMarket', 'Financial Markets',
-	'stocks', 'Financial Markets',
-	'AskReddit', 'General',
-	'pics', 'General',
-	'videos', 'General',
-	'funny', 'General',
-	'dogs', 'Dog'
-)
-
-reddit_scored %>%
-	filter(., score_model == 'DISTILBERT') %>%
-	inner_join(., board_mapping, by = 'subreddit') %>%
-	group_by(., created_dt, category) %>%
-	summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
-	group_split(., category) %>%
-	map_dfr(., function(x)
-		left_join(
-			tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
-			x,
-			by = 'created_dt'
-		) %>%
-			mutate(., category = x$category[[1]], mean_score = coalesce(mean_score, 0)) %>%
-			mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
-	) %>%
-	ggplot(.) + 
-	geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
-
+})
 
 # Finalize --------------------------------------------------------
 
