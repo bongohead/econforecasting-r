@@ -8,7 +8,7 @@ EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
 
 ## Cron Log ----------------------------------------------------------
-if (interactive() == FALSE) {
+if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
 	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
 	sink_conn = file(sink_path, open = 'at')
 	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
@@ -161,7 +161,7 @@ reddit_scored %>%
 			by = 'created_dt'
 		) %>%
 			mutate(., category = x$category[[1]], mean_score = coalesce(mean_score, 0)) %>%
-			mutate(., mean_score_7dma = zoo::rollmean(mean_score, 30, fill = NA, na.pad = TRUE, align = 'right'))
+			mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
 	) %>%
 	ggplot(.) + 
 	geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
