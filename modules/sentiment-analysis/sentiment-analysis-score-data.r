@@ -8,7 +8,7 @@ EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
 
 ## Cron Log ----------------------------------------------------------
-if (interactive() == FALSE) {
+if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
 	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
 	sink_conn = file(sink_path, open = 'at')
 	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
@@ -231,7 +231,7 @@ local({
 	batches =
 		unscored_bert %>%
 		as.data.table(.) %>%
-		.[, text_part_all_text := str_sub(text_part_all_text, 1, 2000)] %>%
+		.[, text_part_all_text := str_sub(text_part_all_text, 1, 1000)] %>%
 		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
 		split(., by = c('source', 'split'), .keep = FALSE)
 	
