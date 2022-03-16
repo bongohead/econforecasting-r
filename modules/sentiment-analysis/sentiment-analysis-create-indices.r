@@ -3,7 +3,7 @@
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'sentiment-analysis-score-data'
+JOB_NAME = 'sentiment-analysis-create-indices'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
 
@@ -167,7 +167,7 @@ local({
 			.,
 			method %in% c('top_200_today_by_board', 'top_1000_month_by_board'),
 			score_model == 'DISTILBERT',
-			created_dt >= as_date('2022-02-10'),
+			created_dt >= as_date('2022-02-01'),
 			subreddit %in% board_mapping$subreddit
 			)
 
