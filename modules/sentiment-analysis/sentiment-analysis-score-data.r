@@ -151,7 +151,7 @@ local({
 ## Dictionary Analysis --------------------------------------------------------
 local({
 	
-	BATCH_SIZE = 5000
+	BATCH_SIZE = 10000
 	
 	dict =
 		list(
@@ -182,13 +182,17 @@ local({
 			x %>%
 			.[, c('id', 'text_part_all_text')] %>% # Name is the unique post identifier
 			tidytext::unnest_tokens(., word, text_part_all_text) %>%
-			.[!word %chin% stop_words$word]  %>%
+			# .[!word %chin% stop_words$word]  %>%
 			merge(., dict, by = 'word', all = F, allow.cartesian = T) %>%
 			.[, list(score = sum(sentiment)/.N), by = 'id'] %>%
 			.[, score := ifelse(score >= 0, 1, -1)]
 	
 		# print(result)
-			
+		if (nrow(result) == 0) {
+			message('***** No dictionary matches, skipping')
+			return()
+		}
+		
 		sql_data =
 			result %>%
 			transmute(
@@ -231,7 +235,7 @@ local({
 	batches =
 		unscored_bert %>%
 		as.data.table(.) %>%
-		.[, text_part_all_text := str_sub(text_part_all_text, 1, 1000)] %>%
+		.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
 		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
 		split(., by = c('source', 'split'), .keep = FALSE)
 	
