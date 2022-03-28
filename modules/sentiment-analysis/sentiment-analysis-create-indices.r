@@ -167,6 +167,7 @@ local({
 			.,
 			method %in% c('top_200_today_by_board', 'top_1000_month_by_board'),
 			score_model == 'DISTILBERT',
+			score_conf > .8,
 			created_dt >= as_date('2022-02-01'),
 			subreddit %in% board_mapping$subreddit
 			)

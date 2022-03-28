@@ -7,10 +7,12 @@ This code is developed locally on a Windows machine and deployed locally to an U
 ---
 # CHANGELOG
 
-## [v1.01] (Model Improvements) (2022-03-03)
+## [v1.01] (Model Improvements) (2022-04-??)
 This adds minor modeling improvements and additions. 
 - Added ICE scraper with SONIA, ESTR rates (Euribor rates delayed due to historical data issues)
 - Added Reuters scraper and Reddit API scraper for sentiment analysis
+- Added initial score analysis w/ BERT and dictionary
+- Added initial index creation
 - TBD: Add Conference Board, TD Forecasts
 
 ## [v.020 -> v1.00] (Model Modularization & Re-Release) (2022-03-02)
