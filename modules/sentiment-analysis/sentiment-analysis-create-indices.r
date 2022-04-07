@@ -168,7 +168,7 @@ local({
 			method %in% c('top_200_today_by_board', 'top_1000_month_by_board'),
 			score_model == 'DISTILBERT',
 			score_conf > .8,
-			created_dt >= as_date('2022-02-01'),
+			created_dt >= as_date('2021-02-01'),
 			subreddit %in% board_mapping$subreddit
 			)
 
@@ -180,25 +180,28 @@ local({
 		print(., n = 100)
 		
 		
-	reddit_scored %>%
-		filter(., score_model == 'DISTILBERT' & created_dt >= as_date('2022-02-10')) %>%
+	input_data %>%
 		group_by(., subreddit) %>%
-		mutate(., subreddit_median_score = mean(score)) %>%
+		mutate(., subreddit_mean_score = mean(score)) %>%
+		ungroup(.) %>%
 		inner_join(., board_mapping, by = 'subreddit') %>%
 		group_by(., created_dt, category) %>%
 		summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
+		filter(., count_posts >= 10) %>%
 		group_split(., category) %>%
 		map_dfr(., function(x)
 			left_join(
 				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
 				x,
 				by = 'created_dt'
-			) %>%
-				mutate(., category = x$category[[1]], mean_score = coalesce(mean_score, 0)) %>%
+				) %>%
+				mutate(., category = x$category[[1]], mean_score = zoo::na.locf(mean_score)) %>%
 				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
 		) %>%
 		ggplot(.) + 
-		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category)) +
+		geom_point(aes(x = created_dt, y = mean_score_7dma, color = category))
+	
 
 })
 
