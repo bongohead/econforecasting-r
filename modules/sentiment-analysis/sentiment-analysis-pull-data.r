@@ -13,7 +13,7 @@ JOB_NAME = 'sentiment-analysis-pull-data'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
 BACKFILL_REDDIT = TRUE
-BACKFILL_REUTERS = FALSE
+BACKFILL_REUTERS = TRUE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
@@ -464,20 +464,22 @@ local({
 ## Reset SQL --------------------------------------------------------
 local({
 	
-	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_reuters CASCADE')
-	
-	dbExecute(
-		db,
-		'CREATE TABLE sentiment_analysis_scrape_reuters (
-		id SERIAL PRIMARY KEY,
-		method VARCHAR(255) NOT NULL,
-		title TEXT NOT NULL,
-		created_dt DATE NOT NULL,
-		description TEXT NOT NULL,
-		scraped_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
-		UNIQUE (method, title, created_dt)
-		)'
-	)
+	if (RESET_SQL) {
+		dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_reuters CASCADE')
+		
+		dbExecute(
+			db,
+			'CREATE TABLE sentiment_analysis_scrape_reuters (
+			id SERIAL PRIMARY KEY,
+			method VARCHAR(255) NOT NULL,
+			title TEXT NOT NULL,
+			created_dt DATE NOT NULL,
+			description TEXT NOT NULL,
+			scraped_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
+			UNIQUE (method, title, created_dt)
+			)'
+		)
+	}
 	
 })
 

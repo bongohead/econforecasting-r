@@ -148,7 +148,7 @@ local({
 		'politics', 'News',
 		'jobs', 'Labor Market',
 		'careerguidance', 'Labor Market',
-		'personalfinance', 'Labor Market',
+		# 'personalfinance', 'Labor Market',
 		'Economics', 'Financial Markets',
 		'investing', 'Financial Markets',
 		'wallstreetbets', 'Financial Markets',
@@ -167,7 +167,7 @@ local({
 			.,
 			method %in% c('top_200_today_by_board', 'top_1000_month_by_board'),
 			score_model == 'DISTILBERT',
-			score_conf > .8,
+			score_conf > .7,
 			created_dt >= as_date('2021-02-01'),
 			subreddit %in% board_mapping$subreddit
 			)
@@ -180,7 +180,8 @@ local({
 		print(., n = 100)
 		
 		
-	input_data %>%
+	index_data =
+		input_data %>%
 		group_by(., subreddit) %>%
 		mutate(., subreddit_mean_score = mean(score)) %>%
 		ungroup(.) %>%
@@ -197,12 +198,13 @@ local({
 				) %>%
 				mutate(., category = x$category[[1]], mean_score = zoo::na.locf(mean_score)) %>%
 				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
-		) %>%
+		)
+	
+	index_data %>%
 		ggplot(.) + 
 		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category)) +
 		geom_point(aes(x = created_dt, y = mean_score_7dma, color = category))
 	
-
 })
 
 # Finalize --------------------------------------------------------
