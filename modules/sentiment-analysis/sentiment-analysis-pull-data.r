@@ -343,7 +343,7 @@ local({
 				
 				message('***** Pull ', i)
 				query =
-					list(t = 'month', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
+					list(t = 'year', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
 					compact(.) %>%
 					paste0(names(.), '=', .) %>%
 					paste0(collapse = '&')
