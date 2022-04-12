@@ -5,6 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'sentiment-analysis-score-rereddit'
 EF_DIR = Sys.getenv('EF_DIR')
+DUMP_DIR = file.path(EF_DIR, 'modules', 'sentiment-analysis', 'rereddit-dump')
 RESET_SQL = TRUE
 
 ## Cron Log ----------------------------------------------------------
@@ -61,13 +62,13 @@ if (RESET_SQL) {
 }
 
 ## Pull Data ----------------------------------------------------------
-scrape_boards = collect(tbl(db, sql('SELECT * FROM sentiment_analysis_reddit_boards')))
+scrape_boards = collect(tbl(db, sql('SELECT DISTINCT board FROM sentiment_analysis_reddit_boards')))[[1]]
 
 ## Scrape Data ----------------------------------------------------------
-dates =
-	seq(as_date('2021-10-11'), as_date('2021-01-01'), '-1 day') #%>%
+dates = seq(as_date('2021-10-11'), as_date('2018-01-01'), '-1 day') #%>%
 	# keep(., ~ !. %in% dbGetQuery(db, 'SELECT DISTINCT created_dt FROM sentiment_analysis_scrape_rereddit')[[1]])
 
+# This currently scrapes about 10 MB per day - dump full dataset into CSV, only matching subreddits in CSV
 iwalk(dates, function(scrape_date, i) {
 	
 	message(str_glue('Scraping {i} of {length(dates)}: {scrape_date}'))
@@ -93,6 +94,16 @@ iwalk(dates, function(scrape_date, i) {
 			content(.) %>%
 			html_nodes(., '#main div.DirectoryPost__Details')
 		
+		while (length(page_content) == 0) {
+			message('Failed, retrying ... ')
+			Sys.sleep(30)
+			page_content = 
+				str_glue('https://www.reddit.com{page_link$href}') %>%
+				GET(.) %>%
+				content(.) %>%
+				html_nodes(., '#main div.DirectoryPost__Details')
+		}
+		
 		tibble(
 			created_dt = scrape_date,
 			page_number = page_link$page,
@@ -107,7 +118,7 @@ iwalk(dates, function(scrape_date, i) {
 			created_dt,
 			page_rank,
 			page_number,
-			subreddit,
+			subreddit = str_replace(subreddit, coll('r/'), ''),
 			title,
 			ups =
 				stats %>%
@@ -117,8 +128,10 @@ iwalk(dates, function(scrape_date, i) {
 			scraped_dttm = now('America/New_York')
 		)
 	
+	fwrite(page_results, file.path(DUMP_DIR, paste0(scrape_date, '.csv')), append = F, scipen = 999)
 	
 	page_results %>%
+		filter(., subreddit %in% scrape_boards)
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
