@@ -166,26 +166,8 @@ local({
 	
 	message(str_glue('*** Pulling Top By Board: {format(now(), "%H:%M")}'))
 	
-	scrape_boards = tribble(
-		~ board, ~ category,
-		'news', 'News',
-		'worldnews', 'News',
-		'politics', 'News',
-		'jobs', 'Labor Market',
-		'careerguidance', 'Labor Market',
-		'personalfinance', 'Labor Market',
-		'Economics', 'Financial Markets',
-		'investing', 'Financial Markets',
-		'wallstreetbets', 'Financial Markets',
-		'StockMarket', 'Financial Markets',
-		'stocks', 'Financial Markets',
-		'AskReddit', 'General',
-		'pics', 'General',
-		'videos', 'General',
-		'funny', 'General',
-		'dogs', 'Other'
-		)
-	
+	scrape_boards = collect(tbl(db, sql('SELECT * FROM sentiment_analysis_reddit_boards')))
+
 	top_200_today_by_board = lapply(scrape_boards$board, function(board) {
 		
 		message('*** Pull for: ', board)

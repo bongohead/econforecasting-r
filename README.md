@@ -13,6 +13,7 @@ This adds minor modeling improvements and additions.
 - Added Reuters scraper and Reddit API scraper for sentiment analysis
 - Added initial score analysis w/ BERT and dictionary
 - Added initial index creation
+- Added sentiment model table storage
 - TBD: Add Conference Board, TD Forecasts
 
 ## [v.020 -> v1.00] (Model Modularization & Re-Release) (2022-03-02)

@@ -141,26 +141,8 @@ local({
 ## Plot By Category --------------------------------------------------------
 local({
 	
-	board_mapping = tribble(
-		~ subreddit, ~ category,
-		'news', 'News',
-		'worldnews', 'News',
-		'politics', 'News',
-		'jobs', 'Labor Market',
-		'careerguidance', 'Labor Market',
-		# 'personalfinance', 'Labor Market',
-		'Economics', 'Financial Markets',
-		'investing', 'Financial Markets',
-		'wallstreetbets', 'Financial Markets',
-		'StockMarket', 'Financial Markets',
-		'stocks', 'Financial Markets',
-		'AskReddit', 'General',
-		'pics', 'General',
-		'videos', 'General',
-		'funny', 'General',
-		'dogs', 'Dog'
-		)
-	
+	board_mapping =	collect(tbl(db, sql('SELECT board AS subreddit, category FROM sentiment_analysis_reddit_boards')))
+
 	input_data = 
 		reddit_scored %>%
 		filter(
@@ -169,7 +151,7 @@ local({
 			score_model == 'DISTILBERT',
 			score_conf > .7,
 			created_dt >= as_date('2021-02-01'),
-			subreddit %in% board_mapping$subreddit
+			subreddit %in% board_mapping$board
 			)
 
 	# Weight each post by the relative amount of votes is got compared to the median value that day
