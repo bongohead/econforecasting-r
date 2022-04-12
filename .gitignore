@@ -2,6 +2,6 @@
 .virtualenvs/
 renv/
 logs/
-output/
+rereddit-dump/
 constants.r
 Rplots.pdf
