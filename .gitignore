@@ -2,5 +2,6 @@
 .virtualenvs/
 renv/
 logs/
+output/
 constants.r
 Rplots.pdf
