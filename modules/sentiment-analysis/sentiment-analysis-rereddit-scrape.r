@@ -6,7 +6,7 @@
 JOB_NAME = 'sentiment-analysis-score-rereddit'
 EF_DIR = Sys.getenv('EF_DIR')
 DUMP_DIR = file.path(EF_DIR, 'modules', 'sentiment-analysis', 'rereddit-dump')
-RESET_SQL = TRUE
+RESET_SQL = FALSE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
@@ -66,6 +66,7 @@ scrape_boards = collect(tbl(db, sql('SELECT DISTINCT board FROM sentiment_analys
 
 ## Scrape Data ----------------------------------------------------------
 dates = seq(as_date('2021-10-11'), as_date('2018-01-01'), '-1 day') #%>%
+# dates = seq(as_date('2021-10-11'), as_date('2018-01-01'), '-1 day') #%>%
 	# keep(., ~ !. %in% dbGetQuery(db, 'SELECT DISTINCT created_dt FROM sentiment_analysis_scrape_rereddit')[[1]])
 
 # This currently scrapes about 10 MB per day - dump full dataset into CSV, only matching subreddits in CSV
