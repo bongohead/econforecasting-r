@@ -85,14 +85,26 @@ local({
 	
 	# Pull data NULL
 	reddit_scored = dbGetQuery(db,
-		"SELECT
-			'reddit' AS source, reddit1.*, reddit2.*
-		FROM sentiment_analysis_scrape_reddit reddit1
-		INNER JOIN sentiment_analysis_score_reddit reddit2
-			ON reddit1.id = reddit2.scrape_id"
+		"(
+			SELECT
+				reddit1.method AS source,
+				reddit1.subreddit, DATE(reddit1.created_dttm) AS created_dt, reddit1.ups,
+				reddit2.*
+			FROM sentiment_analysis_scrape_reddit reddit1
+			INNER JOIN sentiment_analysis_score_reddit reddit2
+				ON reddit1.id = reddit2.scrape_id
+			)
+		UNION ALL
+		(
+			SELECT
+				'rereddit' AS source, rereddit1.subreddit, rereddit1.created_dt, rereddit1.ups,
+				rereddit2.*
+			FROM sentiment_analysis_scrape_rereddit rereddit1
+			INNER JOIN sentiment_analysis_score_rereddit rereddit2
+				ON rereddit1.id = rereddit2.scrape_id
+		)"
 		) %>%
-		as_tibble(.) %>%
-		mutate(., created_dt = as_date(created_dttm))
+		as_tibble(.) 
 		
 	reuters_scored = dbGetQuery(db, 
 		"SELECT
@@ -143,24 +155,26 @@ local({
 	
 	board_mapping =	collect(tbl(db, sql('SELECT board AS subreddit, category FROM sentiment_analysis_reddit_boards')))
 
-	input_data = 
+	input_data =
 		reddit_scored %>%
 		filter(
 			.,
-			method %in% c('top_200_today_by_board', 'top_1000_month_by_board'),
+			source %in% c('top_200_today_by_board', 'top_1000_month_by_board', 'top_1000_year_by_board', 'rereddit'),
 			score_model == 'DISTILBERT',
 			score_conf > .7,
-			created_dt >= as_date('2021-02-01'),
-			subreddit %in% board_mapping$board
+			created_dt >= as_date('2020-01-01'),
+			subreddit %in% board_mapping$subreddit
 			)
 
 	# Weight each post by the relative amount of votes is got compared to the median value that day
 	input_data %>%
 		group_by(., subreddit, created_dt) %>%
 		summarize(., subreddit_mean_score = mean(ups), .groups = 'drop') %>%
-		mutate(., subreddit_mean_scored_7dlma = zoo::rollmean(subreddit_mean_score, 7, fill =  NA, na.paid, align = 'right')) %>%
+		mutate(
+			.,
+			subreddit_mean_scored_7dlma = zoo::rollmean(subreddit_mean_score, 7, fill =  NA, na.paid, align = 'right')
+			) %>%
 		print(., n = 100)
-		
 		
 	index_data =
 		input_data %>%
