@@ -84,7 +84,7 @@ iwalk(dates, function(scrape_date, i) {
 		)} %>%
 		purrr::transpose(.)
 	
-	page_results = map_dfr(page_links, function(page_link) {
+	date_results = map_dfr(page_links, function(page_link) {
 		
 		# message(page_link$page)
 		
@@ -106,11 +106,11 @@ iwalk(dates, function(scrape_date, i) {
 		
 		tibble(
 			created_dt = scrape_date,
+			page_rank = 1:length(page_content),
 			page_number = page_link$page,
 			subreddit = page_content %>% html_nodes(., '.DirectoryPost__Subreddit') %>% html_text(.),
 			title = page_content %>% html_nodes(., '.DirectoryPost__Title') %>% html_text(.),
-			stats = page_content %>% html_nodes(., '.DirectoryPost__Stats') %>% html_text(.),
-			page_rank = 1:length(page_content)
+			stats = page_content %>% html_nodes(., '.DirectoryPost__Stats') %>% html_text(.)
 			)
 		}) %>%
 		transmute(
@@ -128,10 +128,10 @@ iwalk(dates, function(scrape_date, i) {
 			scraped_dttm = now('America/New_York')
 		)
 	
-	fwrite(page_results, file.path(DUMP_DIR, paste0(scrape_date, '.csv')), append = F, scipen = 999)
+	fwrite(date_results, file.path(DUMP_DIR, paste0(scrape_date, '.csv')), append = F, scipen = 999)
 	
-	page_results %>%
-		filter(., subreddit %in% scrape_boards)
+	date_results %>%
+		filter(., subreddit %in% scrape_boards) %>%
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
