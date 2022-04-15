@@ -203,6 +203,33 @@ local({
 	
 })
 
+# Sentiment Index --------------------------------------------------------
+
+## Reuters Index --------------------------------------------------------
+
+local({
+	
+	board_mapping =	collect(tbl(db, sql('SELECT board AS subreddit, category FROM sentiment_analysis_reddit_boards')))
+	
+	input_data =
+		reuters_scored
+
+	index_data =
+		input_data %>%
+		group_by(., created_dt) %>%
+		summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
+		mutate(., mean_score_7dma = zoo::rollmean(mean_score, 28, fill = NA, na.pad = TRUE, align = 'right'))
+
+	
+	index_data %>%
+		ggplot(.) + 
+		geom_line(aes(x = created_dt, y = mean_score_7dma)) +
+		geom_point(aes(x = created_dt, y = mean_score_7dma))
+
+	
+	
+})
+
 # Finalize --------------------------------------------------------
 
 ## Close Connections --------------------------------------------------------
