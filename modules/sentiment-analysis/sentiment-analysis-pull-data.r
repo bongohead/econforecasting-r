@@ -441,7 +441,7 @@ local({
 	
 })
 
-# Reuters --------------------------------------------------------
+# News --------------------------------------------------------
 
 ## Reset SQL --------------------------------------------------------
 local({
@@ -453,19 +453,20 @@ local({
 			db,
 			'CREATE TABLE sentiment_analysis_scrape_reuters (
 			id SERIAL PRIMARY KEY,
+			source VARCHAR(255) NOT NULL,
 			method VARCHAR(255) NOT NULL,
 			title TEXT NOT NULL,
 			created_dt DATE NOT NULL,
 			description TEXT NOT NULL,
 			scraped_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
-			UNIQUE (method, title, created_dt)
+			UNIQUE (source, method, title, created_dt)
 			)'
 		)
 	}
 	
 })
 
-## Pull Data --------------------------------------------------------
+## Pull Reuters --------------------------------------------------------
 local({
 	
 	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
@@ -503,13 +504,93 @@ local({
 		}, .init = tibble()) %>%
 		transmute(
 			.,
-			method = 'business', title, created_dt = created, description, scraped_dttm = now('America/New_York')
+			source = 'reuters',
+			method = 'business',
+			title, created_dt = created, description, scraped_dttm = now('America/New_York')
 			) %>%
 		# Duplicates can be caused by shifting pages
 		distinct(., title, created_dt, .keep_all = T)
 	
 	reuters <<- list()
 	reuters$data <<- reuters_data
+})
+
+
+## Pull FT --------------------------------------------------------
+# https://www.ft.com/search?q=%22%20%22&dateTo=2019-01-01&dateFrom=2019-01-02&concept=ec4ffdac-4f55-4b7a-b529-7d1e3e9f150c&sort=relevance&expandRefinements=true
+local({
+
+	message(str_glue('*** Pulling FT Data: {format(now(), "%H:%M")}'))
+
+	method_map = tribble(
+		~ method, ~ ft_key,
+		'economics', 'ec4ffdac-4f55-4b7a-b529-7d1e3e9f150c'	
+	)
+	
+	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
+		"SELECT created_dt, method
+		FROM sentiment_analysis_scrape_reuters
+		WHERE source = 'ft'
+		GROUP BY created_dt, method"
+		)))
+	
+	possible_pulls = expand_grid(
+		created_dt = seq(from = as_date('2019-01-01'), to = today() - days(1), by = '1 day'),
+		method = method_map$method
+		)
+	
+	new_pulls =
+		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'method')) %>%
+		left_join(., method_map, by = 'method')
+	
+	
+	test_1 =
+		new_pulls %>%
+		.[1:5] %>%
+		purrr::transpose(.) %>%
+		imap_dfr(., function(x, i) {
+			
+			message(str_glue('*** Pulling data for {i} of {nrow(new_pulls)}'))
+			
+			url = str_glue(
+				'https://www.ft.com/search?',
+				'&q=%3D+NOT+010101010101',
+				'&dateTo={as_date(x$created_dt)}&dateFrom={as_date(x$created_dt)}',
+				'&sort=date&expandRefinements=true&contentType=article',
+				'&concept={x$ft_key}'
+				)
+			message(url)
+			
+			pages =
+				GET(url) %>%
+				content(.) %>%
+				html_node(., 'div.search-results__heading-title > h2') %>%
+				html_text(.) %>%
+				str_extract(., '(?<=of ).*') %>%
+				as.numeric(.) %>%
+				{(. - 1) %/% 25 + 1}
+			
+			map_dfr(1:pages, function(page) {
+				search_results =
+					paste0(url, '&page=',page) %>%
+					GET(.) %>%
+					content(.) %>%
+					html_nodes(., '.search-results__list-item .o-teaser__content') %>%
+					map_dfr(., function(z) tibble(
+						title = z %>% html_nodes('.o-teaser__heading') %>% html_text(.),
+						description = z %>% html_nodes('.o-teaser__standfirst') %>% html_text(.)
+					))
+				
+				# tibble(
+				# 	title = search_results %>% html_nodes('.o-teaser__heading') %>% html_text(.),
+				# 	description = search_results %>% html_nodes('.o-teaser__standfirst') %>% html_text(.)
+				# )
+			})
+			
+		})
+
+
+	
 })
 
 ## Store --------------------------------------------------------
