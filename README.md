@@ -7,6 +7,16 @@ This code is developed locally on a Windows machine and deployed locally to an U
 ---
 # CHANGELOG
 
+```mermaid
+gantt
+    title Recent Changes
+    dateFormat  M/D/Y
+    axisFormat  %m/%d
+    section 16. TBD (v1.01)
+      Sentiment Model Exploration      :3/3/22, 4/22/22
+      Rebuild Asset Contagion Index    :4/25/22, 5/1/22
+```
+
 ## [v1.01] (Model Improvements) (2022-04-??)
 This adds minor modeling improvements and additions. 
 - Added ICE scraper with SONIA, ESTR rates (Euribor rates delayed due to historical data issues)
@@ -14,6 +24,8 @@ This adds minor modeling improvements and additions.
 - Added initial score analysis w/ BERT and dictionary
 - Added initial index creation
 - Added sentiment model table storage
+- Added FT scraper
+- Added ReReddit scraper for backfilling data
 - TBD: Add Conference Board, TD Forecasts
 
 ## [v.020 -> v1.00] (Model Modularization & Re-Release) (2022-03-02)
