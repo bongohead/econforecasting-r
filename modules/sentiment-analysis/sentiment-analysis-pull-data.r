@@ -517,7 +517,6 @@ local({
 
 
 ## Pull FT --------------------------------------------------------
-# https://www.ft.com/search?q=%22%20%22&dateTo=2019-01-01&dateFrom=2019-01-02&concept=ec4ffdac-4f55-4b7a-b529-7d1e3e9f150c&sort=relevance&expandRefinements=true
 local({
 
 	message(str_glue('*** Pulling FT Data: {format(now(), "%H:%M")}'))
@@ -542,11 +541,9 @@ local({
 	new_pulls =
 		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'method')) %>%
 		left_join(., method_map, by = 'method')
-	
-	
-	test_1 =
+
+	ft_data =
 		new_pulls %>%
-		.[1:5] %>%
 		purrr::transpose(.) %>%
 		imap_dfr(., function(x, i) {
 			
@@ -580,17 +577,18 @@ local({
 						title = z %>% html_nodes('.o-teaser__heading') %>% html_text(.),
 						description = z %>% html_nodes('.o-teaser__standfirst') %>% html_text(.)
 					))
-				
-				# tibble(
-				# 	title = search_results %>% html_nodes('.o-teaser__heading') %>% html_text(.),
-				# 	description = search_results %>% html_nodes('.o-teaser__standfirst') %>% html_text(.)
-				# )
-			})
-			
-		})
-
-
+				}) %>%
+				mutate(., method = x$method, created_dt = as_date(x$created_dt))
+			}) %>%
+		transmute(
+			.,
+			source = 'ft',
+			method,
+			title, created_dt, description, scraped_dttm = now('America/New_York')
+		)
 	
+	ft <<- list()
+	ft$data <<- ft_data
 })
 
 ## Store --------------------------------------------------------
@@ -602,7 +600,7 @@ local({
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
-		reuters$data %>%
+		bind_rows(ft$data, reuters$data) %>%
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
 		group_split(., split, .keep = FALSE) %>%
