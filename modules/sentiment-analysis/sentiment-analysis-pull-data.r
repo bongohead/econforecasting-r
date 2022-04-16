@@ -12,8 +12,6 @@
 JOB_NAME = 'sentiment-analysis-pull-data'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
-BACKFILL_REDDIT = TRUE
-BACKFILL_REUTERS = TRUE
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
@@ -149,12 +147,12 @@ local({
 		}
 		
 		}, .init = tibble()) %>%
-		mutate(., created = with_tz(as_datetime(created), 'America/New_York')) %>%
+		mutate(., created = with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')) %>%
 		transmute(
 			.,
 			method = 'top_1000_today_all', name,
 			subreddit, title, 
-			created_dttm = created, scraped_dttm = now('America/New_York'),
+			created_dttm = created, scraped_dttm = now('US/Eastern'),
 			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
 			)
 	
@@ -217,7 +215,7 @@ local({
 			}
 			
 			}, .init = data.table()) %>%
-			.[, created := with_tz(as_datetime(created), 'America/New_York')] %>%
+			.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
 			return(.)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
@@ -225,7 +223,7 @@ local({
 			.,
 			method = 'top_200_today_by_board', name,
 			subreddit, title, 
-			created_dttm = created, scraped_dttm = now('America/New_York'),
+			created_dttm = created, scraped_dttm = now('US/Eastern'),
 			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
 		)
 	
@@ -286,7 +284,7 @@ local({
 			}
 			
 			}, .init = data.table()) %>%
-			.[, created := with_tz(as_datetime(created), 'America/New_York')] %>%
+			.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
 			return(.)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
@@ -294,7 +292,7 @@ local({
 			.,
 			method = 'top_1000_month_by_board', name,
 			subreddit, title, 
-			created_dttm = created, scraped_dttm = now('America/New_York'),
+			created_dttm = created, scraped_dttm = now('US/Eastern'),
 			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
 		)
 	
@@ -307,87 +305,174 @@ local({
 		print(.)
 	
 	reddit$data$top_1000_month_by_board <<- top_1000_month_by_board
-	
 })
 
 ## Top (By Board, Year) --------------------------------------------------------
 local({
-	if (BACKFILL_REDDIT == TRUE) {
+	message(str_glue('*** Pulling Top By Board (Old): {format(now(), "%H:%M")}'))
+	
+	top_1000_year_by_board = lapply(reddit$scrape_boards$board, function(board) {
 		
-		message(str_glue('*** Pulling Top By Board (Old): {format(now(), "%H:%M")}'))
+		message('*** Pull for: ', board)
 		
-		top_1000_year_by_board = lapply(reddit$scrape_boards$board, function(board) {
+		# Only top possible for top
+		reduce(1:9, function(accum, i) {
 			
-			message('*** Pull for: ', board)
+			message('***** Pull ', i)
+			query =
+				list(t = 'year', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
+				compact(.) %>%
+				paste0(names(.), '=', .) %>%
+				paste0(collapse = '&')
 			
-			# Only top possible for top
-			reduce(1:9, function(accum, i) {
-				
-				message('***** Pull ', i)
-				query =
-					list(t = 'year', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
-					compact(.) %>%
-					paste0(names(.), '=', .) %>%
-					paste0(collapse = '&')
-				
-				http_result = GET(
-					paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+			http_result = GET(
+				paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+				add_headers(c(
+					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
+					'Authorization' = paste0('bearer ', reddit$token)
+				))
+			)
+			
+			calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
+			reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
+			if (calls_remaining == 0) Sys.sleep(reset_seconds)
+			result = content(http_result, 'parsed')
+			
+			parsed =
+				lapply(result$data$children, function(y) 
+					y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
+				) %>%
+				rbindlist(., fill = T) %>%
+				select(., any_of(c(
+					'name', 'subreddit', 'title', 'created',
+					'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest'
+				))) %>%
+				as.data.table(.) %>%
+				.[, i := i] %>%
+				.[, after := result$data$after %||% NA]
+			
+			if (is.null(result$data$after)) {
+				message('----- Break, missing AFTER')
+				return(done(rbindlist(list(accum, parsed), fill = TRUE)))
+			} else {
+				return(rbindlist(list(accum, parsed), fill = TRUE))
+			}
+			
+		}, .init = data.table()) %>%
+			.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
+			return(.)
+	}) %>%
+		rbindlist(., fill = TRUE) %>%
+		transmute(
+			.,
+			method = 'top_1000_year_by_board', name,
+			subreddit, title, 
+			created_dttm = created, scraped_dttm = now('US/Eastern'),
+			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
+		)
+	
+	# Verify no duplicated unique posts (name should be unique)
+	top_1000_year_by_board %>%
+		as_tibble(.) %>%
+		group_by(., name) %>%
+		summarize(., n = n()) %>%
+		arrange(., desc(n)) %>%
+		print(.)
+	
+	reddit$data$top_1000_year_by_board <<- top_1000_year_by_board
+})
+
+
+## PushShift ---------------------------------------------------------------
+local({
+	
+	# Pull top 50 comments by day
+	message(str_glue('*** Pulling Pushshift: {format(now(), "%H:%M")}'))
+	
+	# Get possible dates (Eastern Time)
+	possible_pulls = expand_grid(
+		created_dt = seq(today('US/Eastern') - days(2), as_date('2022-01-01'), '-1 day'),
+		subreddit = reddit$scrape_boards$board
+		)
+	
+	# Get existing dates (Eastern Time)
+	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
+		"SELECT DATE(created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, subreddit
+		FROM sentiment_analysis_scrape_reddit
+		WHERE method = 'pushshift_top_50_board_by_day'
+		GROUP BY created_dt, subreddit"
+		)))
+	
+	# Get pullable dates with UTC start and end
+	new_pulls =
+		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'subreddit')) %>%
+		mutate(
+			.,
+			start = as.numeric(with_tz(force_tz(as_datetime(created_dt), 'US/Eastern'), 'UTC')),
+			end = as.numeric(with_tz(force_tz(as_datetime(created_dt) + days(1), 'US/Eastern'), 'UTC')) - 1,
+			) %>%
+		arrange(., desc(created_dt), subreddit)
+
+	# Now pull data
+	pushshift_all_by_board =
+		new_pulls %>%
+		purrr::transpose(.) %>% 
+		imap(., function(x, i) {
+			
+			message(str_glue('**** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")}'))
+			
+			response = GET(paste0(
+					'https://api.pushshift.io/reddit/search/submission/?',
+					'subreddit=', x$subreddit,
+					'&size=500',
+					'&sort_type=score&sort=desc',
+					'&after=', x$start,
+					'&before=', x$end,
+					'&locked=false&stickied=false&contest_mode=false'
+				))
+			
+			if (response$status_code == 400) return(NA)
+			
+			pull_names = 
+				content(response)$data %>%
+				map(., ~ .$id) %>%
+				paste0('t3_', .)
+			
+			parsed =
+				GET(
+					paste0('https://oauth.reddit.com/api/info?id=', paste0(pull_names, collapse = ',')),
 					add_headers(c(
 						'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
 						'Authorization' = paste0('bearer ', reddit$token)
-					))
-				)
-				
-				calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
-				reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
-				if (calls_remaining == 0) Sys.sleep(reset_seconds)
-				result = content(http_result, 'parsed')
-				
-				parsed =
-					lapply(result$data$children, function(y) 
-						y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
-					) %>%
+					))) %>%
+					content(.) %>%
+					.$data %>%
+					.$children %>%
+					lapply(., function(y) 
+						y$data %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
+						) %>%
 					rbindlist(., fill = T) %>%
+					.[is.na(removed_by_category)] %>%
 					select(., any_of(c(
 						'name', 'subreddit', 'title', 'created',
 						'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest'
-					))) %>%
-					as.data.table(.) %>%
-					.[, i := i] %>%
-					.[, after := result$data$after %||% NA]
-				
-				if (is.null(result$data$after)) {
-					message('----- Break, missing AFTER')
-					return(done(rbindlist(list(accum, parsed), fill = TRUE)))
-				} else {
-					return(rbindlist(list(accum, parsed), fill = TRUE))
-				}
-				
-			}, .init = data.table()) %>%
-				.[, created := with_tz(as_datetime(created), 'America/New_York')] %>%
-				return(.)
+						))) %>%
+					.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
+					.[, scraped_dttm := now('US/Eastern')]
+			
+			return(parsed)
 		}) %>%
-			rbindlist(., fill = TRUE) %>%
-			transmute(
-				.,
-				method = 'top_1000_year_by_board', name,
-				subreddit, title, 
-				created_dttm = created, scraped_dttm = now('America/New_York'),
-				selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
-			)
-		
-		# Verify no duplicated unique posts (name should be unique)
-		top_1000_year_by_board %>%
-			as_tibble(.) %>%
-			group_by(., name) %>%
-			summarize(., n = n()) %>%
-			arrange(., desc(n)) %>%
-			print(.)
-		
-		reddit$data$top_1000_year_by_board <<- top_1000_year_by_board
-	}
+		rbindlist(., fill = TRUE) %>%
+		transmute(
+			.,
+			method = 'pushshift_all_by_board', name,
+			subreddit, title, 
+			created_dttm = created, scraped_dttm = now('US/Eastern'),
+			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
+		)
+	
+	reddit$data$pushshift_all_by_board <<- pushshift_all_by_board
 })
-
 
 ## Store --------------------------------------------------------
 local({
@@ -447,11 +532,11 @@ local({
 local({
 	
 	if (RESET_SQL) {
-		dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_reuters CASCADE')
+		dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_news CASCADE')
 		
 		dbExecute(
 			db,
-			'CREATE TABLE sentiment_analysis_scrape_reuters (
+			'CREATE TABLE sentiment_analysis_scrape_news (
 			id SERIAL PRIMARY KEY,
 			source VARCHAR(255) NOT NULL,
 			method VARCHAR(255) NOT NULL,
@@ -528,7 +613,7 @@ local({
 	
 	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
 		"SELECT created_dt, method
-		FROM sentiment_analysis_scrape_reuters
+		FROM sentiment_analysis_scrape_news
 		WHERE source = 'ft'
 		GROUP BY created_dt, method"
 		)))
@@ -596,7 +681,7 @@ local({
 	
 	message(str_glue('*** Sending Reuters Data to SQL: {format(now(), "%H:%M")}'))
 	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_reuters')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_news')$count)
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
@@ -607,7 +692,7 @@ local({
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'sentiment_analysis_scrape_reuters',
+				'sentiment_analysis_scrape_news',
 				'ON CONFLICT (method, title, created_dt) DO UPDATE SET
 				description=EXCLUDED.description,
 				scraped_dttm=EXCLUDED.scraped_dttm'
@@ -616,13 +701,13 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_reuters')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_news')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
 	create_insert_query(
 		tribble(
 			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'sentiment-analysis-pull-reuters', today(), 'job-success',
+			JOB_NAME, 'sentiment-analysis-pull-news', today(), 'job-success',
 			toJSON(list(rows_added = final_count - initial_count))
 		),
 		'job_logs',

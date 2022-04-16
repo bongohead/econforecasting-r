@@ -139,7 +139,7 @@ local({
 				by = 'created_dt'
 				) %>%
 				mutate(., subreddit = x$subreddit[[1]], mean_score = coalesce(mean_score, 0)) %>%
-				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
+				mutate(., mean_score_dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
 			) %>%
 		ggplot(.) + 
 		geom_line(aes(x = created_dt, y = mean_score_7dma, color = subreddit))
@@ -192,14 +192,20 @@ local({
 				x,
 				by = 'created_dt'
 				) %>%
-				mutate(., category = x$category[[1]], mean_score = zoo::na.locf(mean_score)) %>%
-				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
+				mutate(
+					.,
+				 category = x$category[[1]], mean_score = zoo::na.locf(mean_score),
+					mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'),
+					mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right')
+				)
 		)
+				
 	
 	index_data %>%
+		filter(., category == 'Labor Market') %>%
 		ggplot(.) + 
-		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category)) +
-		geom_point(aes(x = created_dt, y = mean_score_7dma, color = category))
+		geom_line(aes(x = created_dt, y = mean_score, color = category)) +
+		geom_point(aes(x = created_dt, y = mean_score, color = category))
 	
 })
 
