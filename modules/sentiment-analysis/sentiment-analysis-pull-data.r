@@ -161,7 +161,7 @@ local({
 
 ## Top (By Board) --------------------------------------------------------
 local({
-	
+
 	message(str_glue('*** Pulling Top By Board: {format(now(), "%H:%M")}'))
 	
 	scrape_boards = collect(tbl(db, sql('SELECT * FROM sentiment_analysis_reddit_boards')))
@@ -419,48 +419,77 @@ local({
 		purrr::transpose(.) %>% 
 		imap(., function(x, i) {
 			
-			message(str_glue('**** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")}'))
+			message(str_glue('***** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")}'))
 			
-			response = GET(paste0(
-					'https://api.pushshift.io/reddit/search/submission/?',
-					'subreddit=', x$subreddit,
-					'&size=500',
-					'&sort_type=score&sort=desc',
-					'&after=', x$start,
-					'&before=', x$end,
-					'&locked=false&stickied=false&contest_mode=false'
-				))
+			# Now pull all submissions for that date and subreddit
+			scrape_names_raw = local({
+				last_page = F
+				start = x$start
+				page = 1
+				all_ids = na.omit(tibble(pull_names = NA_character_, page = NA_integer_))
+				while(last_page == F) {
+					url = paste0(
+						'https://api.pushshift.io/reddit/search/submission/?',
+						'subreddit=', x$subreddit,
+						'&size=100&limit=100',
+						'&sort_type=created_utc&sort=asc',
+						'&after=', start,
+						'&before=', x$end,
+						'&locked=false&stickied=false&contest_mode=false'
+					)
+					message(page, ' ', url)
+					response = content(GET(url))$data
+					if (length(response) == 0) break; 
+					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
+					created_dts = response %>% map(., ~ .$created)
+					all_ids = bind_rows(all_ids, tibble(pull_names = pull_names, page = page))
+					if (length(pull_names) == 0 || length(pull_names) < 100 || response[[100]]$created > x$end) {
+						message('break')
+						message('length:' , length(response))
+						last_page = T
+					}	else {
+						start = created_dts[[100]]
+						last_page = F
+						page = page + 1
+					}
+					Sys.sleep(.5)
+				}
+				return(all_ids)
+			})
 			
-			if (response$status_code == 400) return(NA)
+			pull_data =
+				scrape_names_raw %>%
+				distinct(., pull_names) %>%
+				mutate(., group = (1:nrow(.)) %/% 50) %>%
+				group_split(., group) %>%
+				lapply(., function(split_group) {
+					parsed =
+						GET(
+							paste0('https://oauth.reddit.com/api/info?id=', paste0(split_group$pull_names, collapse = ',')),
+							add_headers(c(
+								'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
+								'Authorization' = paste0('bearer ', reddit$token)
+							))) %>%
+							content(.) %>%
+							.$data %>%
+							.$children %>%
+							lapply(., function(y) 
+								y$data %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
+								) %>%
+							rbindlist(., fill = T) %>%
+							.[is.na(removed_by_category)] %>%
+							select(., any_of(c(
+								'name', 'subreddit', 'title', 'created',
+								'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest'
+								))) %>%
+							.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
+							.[, scraped_dttm := now('US/Eastern')]
+					
+					return(parsed)
+				}) %>%
+				rbindlist(., fill = TRUE)
 			
-			pull_names = 
-				content(response)$data %>%
-				map(., ~ .$id) %>%
-				paste0('t3_', .)
-			
-			parsed =
-				GET(
-					paste0('https://oauth.reddit.com/api/info?id=', paste0(pull_names, collapse = ',')),
-					add_headers(c(
-						'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
-						'Authorization' = paste0('bearer ', reddit$token)
-					))) %>%
-					content(.) %>%
-					.$data %>%
-					.$children %>%
-					lapply(., function(y) 
-						y$data %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
-						) %>%
-					rbindlist(., fill = T) %>%
-					.[is.na(removed_by_category)] %>%
-					select(., any_of(c(
-						'name', 'subreddit', 'title', 'created',
-						'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest'
-						))) %>%
-					.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
-					.[, scraped_dttm := now('US/Eastern')]
-			
-			return(parsed)
+			return(pulled_data)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
 		transmute(
