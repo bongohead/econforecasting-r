@@ -391,7 +391,7 @@ local({
 	
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
-		created_dt = seq(today('US/Eastern') - days(2), as_date('2022-01-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(2), as_date('2022-04-01'), '-1 day'),
 		subreddit = reddit$scrape_boards$board
 		)
 	
@@ -412,11 +412,14 @@ local({
 			end = as.numeric(with_tz(force_tz(as_datetime(created_dt) + days(1), 'US/Eastern'), 'UTC')) - 1,
 			) %>%
 		arrange(., desc(created_dt), subreddit)
+	
+	message('***** New Pulls:')
+	print(new_pulls, n = 20)
 
 	# Now pull data
 	pushshift_all_by_board =
 		new_pulls %>%
-		purrr::transpose(.) %>% 
+		purrr::transpose(.) %>%
 		imap(., function(x, i) {
 			
 			message(str_glue('***** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")}'))
@@ -437,15 +440,14 @@ local({
 						'&before=', x$end,
 						'&locked=false&stickied=false&contest_mode=false'
 					)
-					message(page, ' ', url)
+					# message(page, ' ', url)
 					response = content(GET(url))$data
 					if (length(response) == 0) break; 
 					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
 					created_dts = response %>% map(., ~ .$created)
 					all_ids = bind_rows(all_ids, tibble(pull_names = pull_names, page = page))
 					if (length(pull_names) == 0 || length(pull_names) < 100 || response[[100]]$created > x$end) {
-						message('break')
-						message('length:' , length(response))
+						message('***** PushShift Break | Length: ' , length(response), ' | Page: ', page, ' | Board: ', x$subreddit)
 						last_page = T
 					}	else {
 						start = created_dts[[100]]
@@ -457,7 +459,7 @@ local({
 				return(all_ids)
 			})
 			
-			pull_data =
+			pulled_data =
 				scrape_names_raw %>%
 				distinct(., pull_names) %>%
 				mutate(., group = (1:nrow(.)) %/% 50) %>%
@@ -477,21 +479,20 @@ local({
 								y$data %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
 								) %>%
 							rbindlist(., fill = T) %>%
-							.[is.na(removed_by_category)] %>%
 							select(., any_of(c(
 								'name', 'subreddit', 'title', 'created',
 								'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest'
 								))) %>%
 							.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
 							.[, scraped_dttm := now('US/Eastern')]
-					
 					return(parsed)
 				}) %>%
-				rbindlist(., fill = TRUE)
+				rbindlist(., fill = TRUE) 
 			
 			return(pulled_data)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
+		.[is.na(removed_by_category)] %>%
 		transmute(
 			.,
 			method = 'pushshift_all_by_board', name,
