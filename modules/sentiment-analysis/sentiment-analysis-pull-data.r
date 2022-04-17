@@ -481,7 +481,8 @@ local({
 							rbindlist(., fill = T) %>%
 							select(., any_of(c(
 								'name', 'subreddit', 'title', 'created',
-								'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest'
+								'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest',
+								'removed_by_category'
 								))) %>%
 							.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
 							.[, scraped_dttm := now('US/Eastern')]
@@ -514,10 +515,14 @@ local({
 	
 	sql_result =
 		reddit$data %>%
-		bind_rows(.) %>%
-		as_tibble(.) %>%
+		rbindlist(.) %>%
+		.[!is.na(name) & !is.na(subreddit) & !is.na(title)] %>%
 		# Format into SQL Standard style https://www.postgresql.org/docs/9.1/datatype-datetime.html
-		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
+		.[,
+			c('created_dttm', 'scraped_dttm') := lapply(.SD, function(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
+			.SDcols = c('created_dttm', 'scraped_dttm')
+			] %>%
+		mutate(., across(where(is.character), function(x) ifelse(str_length(x) == 0, NA, x))) %>%
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
@@ -536,7 +541,7 @@ local({
 				domain=EXCLUDED.domain,
 				url_overridden_by_dest=EXCLUDED.url_overridden_by_dest'
 				) %>%
-				dbExecute(db, .)
+				 dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
@@ -553,7 +558,6 @@ local({
 		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
 		) %>%
 		dbExecute(db, .)
-	
 })
 
 # News --------------------------------------------------------
@@ -586,12 +590,12 @@ local({
 	
 	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
 	
-	page_to = {if (BACKFILL_REUTERS == TRUE) 3000 else 20}
+	page_to = 100 # 3000
 	
 	reuters_data =
 		reduce(1:page_to, function(accum, page) {
 			
-			if (page %% 20 == 1) message('Downloading data for page ', page)
+			if (page %% 20 == 1) message('***** Downloading data for page ', page)
 			
 			page_content =
 				GET(paste0(
@@ -621,13 +625,13 @@ local({
 			.,
 			source = 'reuters',
 			method = 'business',
-			title, created_dt = created, description, scraped_dttm = now('America/New_York')
+			title, created_dt = created, description, scraped_dttm = now('US/Eastern')
 			) %>%
 		# Duplicates can be caused by shifting pages
 		distinct(., title, created_dt, .keep_all = T)
 	
-	reuters <<- list()
-	reuters$data <<- reuters_data
+	media <<- list()
+	media$data$reuters <<- reuters_data
 })
 
 
@@ -643,7 +647,7 @@ local({
 	
 	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
 		"SELECT created_dt, method
-		FROM sentiment_analysis_scrape_news
+		FROM sentiment_analysis_scrape_media
 		WHERE source = 'ft'
 		GROUP BY created_dt, method"
 		)))
@@ -656,25 +660,34 @@ local({
 	new_pulls =
 		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'method')) %>%
 		left_join(., method_map, by = 'method')
+	
+	message('*** New Pulls')
+	print(new_pulls)
 
 	ft_data =
 		new_pulls %>%
 		purrr::transpose(.) %>%
 		imap_dfr(., function(x, i) {
 			
-			message(str_glue('*** Pulling data for {i} of {nrow(new_pulls)}'))
+			message(str_glue('***** Pulling data for {i} of {nrow(new_pulls)}'))
 			
 			url = str_glue(
 				'https://www.ft.com/search?',
 				'&q=%3D+NOT+010101010101',
-				'&dateTo={as_date(x$created_dt)}&dateFrom={as_date(x$created_dt)}',
+				'&dateTo={as_date(x$created_dt)}&dateFrom={as_date(x$created_dt) + days(1)}',
 				'&sort=date&expandRefinements=true&contentType=article',
 				'&concept={x$ft_key}'
 				)
 			message(url)
 			
 			pages =
-				GET(url) %>%
+				GET(
+					url,
+					add_headers(c(
+						'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0',
+						'Cookie' = 'FTAllocation=f87891fe-d5aa-428a-84af-645896b228eb; o-typography-fonts-loaded=1; FTConsent=marketingBypost%3Aoff%2CmarketingByemail%3Aoff%2CmarketingByphonecall%3Aoff%2CmarketingByfax%3Aoff%2CmarketingBysms%3Aoff%2CenhancementBypost%3Aoff%2CenhancementByemail%3Aoff%2CenhancementByphonecall%3Aoff%2CenhancementByfax%3Aoff%2CenhancementBysms%3Aoff%2CbehaviouraladsOnsite%3Aon%2CdemographicadsOnsite%3Aon%2CrecommendedcontentOnsite%3Aon%2CprogrammaticadsOnsite%3Aon%2CcookiesUseraccept%3Aoff%2CcookiesOnsite%3Aoff%2CmembergetmemberByemail%3Aoff; FTCookieConsentGDPR=true; ft_access_c=mpFFd0ujjQ4vZ1ImILEBjhCdfs4V+2SV9BV9uj+ZRaU4WJ8mQbQJmpaRUaOqccbVNCot18Qs0VZXw6GKiHDM63wqInDf6bbW8k10Tl457gxQggTsx/cSYU9doh4XP5Pu; ravelinDeviceId=rjs-85791f8f-4d57-40b7-9034-c805a861bc30; spoor-id=cl1y0syfu000028667pndtcew; ft-access-decision-policy=FLEX_PRIVILEGED_REFERER_POLICY; session=eyJjc3JmU2VjcmV0IjoiVmlkWE9udlhfZERVdjBpNlkteFQzbzVCIn0=; session.sig=H59xnwLZcbyUkmzt9oKzOl-_8tI'
+						))
+					) %>%
 				content(.) %>%
 				html_node(., 'div.search-results__heading-title > h2') %>%
 				html_text(.) %>%
@@ -699,11 +712,10 @@ local({
 			.,
 			source = 'ft',
 			method,
-			title, created_dt, description, scraped_dttm = now('America/New_York')
+			title, created_dt, description, scraped_dttm = now('US/Eastern')
 		)
 	
-	ft <<- list()
-	ft$data <<- ft_data
+	media$data$ft <<- ft_data
 })
 
 ## Store --------------------------------------------------------
@@ -715,7 +727,7 @@ local({
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
-		bind_rows(ft$data, reuters$data) %>%
+		bind_rows(media$data) %>%
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
 		group_split(., split, .keep = FALSE) %>%
