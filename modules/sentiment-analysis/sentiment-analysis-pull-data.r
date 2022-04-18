@@ -441,7 +441,7 @@ local({
 						'&locked=false&stickied=false&contest_mode=false'
 					)
 					# message(page, ' ', url)
-					response = content(GET(url))$data
+					response = content(RETRY('GET', url))$data
 					if (length(response) == 0) break; 
 					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
 					created_dts = response %>% map(., ~ .$created)
@@ -466,7 +466,8 @@ local({
 				group_split(., group) %>%
 				lapply(., function(split_group) {
 					parsed =
-						GET(
+						RETRY(
+							'GET',
 							paste0('https://oauth.reddit.com/api/info?id=', paste0(split_group$pull_names, collapse = ',')),
 							add_headers(c(
 								'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
@@ -598,7 +599,7 @@ local({
 			if (page %% 20 == 1) message('***** Downloading data for page ', page)
 			
 			page_content =
-				GET(paste0(
+				RETRY('GET', paste0(
 					'https://www.reuters.com/news/archive/businessnews?view=page&page=',
 					 page, '&pageSize=10'
 					)) %>%
@@ -638,6 +639,7 @@ local({
 ## Pull FT --------------------------------------------------------
 local({
 
+	# Note 4/17/22: To test this, must 
 	message(str_glue('*** Pulling FT Data: {format(now(), "%H:%M")}'))
 
 	method_map = tribble(
@@ -653,7 +655,7 @@ local({
 		)))
 	
 	possible_pulls = expand_grid(
-		created_dt = seq(from = as_date('2019-01-01'), to = today() - days(1), by = '1 day'),
+		created_dt = seq(from = as_date('2018-01-01'), to = today() - days(1), by = '1 day'),
 		method = method_map$method
 		)
 	
@@ -667,39 +669,45 @@ local({
 	ft_data =
 		new_pulls %>%
 		purrr::transpose(.) %>%
-		imap_dfr(., function(x, i) {
+		imap(., function(x, i) {
 			
 			message(str_glue('***** Pulling data for {i} of {nrow(new_pulls)}'))
-			
 			url = str_glue(
 				'https://www.ft.com/search?',
-				'&q=%3D+NOT+010101010101',
-				'&dateTo={as_date(x$created_dt)}&dateFrom={as_date(x$created_dt) + days(1)}',
+				'&q=-010101010101',
+				'&dateFrom={as_date(x$created_dt)}&dateTo={as_date(x$created_dt) + days(1)}',
 				'&sort=date&expandRefinements=true&contentType=article',
 				'&concept={x$ft_key}'
 				)
-			message(url)
+			# message(url)
 			
-			pages =
-				GET(
+			page1 =	
+				RETRY(
+					'GET',
 					url,
 					add_headers(c(
-						'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0',
-						'Cookie' = 'FTAllocation=f87891fe-d5aa-428a-84af-645896b228eb; o-typography-fonts-loaded=1; FTConsent=marketingBypost%3Aoff%2CmarketingByemail%3Aoff%2CmarketingByphonecall%3Aoff%2CmarketingByfax%3Aoff%2CmarketingBysms%3Aoff%2CenhancementBypost%3Aoff%2CenhancementByemail%3Aoff%2CenhancementByphonecall%3Aoff%2CenhancementByfax%3Aoff%2CenhancementBysms%3Aoff%2CbehaviouraladsOnsite%3Aon%2CdemographicadsOnsite%3Aon%2CrecommendedcontentOnsite%3Aon%2CprogrammaticadsOnsite%3Aon%2CcookiesUseraccept%3Aoff%2CcookiesOnsite%3Aoff%2CmembergetmemberByemail%3Aoff; FTCookieConsentGDPR=true; ft_access_c=mpFFd0ujjQ4vZ1ImILEBjhCdfs4V+2SV9BV9uj+ZRaU4WJ8mQbQJmpaRUaOqccbVNCot18Qs0VZXw6GKiHDM63wqInDf6bbW8k10Tl457gxQggTsx/cSYU9doh4XP5Pu; ravelinDeviceId=rjs-85791f8f-4d57-40b7-9034-c805a861bc30; spoor-id=cl1y0syfu000028667pndtcew; ft-access-decision-policy=FLEX_PRIVILEGED_REFERER_POLICY; session=eyJjc3JmU2VjcmV0IjoiVmlkWE9udlhfZERVdjBpNlkteFQzbzVCIn0=; session.sig=H59xnwLZcbyUkmzt9oKzOl-_8tI'
+						'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'
 						))
 					) %>%
-				content(.) %>%
+				content(.)
+	
+			pages =
+				page1 %>%
 				html_node(., 'div.search-results__heading-title > h2') %>%
 				html_text(.) %>%
+				str_replace_all(., coll('Powered By Algolia'), '') %>%
 				str_extract(., '(?<=of ).*') %>%
 				as.numeric(.) %>%
 				{(. - 1) %/% 25 + 1}
 			
+			# message('get_dta')
+			if (is.na(pages)) return(NULL)
+			
 			map_dfr(1:pages, function(page) {
+				
+				this_page = {if(page == 1) page1 else content(RETRY('GET', paste0(url, '&page=',page)))}
 				search_results =
-					paste0(url, '&page=',page) %>%
-					GET(.) %>%
-					content(.) %>%
+					this_page %>%
 					html_nodes(., '.search-results__list-item .o-teaser__content') %>%
 					map_dfr(., function(z) tibble(
 						title = z %>% html_nodes('.o-teaser__heading') %>% html_text(.),
@@ -708,6 +716,8 @@ local({
 				}) %>%
 				mutate(., method = x$method, created_dt = as_date(x$created_dt))
 			}) %>%
+		keep(., ~ !is.null(.) & is_tibble(.)) %>%
+		bind_rows(.) %>%
 		transmute(
 			.,
 			source = 'ft',
