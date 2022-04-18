@@ -567,11 +567,11 @@ local({
 local({
 	
 	if (RESET_SQL) {
-		dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_news CASCADE')
+		dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_media CASCADE')
 		
 		dbExecute(
 			db,
-			'CREATE TABLE sentiment_analysis_scrape_news (
+			'CREATE TABLE sentiment_analysis_scrape_media (
 			id SERIAL PRIMARY KEY,
 			source VARCHAR(255) NOT NULL,
 			method VARCHAR(255) NOT NULL,
@@ -700,7 +700,7 @@ local({
 				as.numeric(.) %>%
 				{(. - 1) %/% 25 + 1}
 			
-			# message('get_dta')
+			message('get_dta')
 			if (is.na(pages)) return(NULL)
 			
 			map_dfr(1:pages, function(page) {
@@ -731,21 +731,24 @@ local({
 ## Store --------------------------------------------------------
 local({
 	
-	message(str_glue('*** Sending Reuters Data to SQL: {format(now(), "%H:%M")}'))
+	message(str_glue('*** Sending Media Data to SQL: {format(now(), "%H:%M")}'))
 	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_news')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_media')$count)
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
 		bind_rows(media$data) %>%
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
+		group_by(., source, method, title, created_dt) %>%
+		slice_head(., n = 1) %>%
+		ungroup(.) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'sentiment_analysis_scrape_news',
-				'ON CONFLICT (method, title, created_dt) DO UPDATE SET
+				'sentiment_analysis_scrape_media',
+				'ON CONFLICT (source, method, title, created_dt) DO UPDATE SET
 				description=EXCLUDED.description,
 				scraped_dttm=EXCLUDED.scraped_dttm'
 				) %>%
@@ -753,13 +756,13 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_news')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_media')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
 	create_insert_query(
 		tribble(
 			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'sentiment-analysis-pull-news', today(), 'job-success',
+			JOB_NAME, 'sentiment-analysis-pull-media', today(), 'job-success',
 			toJSON(list(rows_added = final_count - initial_count))
 		),
 		'job_logs',
