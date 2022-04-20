@@ -47,7 +47,7 @@ local({
 if (RESET_SQL) {
 	
 	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_score_reddit CASCADE')
-	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_score_reuters CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_score_media CASCADE')
 	
 	dbExecute(
 		db,
@@ -66,7 +66,7 @@ if (RESET_SQL) {
 	
 	dbExecute(
 		db,
-		'CREATE TABLE sentiment_analysis_score_reuters (
+		'CREATE TABLE sentiment_analysis_score_media (
 		scrape_id INT NOT NULL,
 		text_part VARCHAR(255) NOT NULL,
 		score_model VARCHAR(255) NOT NULL, 
@@ -74,8 +74,8 @@ if (RESET_SQL) {
 		score_conf DECIMAL(20, 4) NULL,
 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
 		PRIMARY KEY (scrape_id, text_part, score_model),
-		CONSTRAINT sentiment_analysis_score_reuters_fk FOREIGN KEY (scrape_id)
-				REFERENCES sentiment_analysis_scrape_reuters (id) ON DELETE CASCADE ON UPDATE CASCADE
+		CONSTRAINT sentiment_analysis_score_media_fk FOREIGN KEY (scrape_id)
+				REFERENCES sentiment_analysis_scrape_media (id) ON DELETE CASCADE ON UPDATE CASCADE
 		)'
 	)
 	
@@ -101,14 +101,14 @@ local({
 		UNION ALL
 		(
 			SELECT 
-				'reuters' AS source, reuters1.id, reuters1.title AS text_part_title, reuters1.description AS text_part_content
-			FROM sentiment_analysis_scrape_reuters reuters1
+				'media' AS source, m1.id, m1.title AS text_part_title, m1.description AS text_part_content
+			FROM sentiment_analysis_scrape_media m1
 			LEFT JOIN 
 				(
-					SELECT scrape_id FROM sentiment_analysis_score_reuters WHERE score_model = 'DISTILBERT'
-				) reuters2
-				ON reuters1.id = reuters2.scrape_id
-			WHERE reuters2.scrape_id IS NULL
+					SELECT scrape_id FROM sentiment_analysis_score_media WHERE score_model = 'DISTILBERT'
+				) m2
+				ON m1.id = m2.scrape_id
+			WHERE m2.scrape_id IS NULL
 		)") %>%
 		as_tibble(.) %>%
 		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
@@ -129,14 +129,14 @@ local({
 		UNION ALL
 		(
 			SELECT
-				'reuters' AS source, reuters1.id, reuters1.title AS text_part_title, reuters1.description AS text_part_content
-			FROM sentiment_analysis_scrape_reuters reuters1
+				'media' AS source, m1.id, m1.title AS text_part_title, m1.description AS text_part_content
+			FROM sentiment_analysis_scrape_media m1
 			LEFT JOIN 
 				(
-					SELECT scrape_id FROM sentiment_analysis_score_reuters WHERE score_model = 'DICT'
-				) reuters2
-				ON reuters1.id = reuters2.scrape_id
-			WHERE reuters2.scrape_id IS NULL
+					SELECT scrape_id FROM sentiment_analysis_score_media WHERE score_model = 'DICT'
+				) m2
+				ON m1.id = m2.scrape_id
+			WHERE m2.scrape_id IS NULL
 		)") %>%
 		as_tibble(.) %>%
 		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))

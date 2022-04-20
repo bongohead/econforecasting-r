@@ -382,7 +382,6 @@ local({
 	reddit$data$top_1000_year_by_board <<- top_1000_year_by_board
 })
 
-
 ## PushShift ---------------------------------------------------------------
 local({
 	
@@ -391,7 +390,8 @@ local({
 	
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
-		created_dt = seq(today('US/Eastern') - days(2), as_date('2022-04-01'), '-1 day'),
+		# Pushshift can have a delay up to 3 days
+		created_dt = seq(today('US/Eastern') - days(3), as_date('2021-08-01'), '-1 day'),
 		subreddit = reddit$scrape_boards$board
 		)
 	
