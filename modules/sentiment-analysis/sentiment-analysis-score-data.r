@@ -40,7 +40,7 @@ db = dbConnect(
 )
 
 
-# Data Prep --------------------------------------------------------
+# Data Import --------------------------------------------------------
 
 ## Create Tables --------------------------------------------------------
 local({
@@ -89,14 +89,14 @@ local({
 	unscored_bert = dbGetQuery(db,
 		"(
 			SELECT
-				'reddit' AS source, reddit1.id, reddit1.title AS text_part_title, reddit1.selftext as text_part_content
-			FROM sentiment_analysis_scrape_reddit reddit1
-			LEFT JOIN 
+				'reddit' AS source, r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
+			FROM sentiment_analysis_scrape_reddit r1
+			LEFT JOIN
 				(
 					SELECT scrape_id FROM sentiment_analysis_score_reddit WHERE score_model = 'DISTILBERT'
-				) reddit2
-				ON reddit1.id = reddit2.scrape_id
-			WHERE reddit2.scrape_id IS NULL
+				) r2
+				ON r1.id = r2.scrape_id
+			WHERE r2.scrape_id IS NULL AND r1.ups >= 10
 		)
 		UNION ALL
 		(
@@ -108,7 +108,7 @@ local({
 					SELECT scrape_id FROM sentiment_analysis_score_media WHERE score_model = 'DISTILBERT'
 				) m2
 				ON m1.id = m2.scrape_id
-			WHERE m2.scrape_id IS NULL AND m1.ups >= 10
+			WHERE m2.scrape_id IS NULL
 		)") %>%
 		as_tibble(.) %>%
 		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
@@ -287,18 +287,3 @@ local({
 ## Close Connections --------------------------------------------------------
 dbDisconnect(db)
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-
-
-## Score Analysis --------------------------------------------------------
-# scored_data =
-# 	pulled_data %>%
-# 	merge(., dict_result, all.x = T) %>%
-# 	bind_cols(., bert_result[, c('bert_label', 'bert_score')])
-# 
-# 
-# scored_data %>%
-# 	.[, list(score = mean(bert_label, na.rm = T)), by = c('created_date', 'subreddit')] %>%
-# 	.[order(subreddit, created_date)] %>%
-# 	.[, score := frollmean(score, n = 30, fill = NA), by = 'subreddit'] %>%
-# 	ggplot(.) +
-# 	geom_line(aes(x = created_date, y = score, color = subreddit))
