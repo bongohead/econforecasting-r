@@ -391,7 +391,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(3), as_date('2021-08-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(3), as_date('2021-06-01'), '-1 day'),
 		subreddit = reddit$scrape_boards$board
 		)
 	
@@ -495,6 +495,7 @@ local({
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
 		.[is.na(removed_by_category)] %>%
+		.[title != '[deleted by user]' & selftext != '[removed]'] %>%
 		transmute(
 			.,
 			method = 'pushshift_all_by_board', name,
