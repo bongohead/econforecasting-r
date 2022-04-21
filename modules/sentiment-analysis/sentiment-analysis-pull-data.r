@@ -85,6 +85,7 @@ local({
 		WHERE scrape_active = TRUE"
 		)))
 
+	reddit <<- list()
 	reddit$scrape_boards <<- scrape_boards
 })
 
@@ -110,7 +111,6 @@ local({
 		httr::content(., 'parsed') %>%
 		.$access_token
 	
-	reddit <<- list()
 	reddit$token <<- token
 })
 
@@ -498,7 +498,11 @@ local({
 								'removed_by_category'
 								))) %>%
 							.[ups >= x$scrape_ups_floor] %>%
-							.[is.na(removed_by_category) & title != '[deleted by user]' & selftext != '[removed]'] %>%
+							{
+								if ('removed_by_category' %in% colnames(.)) .[is.na(removed_by_category)] 
+								else .
+							} %>%
+							.[title != '[deleted by user]' & selftext != '[removed]'] %>%
 							.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
 							.[, scraped_dttm := now('US/Eastern')]
 					return(parsed)
@@ -514,7 +518,7 @@ local({
 			subreddit, title, 
 			created_dttm = created, scraped_dttm = now('US/Eastern'),
 			selftext, upvote_ratio, ups, is_self, domain, url = url_overridden_by_dest
-		)
+			)
 	
 	reddit$data$pushshift_all_by_board <<- pushshift_all_by_board
 })

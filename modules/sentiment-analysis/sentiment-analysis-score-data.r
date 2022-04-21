@@ -46,12 +46,12 @@ db = dbConnect(
 local({
 if (RESET_SQL) {
 	
-	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_score_reddit CASCADE')
-	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_score_media CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_reddit_score CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_media_score CASCADE')
 	
 	dbExecute(
 		db,
-		'CREATE TABLE sentiment_analysis_score_reddit (
+		'CREATE TABLE sentiment_analysis_reddit_score (
 		scrape_id INT NOT NULL,
 		text_part VARCHAR(255) NOT NULL,
 		score_model VARCHAR(255) NOT NULL, 
@@ -59,14 +59,14 @@ if (RESET_SQL) {
 		score_conf DECIMAL(20, 4) NULL,
 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
 		PRIMARY KEY (scrape_id, text_part, score_model),
-		CONSTRAINT sentiment_analysis_scrape_reddit_fk FOREIGN KEY (scrape_id)
-				REFERENCES sentiment_analysis_scrape_reddit (id) ON DELETE CASCADE ON UPDATE CASCADE
+		CONSTRAINT sentiment_analysis_reddit_score_fk FOREIGN KEY (scrape_id)
+				REFERENCES sentiment_analysis_reddit_scrape (id) ON DELETE CASCADE ON UPDATE CASCADE
 		)'
 	)
 	
 	dbExecute(
 		db,
-		'CREATE TABLE sentiment_analysis_score_media (
+		'CREATE TABLE sentiment_analysis_media_score (
 		scrape_id INT NOT NULL,
 		text_part VARCHAR(255) NOT NULL,
 		score_model VARCHAR(255) NOT NULL, 
@@ -74,8 +74,8 @@ if (RESET_SQL) {
 		score_conf DECIMAL(20, 4) NULL,
 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
 		PRIMARY KEY (scrape_id, text_part, score_model),
-		CONSTRAINT sentiment_analysis_score_media_fk FOREIGN KEY (scrape_id)
-				REFERENCES sentiment_analysis_scrape_media (id) ON DELETE CASCADE ON UPDATE CASCADE
+		CONSTRAINT sentiment_analysis_media_score_fk FOREIGN KEY (scrape_id)
+				REFERENCES sentiment_analysis_media_scrape (id) ON DELETE CASCADE ON UPDATE CASCADE
 		)'
 	)
 	
@@ -90,11 +90,9 @@ local({
 		"(
 			SELECT
 				'reddit' AS source, r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
-			FROM sentiment_analysis_scrape_reddit r1
+			FROM sentiment_analysis_reddit_scrape r1
 			LEFT JOIN
-				(
-					SELECT scrape_id FROM sentiment_analysis_score_reddit WHERE score_model = 'DISTILBERT'
-				) r2
+				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DISTILBERT') r2
 				ON r1.id = r2.scrape_id
 			WHERE r2.scrape_id IS NULL AND r1.ups >= 10
 		)
@@ -102,29 +100,24 @@ local({
 		(
 			SELECT 
 				'media' AS source, m1.id, m1.title AS text_part_title, m1.description AS text_part_content
-			FROM sentiment_analysis_scrape_media m1
+			FROM sentiment_analysis_media_scrape m1
 			LEFT JOIN 
-				(
-					SELECT scrape_id FROM sentiment_analysis_score_media WHERE score_model = 'DISTILBERT'
-				) m2
+				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DISTILBERT') m2
 				ON m1.id = m2.scrape_id
 			WHERE m2.scrape_id IS NULL
 		)") %>%
 		as_tibble(.) %>%
 		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
 	
-	
 	unscored_dict = dbGetQuery(db,
 		"(
 			SELECT
-				'reddit' AS source, reddit1.id, reddit1.title AS text_part_title, reddit1.selftext as text_part_content
-			FROM sentiment_analysis_scrape_reddit reddit1
+				'reddit' AS source, r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
+			FROM sentiment_analysis_scrape_reddit r1
 			LEFT JOIN 
-				(
-					SELECT scrape_id FROM sentiment_analysis_score_reddit WHERE score_model = 'DICT'
-				) reddit2
-				ON reddit1.id = reddit2.scrape_id
-			WHERE reddit2.scrape_id IS NULL
+				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DICT') r2
+				ON r1.id = r2.scrape_id
+			WHERE r2.scrape_id IS NULL AND r1.ups >= 10
 		)
 		UNION ALL
 		(
@@ -132,9 +125,7 @@ local({
 				'media' AS source, m1.id, m1.title AS text_part_title, m1.description AS text_part_content
 			FROM sentiment_analysis_scrape_media m1
 			LEFT JOIN 
-				(
-					SELECT scrape_id FROM sentiment_analysis_score_media WHERE score_model = 'DICT'
-				) m2
+				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DICT') m2
 				ON m1.id = m2.scrape_id
 			WHERE m2.scrape_id IS NULL
 		)") %>%
