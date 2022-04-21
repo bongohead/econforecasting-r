@@ -108,7 +108,7 @@ local({
 					SELECT scrape_id FROM sentiment_analysis_score_media WHERE score_model = 'DISTILBERT'
 				) m2
 				ON m1.id = m2.scrape_id
-			WHERE m2.scrape_id IS NULL
+			WHERE m2.scrape_id IS NULL AND m1.ups >= 10
 		)") %>%
 		as_tibble(.) %>%
 		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))

@@ -391,7 +391,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(3), as_date('2021-08-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(3), as_date('2021-10-01'), '-1 day'),
 		subreddit = reddit$scrape_boards$board
 		)
 	
@@ -414,7 +414,7 @@ local({
 		arrange(., desc(created_dt), subreddit)
 	
 	message('***** New Pulls:')
-	print(new_pulls, n = 20)
+	print(new_pulls, n = 200)
 
 	# Now pull data
 	pushshift_all_by_board =

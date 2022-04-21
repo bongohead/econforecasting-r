@@ -83,40 +83,55 @@ local({
 ## Pull Unscored Data --------------------------------------------------------
 local({
 	
-	# Pull data NULL
-	reddit_scored = dbGetQuery(db,
-		"(
-			SELECT
-				reddit1.method AS source,
-				reddit1.subreddit, DATE(reddit1.created_dttm) AS created_dt, reddit1.ups,
-				reddit2.*
-			FROM sentiment_analysis_scrape_reddit reddit1
-			INNER JOIN sentiment_analysis_score_reddit reddit2
-				ON reddit1.id = reddit2.scrape_id
-			)
-		UNION ALL
-		(
-			SELECT
-				'rereddit' AS source, rereddit1.subreddit, rereddit1.created_dt, rereddit1.ups,
-				rereddit2.*
-			FROM sentiment_analysis_scrape_rereddit rereddit1
-			INNER JOIN sentiment_analysis_score_rereddit rereddit2
-				ON rereddit1.id = rereddit2.scrape_id
-		)"
-		) %>%
-		as_tibble(.) 
-		
-	reuters_scored = dbGetQuery(db, 
+	# # Pull data NULL
+	# reddit_scored = dbGetQuery(db,
+	# 	"(
+	# 		SELECT
+	# 			reddit1.method AS source,
+	# 			reddit1.subreddit, DATE(reddit1.created_dttm) AS created_dt, reddit1.ups,
+	# 			reddit2.*
+	# 		FROM sentiment_analysis_scrape_reddit reddit1
+	# 		INNER JOIN sentiment_analysis_score_reddit reddit2
+	# 			ON reddit1.id = reddit2.scrape_id
+	# 		)
+	# 	UNION ALL
+	# 	(
+	# 		SELECT
+	# 			'rereddit' AS source, rereddit1.subreddit, rereddit1.created_dt, rereddit1.ups,
+	# 			rereddit2.*
+	# 		FROM sentiment_analysis_scrape_rereddit rereddit1
+	# 		INNER JOIN sentiment_analysis_score_rereddit rereddit2
+	# 			ON rereddit1.id = rereddit2.scrape_id
+	# 	)"
+	# 	) %>%
+	# 	as_tibble(.) 
+	
+	
+	pushshift_scored = dbGetQuery(db,
 		"SELECT
-			'reuters' AS source, reuters1.*, reuters2.*
-		FROM sentiment_analysis_scrape_reuters reuters1
-		INNER JOIN sentiment_analysis_score_reuters reuters2
-			ON reuters1.id = reuters2.scrape_id"
+				r1.method AS source, r1.subreddit, DATE(r1.created_dttm) AS created_dt, r1.ups,
+				r2.*
+			FROM sentiment_analysis_scrape_reddit r1
+			INNER JOIN sentiment_analysis_score_reddit r2
+				ON r1.id = r2.scrape_id
+			WHERE r1.method = 'pushshift_all_by_board'
+				AND text_part = 'all_text'
+				AND score_model = 'DISTILBERT'") %>%
+		as_tibble(.) 
+	
+	
+	media_scored = dbGetQuery(db, 
+		"SELECT
+			'media' AS source, m1.*, m2.*
+		FROM sentiment_analysis_scrape_media m1
+		INNER JOIN sentiment_analysis_score_media m2
+			ON m1.id = m2.scrape_id"
 		) %>%
 		as_tibble(.) 
 
-	reddit_scored <<- reddit_scored
-	reuters_scored <<- reuters_scored
+	# reddit_scored <<- reddit_scored
+	pushshift_scored <<- pushshift_scored
+	media_scored <<- media_scored
 })
 
 
