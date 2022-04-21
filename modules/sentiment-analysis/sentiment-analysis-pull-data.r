@@ -52,11 +52,11 @@ db = dbConnect(
 local({
 if (RESET_SQL) {
 		
-	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_reddit CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_reddit_scrape CASCADE')
 
 	dbExecute(
 		db,
-		'CREATE TABLE sentiment_analysis_scrape_reddit (
+		'CREATE TABLE sentiment_analysis_reddit_scrape (
 		id SERIAL PRIMARY KEY,
 		method VARCHAR(255) NOT NULL,
 		name VARCHAR(255) NOT NULL,
@@ -69,13 +69,25 @@ if (RESET_SQL) {
 		ups NUMERIC(20, 0),
 		is_self BOOLEAN,
 		domain TEXT,
-		url_overridden_by_dest TEXT,
+		url TEXT,
 		UNIQUE (method, name)
 		)'
 	)
-		
+
 }
 })
+
+## Boards --------------------------------------------------------
+local({
+	
+	scrape_boards = collect(tbl(db, sql(
+		"SELECT subreddit, scrape_ups_floor FROM sentiment_analysis_reddit_boards
+		WHERE scrape_active = TRUE"
+		)))
+
+	reddit$scrape_boards <<- scrape_boards
+})
+
 
 ## Token --------------------------------------------------------
 local({
@@ -153,7 +165,7 @@ local({
 			method = 'top_1000_today_all', name,
 			subreddit, title, 
 			created_dttm = created, scraped_dttm = now('US/Eastern'),
-			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
+			selftext, upvote_ratio, ups, is_self, domain, url = url_overridden_by_dest
 			)
 	
 	reddit$data$top_1000_today_all <<- top_1000_today_all
@@ -162,13 +174,11 @@ local({
 ## Top (By Board) --------------------------------------------------------
 local({
 
-	message(str_glue('*** Pulling Top By Board: {format(now(), "%H:%M")}'))
+	message(str_glue('*** Pulling Top 200/Day By Board: {format(now(), "%H:%M")}'))
 	
-	scrape_boards = collect(tbl(db, sql('SELECT * FROM sentiment_analysis_reddit_boards')))
-
-	top_200_today_by_board = lapply(scrape_boards$board, function(board) {
+	top_200_today_by_board = lapply(purrr::transpose(reddit$scrape_boards), function(board) {
 		
-		message('*** Pull for: ', board)
+		message('*** Pull for: ', board$subreddit)
 		
 		# Only top possible for top
 		reduce(1:2, function(accum, i) {
@@ -182,7 +192,7 @@ local({
 			
 			# message(query)
 			http_result = GET(
-				paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+				paste0('https://oauth.reddit.com/r/', board$subreddit, '/top?', query),
 				add_headers(c(
 					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
 					'Authorization' = paste0('bearer ', reddit$token)
@@ -205,7 +215,8 @@ local({
 				))) %>%
 				as.data.table(.) %>%
 				.[, i := i] %>%
-				.[, after := result$data$after %||% NA]
+				.[, after := result$data$after %||% NA] %>%
+				.[ups >= board$scrape_ups_floor]
 			
 			if (is.null(result$data$after)) {
 				message('----- Break, missing AFTER')
@@ -224,21 +235,20 @@ local({
 			method = 'top_200_today_by_board', name,
 			subreddit, title, 
 			created_dttm = created, scraped_dttm = now('US/Eastern'),
-			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
+			selftext, upvote_ratio, ups, is_self, domain, url = url_overridden_by_dest
 		)
 	
-	reddit$scrape_boards <<- scrape_boards
 	reddit$data$top_200_today_by_board <<- top_200_today_by_board
 })
 	
 ## Top (By Board, Month) --------------------------------------------------------
 local({
 	
-	message(str_glue('*** Pulling Top By Board (Old): {format(now(), "%H:%M")}'))
+	message(str_glue('*** Pulling Top 1k/Month By Board: {format(now(), "%H:%M")}'))
 	
-	top_1000_month_by_board = lapply(reddit$scrape_boards$board, function(board) {
+	top_1000_month_by_board = lapply(purrr::transpose(reddit$scrape_boards), function(board) {
 		
-		message('*** Pull for: ', board)
+		message('*** Pull for: ', board$subreddit)
 		
 		# Only top possible for top
 		reduce(1:9, function(accum, i) {
@@ -251,7 +261,7 @@ local({
 				paste0(collapse = '&')
 			
 			http_result = GET(
-				paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+				paste0('https://oauth.reddit.com/r/', board$subreddit, '/top?', query),
 				add_headers(c(
 					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
 					'Authorization' = paste0('bearer ', reddit$token)
@@ -274,7 +284,8 @@ local({
 				))) %>%
 				as.data.table(.) %>%
 				.[, i := i] %>%
-				.[, after := result$data$after %||% NA]
+				.[, after := result$data$after %||% NA] %>%
+				.[ups >= board$scrape_ups_floor]
 			
 			if (is.null(result$data$after)) {
 				message('----- Break, missing AFTER')
@@ -293,7 +304,7 @@ local({
 			method = 'top_1000_month_by_board', name,
 			subreddit, title, 
 			created_dttm = created, scraped_dttm = now('US/Eastern'),
-			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
+			selftext, upvote_ratio, ups, is_self, domain, url = url_overridden_by_dest
 		)
 	
 	# Verify no duplicated unique posts (name should be unique)
@@ -309,11 +320,11 @@ local({
 
 ## Top (By Board, Year) --------------------------------------------------------
 local({
-	message(str_glue('*** Pulling Top By Board (Old): {format(now(), "%H:%M")}'))
+	message(str_glue('*** Pulling Top 1k/Year By Board: {format(now(), "%H:%M")}'))
 	
-	top_1000_year_by_board = lapply(reddit$scrape_boards$board, function(board) {
+	top_1000_year_by_board = lapply(purrr::transpose(reddit$scrape_boards), function(board) {
 		
-		message('*** Pull for: ', board)
+		message('*** Pull for: ', board$subreddit)
 		
 		# Only top possible for top
 		reduce(1:9, function(accum, i) {
@@ -326,7 +337,7 @@ local({
 				paste0(collapse = '&')
 			
 			http_result = GET(
-				paste0('https://oauth.reddit.com/r/', board, '/top?', query),
+				paste0('https://oauth.reddit.com/r/', board$subreddit, '/top?', query),
 				add_headers(c(
 					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
 					'Authorization' = paste0('bearer ', reddit$token)
@@ -349,7 +360,8 @@ local({
 				))) %>%
 				as.data.table(.) %>%
 				.[, i := i] %>%
-				.[, after := result$data$after %||% NA]
+				.[, after := result$data$after %||% NA] %>%
+				.[ups >= board$scrape_ups_floor]
 			
 			if (is.null(result$data$after)) {
 				message('----- Break, missing AFTER')
@@ -368,7 +380,7 @@ local({
 			method = 'top_1000_year_by_board', name,
 			subreddit, title, 
 			created_dttm = created, scraped_dttm = now('US/Eastern'),
-			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
+			selftext, upvote_ratio, ups, is_self, domain, url = url_overridden_by_dest
 		)
 	
 	# Verify no duplicated unique posts (name should be unique)
@@ -391,14 +403,14 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(3), as_date('2021-06-01'), '-1 day'),
-		subreddit = reddit$scrape_boards$board
+		created_dt = seq(today('US/Eastern') - days(3), as_date('2022-04-01'), '-1 day'),
+		reddit$scrape_boards
 		)
 	
 	# Get existing dates (Eastern Time)
 	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
 		"SELECT DATE(created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, subreddit
-		FROM sentiment_analysis_scrape_reddit
+		FROM sentiment_analysis_reddit_scrape
 		WHERE method = 'pushshift_all_by_board'
 		GROUP BY created_dt, subreddit"
 		)))
@@ -485,6 +497,8 @@ local({
 								'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest',
 								'removed_by_category'
 								))) %>%
+							.[ups >= x$scrape_ups_floor] %>%
+							.[is.na(removed_by_category) & title != '[deleted by user]' & selftext != '[removed]'] %>%
 							.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
 							.[, scraped_dttm := now('US/Eastern')]
 					return(parsed)
@@ -494,14 +508,12 @@ local({
 			return(pulled_data)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
-		.[is.na(removed_by_category)] %>%
-		.[title != '[deleted by user]' & selftext != '[removed]'] %>%
 		transmute(
 			.,
 			method = 'pushshift_all_by_board', name,
 			subreddit, title, 
 			created_dttm = created, scraped_dttm = now('US/Eastern'),
-			selftext, upvote_ratio, ups, is_self, domain, url_overridden_by_dest
+			selftext, upvote_ratio, ups, is_self, domain, url = url_overridden_by_dest
 		)
 	
 	reddit$data$pushshift_all_by_board <<- pushshift_all_by_board
@@ -512,7 +524,7 @@ local({
 	
 	message(str_glue('*** Sending Reddit Data to SQL: {format(now(), "%H:%M")}'))
 	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_reddit')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_reddit_scrape')$count)
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
@@ -530,7 +542,7 @@ local({
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'sentiment_analysis_scrape_reddit',
+				'sentiment_analysis_reddit_scrape',
 				'ON CONFLICT (method, name) DO UPDATE SET
 				subreddit=EXCLUDED.subreddit,
 				title=EXCLUDED.title,
@@ -541,13 +553,13 @@ local({
 				ups=EXCLUDED.ups,
 				is_self=EXCLUDED.is_self,
 				domain=EXCLUDED.domain,
-				url_overridden_by_dest=EXCLUDED.url_overridden_by_dest'
+				url=EXCLUDED.url'
 				) %>%
 				 dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_reddit')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_reddit_scrape')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
 	create_insert_query(
@@ -568,11 +580,11 @@ local({
 local({
 	
 	if (RESET_SQL) {
-		dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_scrape_media CASCADE')
+		dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_media_scrape CASCADE')
 		
 		dbExecute(
 			db,
-			'CREATE TABLE sentiment_analysis_scrape_media (
+			'CREATE TABLE sentiment_analysis_media_scrape (
 			id SERIAL PRIMARY KEY,
 			source VARCHAR(255) NOT NULL,
 			method VARCHAR(255) NOT NULL,
@@ -650,7 +662,7 @@ local({
 	
 	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
 		"SELECT created_dt, method
-		FROM sentiment_analysis_scrape_media
+		FROM sentiment_analysis_media_scrape
 		WHERE source = 'ft'
 		GROUP BY created_dt, method"
 		)))
@@ -734,7 +746,7 @@ local({
 	
 	message(str_glue('*** Sending Media Data to SQL: {format(now(), "%H:%M")}'))
 	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_media')$count)
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_media_scrape')$count)
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
@@ -748,7 +760,7 @@ local({
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'sentiment_analysis_scrape_media',
+				'sentiment_analysis_media_scrape',
 				'ON CONFLICT (source, method, title, created_dt) DO UPDATE SET
 				description=EXCLUDED.description,
 				scraped_dttm=EXCLUDED.scraped_dttm'
@@ -757,7 +769,7 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_scrape_media')$count)
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_media_scrape')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 	
 	create_insert_query(
