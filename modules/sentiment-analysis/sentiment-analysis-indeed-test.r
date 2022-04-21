@@ -41,6 +41,13 @@ db = dbConnect(
 	password = CONST$DB_PASSWORD
 )
 
+## Load Zip Data ----------------------------------------------------------
+zips =
+	file.path(EF_DIR, 'modules', 'sentiment-analysis', 'uszips.csv') %>%
+	read_csv(.) %>%
+	mutate(., zip = str_pad(zip, width = 5, pad = '0'))
+
+
 # Scrape ----------------------------------------------------------
 
 ## Scrape ----------------------------------------------------------
@@ -49,7 +56,7 @@ page_html =
 	GET('https://www.indeed.com/jobs?l=31904&fromage=1&radius=25') %>%
 	content(.)
 
-zip_scrape = purrr::reduce(1:1000, .init = tibble(), .f = function(accum, page_number) {
+zip_scrape = purrr::reduce(1:50, .init = tibble(), .f = function(accum, page_number) {
 	
 	message(str_glue('Scraping page {page_number}'))
 	
@@ -69,10 +76,10 @@ zip_scrape = purrr::reduce(1:1000, .init = tibble(), .f = function(accum, page_n
 	
 	page_info =
 		page_data %>%
-		html_nodes('a.tapItem') %>%
+		html_nodes('.tapItem') %>%
 		map_dfr(., function(x) tibble(
-			job_title = x %>% html_node(., 'h2.jobTitle > span') %>% html_text(.),
-			job_id = x %>% html_attr(., 'data-jk'),
+			job_title = x %>% html_node(., '.jobTitle > a') %>% html_text(.),
+			job_id = x %>% html_node(., '.jobTitle > a') %>% html_attr(., 'data-jk'),
 			company_name = x %>% html_node(., 'span.companyName') %>% html_text(.),
 			company_location = x %>% html_node(., 'div.companyLocation') %>% html_text(.),
 			job_snippet = x %>% html_node(., 'div.job-snippet') %>% html_text(.)
@@ -147,21 +154,21 @@ zip_scrape = purrr::reduce(1:1000, .init = tibble(), .f = function(accum, page_n
 						)
 				}
 			
-			job_description =
-				job_embed %>%
-				html_nodes(., '#jobDescriptionText') %>%
-				html_children(.) %>%
-				{
-					if (length(.) == 0) tibble()
-					else 
-						tibble(
-							scrape_target = 'job_description',
-							scrape_value = 
-								html_text(.) %>%
-								paste0(., collapse = '') %>%
-								str_trim(.)
-						)
-				}
+			# job_description =
+			# 	job_embed %>%
+			# 	html_nodes(., '#jobDescriptionText') %>%
+			# 	html_children(.) %>%
+			# 	{
+			# 		if (length(.) == 0) tibble()
+			# 		else 
+			# 			tibble(
+			# 				scrape_target = 'job_description',
+			# 				scrape_value = 
+			# 					html_text(.) %>%
+			# 					paste0(., collapse = '') %>%
+			# 					str_trim(.)
+			# 			)
+			# 	}
 			
 			job_activity =
 				job_embed %>%
@@ -192,7 +199,7 @@ zip_scrape = purrr::reduce(1:1000, .init = tibble(), .f = function(accum, page_n
 					job_details,
 					job_header,
 					job_quals,
-					job_description,
+					# job_description,
 					job_activity
 				) %>%
 				mutate(., indeed_id = x$job_id, scrape_page_number = page_number)
