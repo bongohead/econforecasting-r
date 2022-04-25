@@ -11,33 +11,7 @@ RESET_SQL = FALSE
 if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
 	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
 	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
-
-## Load Libs ----------------------------------------------------------'
-library(econforecasting)
-library(tidyverse)
-library(data.table)
-library(DBI)
-library(RPostgres)
-library(lubridate)
-library(jsonlite)
-library(tidytext)
-library(reticulate)
-use_virtualenv(file.path(EF_DIR, '.virtualenvs', 'econforecasting'))
-
-## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+	
 
 
 # Data Prep --------------------------------------------------------
