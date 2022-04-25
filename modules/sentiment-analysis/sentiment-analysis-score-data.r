@@ -55,7 +55,7 @@ if (RESET_SQL) {
 		scrape_id INT NOT NULL,
 		text_part VARCHAR(255) NOT NULL,
 		score_model VARCHAR(255) NOT NULL, 
-		score INT NOT NULL,
+		score VARCHAR(100) NOT NULL,
 		score_conf DECIMAL(20, 4) NULL,
 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
 		PRIMARY KEY (scrape_id, text_part, score_model),
@@ -70,7 +70,7 @@ if (RESET_SQL) {
 		scrape_id INT NOT NULL,
 		text_part VARCHAR(255) NOT NULL,
 		score_model VARCHAR(255) NOT NULL, 
-		score INT NOT NULL,
+		score VARCHAR(100) NOT NULL,
 		score_conf DECIMAL(20, 4) NULL,
 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
 		PRIMARY KEY (scrape_id, text_part, score_model),
@@ -80,7 +80,18 @@ if (RESET_SQL) {
 	)
 	
 }
-})	
+})
+
+## Boards --------------------------------------------------------
+local({
+	
+	scrape_boards = collect(tbl(db, sql(
+		"SELECT subreddit, scrape_ups_floor FROM sentiment_analysis_reddit_boards
+		WHERE scrape_active = TRUE"
+	)))
+	
+	scrape_boards <<- scrape_boards
+})
 
 ## Pull Unscored Data --------------------------------------------------------
 local({
@@ -94,7 +105,11 @@ local({
 			LEFT JOIN
 				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DISTILBERT') r2
 				ON r1.id = r2.scrape_id
-			WHERE r2.scrape_id IS NULL AND r1.ups >= 10
+			-- Only keep subreddits in scrape_boards directory and above score_ups_floor
+			INNER JOIN sentiment_analysis_reddit_boards b
+				ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
+			-- 
+			WHERE r2.scrape_id IS NULL
 		)
 		UNION ALL
 		(
@@ -113,17 +128,17 @@ local({
 		"(
 			SELECT
 				'reddit' AS source, r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
-			FROM sentiment_analysis_scrape_reddit r1
+			FROM sentiment_analysis_reddit_scrape r1
 			LEFT JOIN 
 				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DICT') r2
 				ON r1.id = r2.scrape_id
-			WHERE r2.scrape_id IS NULL AND r1.ups >= 10
+			WHERE r2.scrape_id IS NULL
 		)
 		UNION ALL
 		(
 			SELECT
 				'media' AS source, m1.id, m1.title AS text_part_title, m1.description AS text_part_content
-			FROM sentiment_analysis_scrape_media m1
+			FROM sentiment_analysis_media_scrape m1
 			LEFT JOIN 
 				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DICT') m2
 				ON m1.id = m2.scrape_id
@@ -176,7 +191,7 @@ local({
 			# .[!word %chin% stop_words$word]  %>%
 			merge(., dict, by = 'word', all = F, allow.cartesian = T) %>%
 			.[, list(score = sum(sentiment)/.N), by = 'id'] %>%
-			.[, score := ifelse(score >= 0, 1, -1)]
+			.[, score := ifelse(score >= 0, 'p', 'n')]
 	
 		# print(result)
 		if (nrow(result) == 0) {
@@ -200,7 +215,7 @@ local({
 		sql_data %>%
 			create_insert_query(
 				.,
-				paste0('sentiment_analysis_score_', x$source[[1]]),
+				paste0('sentiment_analysis_', x$source[[1]], '_score'),
 				'ON CONFLICT (scrape_id, text_part, score_model) DO UPDATE SET
 					score=EXCLUDED.score,
 					score_conf=EXCLUDED.score_conf,
@@ -214,7 +229,7 @@ local({
 ## BERT  --------------------------------------------------------
 local({
 	
-	BATCH_SIZE = 500
+	BATCH_SIZE = 1000
 	
 	happytransformer = import('happytransformer')
 	happy_tc = happytransformer$HappyTextClassification(
@@ -222,6 +237,12 @@ local({
 		'distilbert-base-uncased-finetuned-sst-2-english', # 'siebert/sentiment-roberta-large-english',
 		num_labels = 2
 	)
+	
+	# happytransformer$HappyTextClassification(
+	# 	'DistilRoBERTa-base', # 'ROBERTA',
+	# 	'j-hartmann/emotion-english-distilroberta-base',
+	# 	num_labels = 7
+	# 	)
 	
 	batches =
 		unscored_bert %>%
@@ -242,7 +263,7 @@ local({
 			scrape_id = x$id,
 			score = map_chr(classified_text, ~ .$label),
 			score_conf = map_chr(classified_text, ~ .$score)
-			)[, score := ifelse(score == 'POSITIVE', 1, -1)]
+			)[, score := ifelse(score == 'POSITIVE', 'p', 'n')]
 		
 		# print(result)
 		
@@ -262,7 +283,7 @@ local({
 		sql_data %>%
 			create_insert_query(
 				.,
-				paste0('sentiment_analysis_score_', x$source[[1]]),
+				paste0('sentiment_analysis_', x$source[[1]], '_score'),
 				'ON CONFLICT (scrape_id, text_part, score_model) DO UPDATE SET
 					score=EXCLUDED.score,
 					score_conf=EXCLUDED.score_conf,
