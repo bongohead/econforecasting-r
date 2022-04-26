@@ -453,7 +453,7 @@ local({
 						'&locked=false&stickied=false&contest_mode=false'
 					)
 					# message(page, ' ', url)
-					response = content(RETRY('GET', url))$data
+					response = content(RETRY('GET', url, times = 5))$data
 					if (length(response) == 0) break; 
 					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
 					created_dts = response %>% map(., ~ .$created)
@@ -480,7 +480,8 @@ local({
 					parsed =
 						RETRY(
 							'GET',
-							paste0('https://oauth.reddit.com/api/info?id=', paste0(split_group$pull_names, collapse = ',')),
+							url = paste0('https://oauth.reddit.com/api/info?id=', paste0(split_group$pull_names, collapse = ',')),
+							times = 5,
 							add_headers(c(
 								'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
 								'Authorization' = paste0('bearer ', reddit$token)
