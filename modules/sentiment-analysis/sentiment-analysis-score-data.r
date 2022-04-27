@@ -85,12 +85,12 @@ if (RESET_SQL) {
 ## Boards --------------------------------------------------------
 local({
 	
-	scrape_boards = collect(tbl(db, sql(
+	score_boards = collect(tbl(db, sql(
 		"SELECT subreddit, scrape_ups_floor FROM sentiment_analysis_reddit_boards
-		WHERE scrape_active = TRUE"
+		WHERE score_active = TRUE"
 	)))
 	
-	scrape_boards <<- scrape_boards
+	score_boards <<- score_boards
 })
 
 ## Pull Unscored Data --------------------------------------------------------
@@ -100,7 +100,8 @@ local({
 	unscored_bert = dbGetQuery(db,
 		"(
 			SELECT
-				'reddit' AS source, r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
+				'reddit' AS source, DATE(r1.created_dttm) as created_dt,
+				r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
 			FROM sentiment_analysis_reddit_scrape r1
 			LEFT JOIN
 				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DISTILBERT') r2
@@ -114,7 +115,8 @@ local({
 		UNION ALL
 		(
 			SELECT 
-				'media' AS source, m1.id, m1.title AS text_part_title, m1.description AS text_part_content
+				'media' AS source, m1.created_dt,
+				m1.id, m1.title AS text_part_title, m1.description AS text_part_content
 			FROM sentiment_analysis_media_scrape m1
 			LEFT JOIN 
 				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DISTILBERT') m2
@@ -127,7 +129,8 @@ local({
 	unscored_dict = dbGetQuery(db,
 		"(
 			SELECT
-				'reddit' AS source, r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
+				'reddit' AS source, DATE(r1.created_dttm) AS created_dt,
+				r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
 			FROM sentiment_analysis_reddit_scrape r1
 			LEFT JOIN 
 				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DICT') r2
@@ -137,7 +140,8 @@ local({
 		UNION ALL
 		(
 			SELECT
-				'media' AS source, m1.id, m1.title AS text_part_title, m1.description AS text_part_content
+				'media' AS source, m1.created_dt,
+				m1.id, m1.title AS text_part_title, m1.description AS text_part_content
 			FROM sentiment_analysis_media_scrape m1
 			LEFT JOIN 
 				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DICT') m2
@@ -178,7 +182,8 @@ local({
 		unscored_dict %>%
 		as.data.table(.) %>%
 		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
-		split(., by = c('source', 'split'), .keep = FALSE)
+		split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
+		unname(.)
 	
 	iwalk(batches, function(x, i) {
 		
@@ -229,7 +234,7 @@ local({
 ## BERT  --------------------------------------------------------
 local({
 	
-	BATCH_SIZE = 1000
+	BATCH_SIZE = 500
 	
 	happytransformer = import('happytransformer')
 	happy_tc = happytransformer$HappyTextClassification(
@@ -246,15 +251,21 @@ local({
 	
 	batches =
 		unscored_bert %>%
+		# Score first 5k only to prevent overlap
+		head(., 5000) %>%
 		as.data.table(.) %>%
 		.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
+		.[order(-source, -created_dt)] %>%
 		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
-		split(., by = c('source', 'split'), .keep = FALSE)
-	
+		split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
+		unname(.)
 	
 	iwalk(batches, function(x, i) {
 		
-		message('***** BERT Scoring Batch ', i, ' of ', length(batches))
+		message(str_glue(
+			'***** BERT Scoring Batch {i} of {length(batches)}',
+			' | Source: {x$source[[1]]} | Dates: {paste0(format(unique(x$created_dt), "%m/%d/%y"), collapse = ", ")}'
+			))
 		
 		fwrite(set_names(x[, 'text_part_all_text'], 'text'), file.path(tempdir(), 'text.csv'))
 		classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
