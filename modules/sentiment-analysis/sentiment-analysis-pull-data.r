@@ -423,7 +423,9 @@ local({
 			start = as.numeric(with_tz(force_tz(as_datetime(created_dt), 'US/Eastern'), 'UTC')),
 			end = as.numeric(with_tz(force_tz(as_datetime(created_dt) + days(1), 'US/Eastern'), 'UTC')) - 1,
 			) %>%
-		arrange(., desc(created_dt), subreddit)
+		arrange(., desc(created_dt), subreddit) %>%
+		# Limit to 1000 per batch
+		head(., 1000)
 	
 	message('***** New Pulls:')
 	print(new_pulls, n = 200)
@@ -434,7 +436,10 @@ local({
 		purrr::transpose(.) %>%
 		imap(., function(x, i) {
 			
-			message(str_glue('***** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")}'))
+			message(str_glue(
+				'***** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")} ',
+				'| Date: {as_date(x$created_dt)} | Board: {x$subreddit}'
+				))
 			
 			# Now pull all submissions for that date and subreddit
 			scrape_names_raw = local({
@@ -459,14 +464,14 @@ local({
 					created_dts = response %>% map(., ~ .$created)
 					all_ids = bind_rows(all_ids, tibble(pull_names = pull_names, page = page))
 					if (length(pull_names) == 0 || length(pull_names) < 100 || response[[100]]$created > x$end) {
-						message('***** PushShift Break | Length: ' , length(response), ' | Page: ', page, ' | Board: ', x$subreddit)
+						message('****** PushShift Break | Length: ' , length(response), ' | Page: ', page, ' | Board: ', x$subreddit)
 						last_page = T
 					}	else {
 						start = created_dts[[100]]
 						last_page = F
 						page = page + 1
 					}
-					Sys.sleep(.5)
+					Sys.sleep(.1)
 				}
 				return(all_ids)
 			})
@@ -484,7 +489,8 @@ local({
 							times = 5,
 							add_headers(c(
 								'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
-								'Authorization' = paste0('bearer ', reddit$token)
+								'Authorization' = paste0('bearer ', reddit$token),
+								'Content-Type' = 'application/json'
 							))) %>%
 							content(.) %>%
 							.$data %>%
