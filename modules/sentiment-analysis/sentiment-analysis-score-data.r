@@ -234,7 +234,7 @@ local({
 ## BERT  --------------------------------------------------------
 local({
 	
-	BATCH_SIZE = 500
+	BATCH_SIZE = 1000
 	
 	happytransformer = import('happytransformer')
 	happy_tc = happytransformer$HappyTextClassification(
@@ -262,10 +262,14 @@ local({
 	
 	iwalk(batches, function(x, i) {
 		
-		message(str_glue(
-			'***** BERT Scoring Batch {i} of {length(batches)}',
-			' | Source: {x$source[[1]]} | Dates: {paste0(format(unique(x$created_dt), "%m/%d/%y"), collapse = ", ")}'
-			))
+		pull_counts =
+			x %>%
+			.[, list(count = .N), by = 'created_dt'] %>%
+			.[, x:= paste0(format(created_dt, "%m/%d/%y"), " (", count, ")")] %>%
+			.$x %>%
+			paste0(., collapse = "\n")
+		
+		message(str_glue('***** BERT Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Dates: \n{pull_counts}'))
 		
 		fwrite(set_names(x[, 'text_part_all_text'], 'text'), file.path(tempdir(), 'text.csv'))
 		classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
