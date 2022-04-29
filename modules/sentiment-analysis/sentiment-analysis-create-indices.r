@@ -183,7 +183,7 @@ local({
 		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
 		group_by(., created_dt, subreddit_category) %>%
 		summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
-		filter(., count_posts >= 10) %>%
+		filter(., count_posts >= 5) %>%
 		group_split(., subreddit_category) %>%
 		map_dfr(., function(x)
 			left_join(
@@ -192,8 +192,8 @@ local({
 				mutate(
 					.,
 					category = x$subreddit_category[[1]], mean_score = zoo::na.locf(mean_score),
-					mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'),
-					mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right')
+					mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right')#,
+					# mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right')
 				)
 			)
 	
