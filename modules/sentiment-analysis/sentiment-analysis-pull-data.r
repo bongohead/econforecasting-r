@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(3), as_date('2021-06-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-06-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -423,10 +423,8 @@ local({
 			start = as.numeric(with_tz(force_tz(as_datetime(created_dt), 'US/Eastern'), 'UTC')),
 			end = as.numeric(with_tz(force_tz(as_datetime(created_dt) + days(1), 'US/Eastern'), 'UTC')) - 1,
 			) %>%
-		arrange(., desc(created_dt), subreddit) %>%
-		# Limit to 1000 per batch
-		head(., 1000)
-	
+		arrange(., desc(created_dt), subreddit)
+
 	message('***** New Pulls:')
 	print(new_pulls, n = 200)
 
@@ -458,7 +456,7 @@ local({
 						'&locked=false&stickied=false&contest_mode=false'
 					)
 					# message(page, ' ', url)
-					response = content(RETRY('GET', url, times = 5))$data
+					response = content(RETRY('GET', url, times = 20))$data
 					if (length(response) == 0) break; 
 					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
 					created_dts = response %>% map(., ~ .$created)
@@ -486,7 +484,7 @@ local({
 						RETRY(
 							'GET',
 							url = paste0('https://oauth.reddit.com/api/info?id=', paste0(split_group$pull_names, collapse = ',')),
-							times = 5,
+							times = 20,
 							add_headers(c(
 								'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
 								'Authorization' = paste0('bearer ', reddit$token),

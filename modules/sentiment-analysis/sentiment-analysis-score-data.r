@@ -251,8 +251,8 @@ local({
 	
 	batches =
 		unscored_bert %>%
-		# Score first 5k only to prevent overlap
-		head(., 5000) %>%
+		# Score first 10k only to prevent overlap
+		head(., 10000) %>%
 		as.data.table(.) %>%
 		.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
 		.[order(-source, -created_dt)] %>%
@@ -269,7 +269,7 @@ local({
 			.$x %>%
 			paste0(., collapse = "\n")
 		
-		message(str_glue('***** BERT Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Dates: \n{pull_counts}'))
+		message(str_glue('***** BERT Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Counts: \n{pull_counts}'))
 		
 		fwrite(set_names(x[, 'text_part_all_text'], 'text'), file.path(tempdir(), 'text.csv'))
 		classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
