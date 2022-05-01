@@ -403,13 +403,13 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-06-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-09-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
 	# Get existing dates (Eastern Time)
 	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
-		"SELECT DATE(created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, subreddit
+		"SELECT DATE(created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, subreddit, COUNT(*) as count_existing
 		FROM sentiment_analysis_reddit_scrape
 		WHERE method = 'pushshift_all_by_board'
 		GROUP BY created_dt, subreddit"

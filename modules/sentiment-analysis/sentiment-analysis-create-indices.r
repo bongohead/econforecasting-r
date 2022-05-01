@@ -24,6 +24,7 @@ library(DBI)
 library(RPostgres)
 library(lubridate)
 library(jsonlite)
+library(highcharter)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
@@ -88,7 +89,7 @@ local({
 		WHERE scrape_active = TRUE"
 	)))
 	
-	data = dbGetQuery(db, str_glue(
+	pushshift_data = dbGetQuery(db, str_glue(
 		"SELECT
 			r1.method AS source, r1.subreddit, DATE(r1.created_dttm) AS created_dt, r1.ups,
 			r2.score_model, r2.score, r2.score_conf, r2.scored_dttm,
@@ -105,14 +106,49 @@ local({
 		as_tibble(.) %>%
 		arrange(., created_dt)
 	
+	recent_data = dbGetQuery(db, str_glue(
+		"SELECT
+			r1.method AS source, r1.subreddit, DATE(r1.created_dttm) AS created_dt, r1.ups,
+			r2.score_model, r2.score, r2.score_conf, r2.scored_dttm,
+			b.category AS subreddit_category
+		FROM sentiment_analysis_reddit_scrape r1
+		INNER JOIN sentiment_analysis_reddit_score r2
+			ON r1.id = r2.scrape_id
+		INNER JOIN sentiment_analysis_reddit_boards b
+			ON r1.subreddit = b.subreddit
+		WHERE r1.method = 'top_200_today_by_board'
+			AND text_part = 'all_text'
+			AND score_model IN ('DISTILBERT', 'DICT')"
+		)) %>%
+		as_tibble(.) %>%
+		arrange(., created_dt)
+	
+	# Get list of score_model x subreddit x created_dt combinations not already in pushshift_data
+	kept_recent_data =
+		recent_data %>%
+		group_by(., score_model, subreddit, created_dt) %>%
+		summarize(., .groups = 'drop') %>%
+		anti_join(
+			.,
+			pushshift_data %>%
+				group_by(., score_model, subreddit, created_dt) %>% 
+				summarize(., .groups = 'drop'),
+			by = c('score_model', 'subreddit', 'created_dt')
+		)
+	
+	data = bind_rows(
+		pushshift_data %>% mutate(., finality = 'pushshift'),
+		kept_recent_data %>% mutate(., finality = 'top_200')
+		)
+
 	# Prelim Checks
 	count_by_model_plot =
 		data %>%
-		group_by(., created_dt, score_model) %>%
+		group_by(., created_dt, score_model, finality) %>%
 		summarize(., n = n(), .groups = 'drop') %>% 
 		arrange(., created_dt) %>%
 		ggplot(.) +
-		geom_line(aes(x = created_dt, y = n, color = score_model))
+		geom_line(aes(x = created_dt, y = n, color = score_model, linetype = finality))
 	
 	count_by_board_plot =
 		data %>%
@@ -126,10 +162,10 @@ local({
 	score_by_subreddit = 
 		data %>%
 		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
-		group_by(., created_dt, subreddit, score_model) %>%
+		group_by(., created_dt, subreddit, score_model, finality) %>%
 		summarize(., mean_score = mean(score), .groups = 'drop') %>%
 		ggplot(.) +
-		geom_line(aes(x = created_dt, y = mean_score, color = score_model)) +
+		geom_line(aes(x = created_dt, y = mean_score, color = score_model, linetype = finality)) +
 		facet_wrap(vars(subreddit))
 	
 	reddit <<- list()
@@ -207,16 +243,72 @@ local({
 	reddit$index_plot <<- index_plot
 })
 
-## Benchmarking --------------------------------------------------------
+## Monthly Aggregates --------------------------------------------------------
+local({
+	
+	# monthly_data =
+	# 	reddit$data %>%
+	# 	filter(
+	# 		.,
+	# 		score_model == 'DISTILBERT',
+	# 		score_conf > .7,
+	# 		created_dt >= as_date('2020-01-01')
+	# 	)
+	# 
+	# index_data =
+	# 	data %>%
+	# 	mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+	# 	group_by(., created_dt, subreddit_category) %>%
+	# 	summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
+	# 	filter(., count_posts >= 5) %>%
+	# 	group_split(., subreddit_category) %>%
+	# 	map_dfr(., function(x)
+	# 		left_join(
+	# 			tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')), x, by = 'created_dt'
+	# 		) %>%
+	# 			mutate(
+	# 				.,
+	# 				category = x$subreddit_category[[1]], mean_score = zoo::na.locf(mean_score),
+	# 				mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right')#,
+	# 				# mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right')
+	# 			)
+	# 	)
+	# 
+	# index_plot =
+	# 	index_data %>%
+	# 	na.omit(.) %>%
+	# 	ggplot(.) +
+	# 	geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
+	# 
+	# reddit$index_data <<- index_data
+	# reddit$index_plot <<- index_plot
+})
+
+
+# News --------------------------------------------------------
+
+
+## Media -------------------------------------------------------------------
+local({
+	
+	
+	
+	
+})
+
+
+
+
+# Benchmarking --------------------------------------------------------
 local({
 	
 	# S&P 500
 	sp500 =
 		get_fred_data('SP500', CONST$FRED_API_KEY, .freq = 'd') %>%
 		transmute(., date, sp500 = value) %>%
-		filter(., date >= as_date('2018-01-01')) %>%
-		mutate(., sp500 = (sp500/lag(sp500, 7) - 1) * 100)
-	
+		filter(., date >= as_date('2018-01-01')) #%>%
+		#mutate(., sp500 = (lead(sp500, 7)/sp500 - 1) * 100)
+
 	reddit$index_data %>%
 		filter(., subreddit_category %in% c('Financial Markets', 'Labor Market')) %>%
 		transmute(., date = created_dt, category, value = mean_score_7dma) %>%
@@ -240,8 +332,7 @@ local({
 			)
 		)
 	
-	
-	plot =
+	market_plot =
 		highchart(type = 'stock') %>%
 		purrr::reduce(index_hc_series, function(accum, x)
 			hc_add_series(
