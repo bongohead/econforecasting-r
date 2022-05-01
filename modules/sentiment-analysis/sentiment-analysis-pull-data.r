@@ -613,7 +613,7 @@ local({
 	
 	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
 	
-	page_to = 100 # 3000
+	page_to = 3000 #100 normally, 3000 for backfill
 	
 	reuters_data =
 		reduce(1:page_to, function(accum, page) {
