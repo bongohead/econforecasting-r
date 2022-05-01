@@ -285,16 +285,65 @@ local({
 })
 
 
-# News --------------------------------------------------------
+# Media --------------------------------------------------------
 
-
-## Media -------------------------------------------------------------------
+## Pull Data -------------------------------------------------------------------
 local({
 	
+	data = dbGetQuery(db, str_glue(
+		"SELECT
+			m1.source, m1.method AS category, m1.created_dt,
+			m2.score_model, m2.score, m2.score_conf, m2.scored_dttm
+		FROM sentiment_analysis_media_scrape m1
+		INNER JOIN sentiment_analysis_media_score m2
+			ON m1.id = m2.scrape_id
+		WHERE text_part = 'all_text'
+			AND score_model IN ('DISTILBERT', 'DICT')"
+	)) %>%
+	as_tibble(.) %>%
+	arrange(., created_dt)
 	
-	
-	
+	# Prelim Checks
+	count_by_source_plot =
+		data %>%
+		group_by(., created_dt, score_model, source) %>%
+		summarize(., n = n(), .groups = 'drop') %>% 
+		arrange(., created_dt) %>%
+		ggplot(.) +
+		geom_line(aes(x = created_dt, y = n, color = score_model)) +
+		facet_wrap(vars(source))
+
+	media <<- list()
+	media$data <<- data
+	media$count_by_source_plot <<- count_by_source_plot
 })
+
+## Indices ---------------------------------------------------------------------
+local({
+	
+	index_data =
+		media$data %>%
+		filter(., score_model == 'DISTILBERT') %>%
+		group_by(., created_dt, category) %>%
+		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+		summarize(., mean_score = mean(score, na.rm = T), .groups = 'drop') %>% 
+		group_split(., category) %>%
+		map_dfr(., function(x)
+			left_join(
+				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
+				x,
+				by = 'created_dt'
+			) %>%
+				mutate(., category = x$category[[1]], mean_score = coalesce(mean_score, 0)) %>%
+				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
+		) %>%
+		ggplot(.) + 
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
+	
+	print(plot)
+	media$index_by_subreddit_plot <<- plot
+})
+
 
 
 
