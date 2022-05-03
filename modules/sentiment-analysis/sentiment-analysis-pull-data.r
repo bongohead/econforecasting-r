@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-08-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-06-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -420,8 +420,14 @@ local({
 		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'subreddit')) %>%
 		mutate(
 			.,
-			start = as.numeric(with_tz(force_tz(as_datetime(created_dt), 'US/Eastern'), 'UTC')),
-			end = as.numeric(with_tz(force_tz(as_datetime(created_dt) + days(1), 'US/Eastern'), 'UTC')) - 1,
+			start = format(
+				as.numeric(with_tz(force_tz(as_datetime(created_dt), 'US/Eastern'), 'UTC')),
+				scientific = F
+				),
+			end = format(
+				as.numeric(with_tz(force_tz(as_datetime(created_dt) + days(1), 'US/Eastern'), 'UTC')) - 1,
+				scientific = F
+				),
 			) %>%
 		arrange(., desc(created_dt), subreddit)
 
