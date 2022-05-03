@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-09-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-08-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -613,7 +613,7 @@ local({
 	
 	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
 	
-	page_to = 3000 #100 normally, 3000 for backfill
+	page_to = 100 #100 normally, 3000 for backfill
 	
 	reuters_data =
 		reduce(1:page_to, function(accum, page) {
