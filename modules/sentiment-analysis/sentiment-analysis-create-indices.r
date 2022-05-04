@@ -364,8 +364,8 @@ local({
 		ggplot(.) + 
 		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
 	
-	print(plot)
-	media$index_by_subreddit_plot <<- plot
+	media$index_data <<- index_data
+	media$index_plot <<- index_plot
 })
 
 
@@ -381,13 +381,11 @@ local({
 		filter(., date >= as_date('2018-01-01')) #%>%
 		#mutate(., sp500 = (lead(sp500, 7)/sp500 - 1) * 100)
 
-	reddit$index_data %>%
-		filter(., subreddit_category %in% c('Financial Markets', 'Labor Market')) %>%
-		transmute(., date = created_dt, category, value = mean_score_7dma) %>%
-		bind_rows(., sp500)
-	
 	index_hc_series =
-		reddit$index_data %>%
+		bind_rows(
+			reddit$index_data,
+			media$index_data %>% filter(., category == 'business' & created_dt >= as_date('2021-12-01'))
+		) %>%
 		mutate(., created_dt = as.numeric(as.POSIXct(created_dt)) * 1000) %>%
 		group_split(., category) %>%
 		imap(., function(x, i)
@@ -448,7 +446,49 @@ local({
 		hc_title(text = 'U.S. Consumer Spending by Sector') %>%
 		hc_tooltip(valueDecimals = 1, valueSuffix = '%') %>%
 		hc_scrollbar(enabled = FALSE)
+	
+	
+	analysis_data =
+		reddit$index_data %>%
+		filter(., subreddit_category %in% c('Financial Markets', 'Labor Market')) %>%
+		transmute(., date = created_dt, category, value = mean_score_7dma) %>%
+		left_join(., sp500, by = 'date')
+	
+	analysis_data %>%
+		mutate(
+			.,
+			yesterday_index_change = lag(value, 1)/lag(value, 2) - 1,
+			today_sp500_change = sp500/lag(sp500, 1) - 1
+			) %>%
+		mutate(
+			.,
+			yesterday_index_change_sign = ifelse(yesterday_index_change < 0, -1, 1)
+			) %>%
+		group_by(., yesterday_index_change_sign) %>%
+		summarize(., mean_today_sp500_change = mean(today_sp500_change, na.rm = T))
+	
+	analysis_data %>%
+		mutate(
+			.,
+			yesterday_index_change = lag(value, 1)/lag(value, 7) - 1,
+			today_sp500_change = sp500/lag(sp500, 1) - 1
+			) %>%
+		mutate(
+			.,
+			yesterday_index_change_sign = ifelse(yesterday_index_change < 0, -1, 1),
+			today_sp500_change_sign = ifelse(today_sp500_change < 0, -1, 1)
+			) %>%
+		group_by(., yesterday_index_change_sign, today_sp500_change_sign) %>%
+		summarize(
+			., 
+			count = n(),
+			mean_today_sp500_change = mean(today_sp500_change, na.rm = T),
+			.groups = 'drop'
+			) %>%
+		na.omit(.)
 
+	benchmarks <<- list()
+	benchmarks$financial_index_plot <<- market_plot
 })
 
 
