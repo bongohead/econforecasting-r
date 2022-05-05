@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-01-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-04-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -441,7 +441,7 @@ local({
 		imap(., function(x, i) {
 			
 			message(str_glue(
-				'***** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")} ',
+				'-----\n***** Pulling pushshift {i} of {nrow(new_pulls)}: {format(now(), "%H:%M")} ',
 				'| Date: {as_date(x$created_dt)} | Board: {x$subreddit}'
 				))
 			
@@ -466,19 +466,38 @@ local({
 					if (length(response) == 0) break; 
 					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
 					created_dts = response %>% map(., ~ .$created)
-					all_ids = bind_rows(all_ids, tibble(pull_names = pull_names, page = page))
-					if (length(pull_names) == 0 || length(pull_names) < 100 || response[[100]]$created > x$end) {
-						message('****** PushShift Break | Length: ' , length(response), ' | Page: ', page, ' | Board: ', x$subreddit)
-						last_page = T
-					}	else {
-						start = created_dts[[100]]
-						last_page = F
-						page = page + 1
-					}
+					all_ids = bind_rows(all_ids, tibble(pull_names = pull_names, page = page, created_dt = created_dts))
+					# Also will end on returning <100 results - Bug found on 5/4/22 where some 98/99 result returns 
+					# wouldn't be actual end
+					# if (length(pull_names) < 100 || response[[100]]$created > x$end) {
+					# 	message('****** End | Length: ' , length(response), ' | Page: ', page, ' | Board: ', x$subreddit)
+					# 	last_page = T
+					# }	else {
+					# 	start = created_dts[[100]]
+					# 	last_page = F
+					# 	page = page + 1
+					# }
+					message(page, ' ')
+					page = page + 1
+					start = created_dts[[length(created_dts)]]
+					last_page = F
+					# if (length(response) == 0 || response[[length(response)]]$created > x$end) {
+					# 	message('****** End | Length: ', length(response), ' | Page: ', page, ' | Board: ', x$subreddit)
+					# 	last_page = T
+					# }	else {
+					# 	start = created_dts[[length(created_dts)]]
+					# 	last_page = F
+					# 	page = page + 1
+					# }
 					Sys.sleep(.1)
 				}
 				return(all_ids)
 			})
+			
+			if (nrow(scrape_names_raw) == 0) {
+				message('***** WARNING: No rows returned, skipping: \n')
+				return(tibble())
+			}
 			
 			pulled_data =
 				scrape_names_raw %>%
