@@ -6,6 +6,7 @@
 JOB_NAME = 'sentiment-analysis-score-data'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
+MAX_ROWS = 20000 # Max numbers of rows to process with jobs
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
@@ -252,7 +253,7 @@ local({
 	batches =
 		unscored_bert %>%
 		# Score first 10k only to prevent overlap
-		head(., 10000) %>%
+		head(., MAX_ROWS) %>%
 		as.data.table(.) %>%
 		.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
 		.[order(-source, -created_dt)] %>%

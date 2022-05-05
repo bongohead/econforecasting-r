@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-04-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-01-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -414,7 +414,10 @@ local({
 		WHERE method = 'pushshift_all_by_board'
 		GROUP BY created_dt, subreddit"
 		)))
-	
+	# Append to re-pull (perhaps for 5/4/22 fix?)
+	#%>%
+		#filter(., 1 == 0)
+
 	# Get pullable dates with UTC start and end
 	new_pulls =
 		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'subreddit')) %>%
@@ -464,7 +467,7 @@ local({
 					# message(page, ' ', url)
 					response = content(RETRY('GET', url, times = 20))$data
 					if (length(response) == 0) {
-						message('Empty Response - Page ', page)
+						message('***** End | Empty Response | Page: ', page)
 						break
 					}
 					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
