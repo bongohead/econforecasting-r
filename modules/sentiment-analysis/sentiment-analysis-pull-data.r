@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-01-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-05-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -420,7 +420,13 @@ local({
 
 	# Get pullable dates with UTC start and end
 	new_pulls =
-		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'subreddit')) %>%
+		anti_join(
+			possible_pulls,
+			existing_pulls %>%
+				# Always repull last week
+				filter(., created_dt <= today() - days(7)),
+			by = c('created_dt', 'subreddit')
+			) %>%
 		mutate(
 			.,
 			start = format(
