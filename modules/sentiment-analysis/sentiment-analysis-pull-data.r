@@ -463,10 +463,13 @@ local({
 					)
 					# message(page, ' ', url)
 					response = content(RETRY('GET', url, times = 20))$data
-					if (length(response) == 0) break; 
+					if (length(response) == 0) {
+						message('Empty Response - Page ', page)
+						break
+					}
 					pull_names = response %>% map(., ~ .$id) %>% paste0('t3_', .)
 					created_dts = response %>% map(., ~ .$created)
-					all_ids = bind_rows(all_ids, tibble(pull_names = pull_names, page = page, created_dt = created_dts))
+					all_ids = bind_rows(all_ids, tibble(pull_names = pull_names, page = page))
 					# Also will end on returning <100 results - Bug found on 5/4/22 where some 98/99 result returns 
 					# wouldn't be actual end
 					# if (length(pull_names) < 100 || response[[100]]$created > x$end) {
@@ -477,27 +480,26 @@ local({
 					# 	last_page = F
 					# 	page = page + 1
 					# }
-					message(page, ' ')
-					page = page + 1
-					start = created_dts[[length(created_dts)]]
-					last_page = F
-					# if (length(response) == 0 || response[[length(response)]]$created > x$end) {
-					# 	message('****** End | Length: ', length(response), ' | Page: ', page, ' | Board: ', x$subreddit)
-					# 	last_page = T
-					# }	else {
-					# 	start = created_dts[[length(created_dts)]]
-					# 	last_page = F
-					# 	page = page + 1
-					# }
+					# Pages can return 98/99 length even if there are more pages available
+					if (length(response) < 90 || response[[length(response)]]$created > x$end) {
+						message('****** End | Length: ', length(response), ' | Page: ', page)
+						last_page = T
+					}	else {
+						start = created_dts[[length(created_dts)]]
+						last_page = F
+						page = page + 1
+					}
 					Sys.sleep(.1)
 				}
 				return(all_ids)
 			})
 			
+			# If no results existed at all for this subreddit/date combination
 			if (nrow(scrape_names_raw) == 0) {
 				message('***** WARNING: No rows returned, skipping: \n')
 				return(tibble())
 			}
+			message('****** Pushshift API pulled: ', length(unique(scrape_names_raw$pull_names)), ' rows')
 			
 			pulled_data =
 				scrape_names_raw %>%
@@ -526,20 +528,28 @@ local({
 								'name', 'subreddit', 'title', 'created',
 								'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest',
 								'removed_by_category'
-								))) %>%
-							.[ups >= x$scrape_ups_floor] %>%
-							{
-								if ('removed_by_category' %in% colnames(.)) .[is.na(removed_by_category)] 
-								else .
-							} %>%
-							.[title != '[deleted by user]' & selftext != '[removed]'] %>%
-							.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
-							.[, scraped_dttm := now('US/Eastern')]
+								)))
 					return(parsed)
 				}) %>%
-				rbindlist(., fill = TRUE) 
+				rbindlist(., fill = TRUE)
 			
-			return(pulled_data)
+			message('****** Reddit API pulled (pre-filtration): ', nrow(pulled_data), ' rows')
+			
+			pulled_data_cleaned = 
+				pulled_data %>%
+				{
+					if ('removed_by_category' %in% colnames(.)) .[is.na(removed_by_category)] 
+					else .
+				} %>%
+				.[title != '[deleted by user]' & selftext != '[removed]'] %>%
+				.[ups >= x$scrape_ups_floor] %>%
+				.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
+				.[, scraped_dttm := now('US/Eastern')]
+
+			
+			message('****** Reddit API pulled (post-filtration): ', nrow(pulled_data_cleaned), ' rows')
+			
+			return(pulled_data_cleaned)
 		}) %>%
 		rbindlist(., fill = TRUE) %>%
 		transmute(
