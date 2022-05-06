@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2021-05-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2020-08-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -721,7 +721,7 @@ local({
 		)))
 	
 	possible_pulls = expand_grid(
-		created_dt = seq(from = as_date('2018-01-01'), to = today() - days(1), by = '1 day'),
+		created_dt = seq(from = as_date('2020-01-01'), to = today() - days(1), by = '1 day'),
 		method = method_map$method
 		)
 	
@@ -745,7 +745,7 @@ local({
 				'&sort=date&expandRefinements=true&contentType=article',
 				'&concept={x$ft_key}'
 				)
-			# message(url)
+			message(url)
 			
 			page1 =	
 				RETRY(
@@ -783,13 +783,17 @@ local({
 				mutate(., method = x$method, created_dt = as_date(x$created_dt))
 			}) %>%
 		keep(., ~ !is.null(.) & is_tibble(.)) %>%
-		bind_rows(.) %>%
-		transmute(
-			.,
-			source = 'ft',
-			method,
-			title, created_dt, description, scraped_dttm = now('US/Eastern')
-		)
+		{
+			if (length(.) >= 1)
+			bind_rows(.) %>%
+				transmute(
+					.,
+					source = 'ft',
+					method,
+					title, created_dt, description, scraped_dttm = now('US/Eastern')
+				)
+			else tibble()
+		}
 	
 	media$data$ft <<- ft_data
 })
