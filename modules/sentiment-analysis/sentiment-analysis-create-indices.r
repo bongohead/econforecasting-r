@@ -41,41 +41,36 @@ db = dbConnect(
 
 ## Create Tables --------------------------------------------------------
 local({
-# if (RESET_SQL) {
-# 	
-# 	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_score_reddit CASCADE')
-# 	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_score_reuters CASCADE')
-# 	
-# 	dbExecute(
-# 		db,
-# 		'CREATE TABLE sentiment_analysis_score_reddit (
-# 		scrape_id INT NOT NULL,
-# 		score_model VARCHAR(255) NOT NULL, 
-# 		score INT NOT NULL,
-# 		score_conf DECIMAL(20, 4) NULL,
-# 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
-# 		PRIMARY KEY (scrape_id, score_model),
-# 		CONSTRAINT sentiment_analysis_scrape_reddit_fk FOREIGN KEY (scrape_id)
-# 				REFERENCES sentiment_analysis_scrape_reddit (id) ON DELETE CASCADE ON UPDATE CASCADE
-# 		)'
-# 	)
-# 	
-# 	dbExecute(
-# 		db,
-# 		'CREATE TABLE sentiment_analysis_score_reuters (
-# 		scrape_id INT NOT NULL,
-# 		score_model VARCHAR(255) NOT NULL, 
-# 		score INT NOT NULL,
-# 		score_conf DECIMAL(20, 4) NULL,
-# 		scored_dttm TIMESTAMP WITH TIME ZONE NOT NULL,
-# 		PRIMARY KEY (scrape_id, score_model),
-# 		CONSTRAINT sentiment_analysis_score_reuters_fk FOREIGN KEY (scrape_id)
-# 				REFERENCES sentiment_analysis_scrape_reuters (id) ON DELETE CASCADE ON UPDATE CASCADE
-# 		)'
-# 	)
-# 	
-# }
-})	
+if (RESET_SQL) {
+
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_indices CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_index CASCADE')
+	
+	dbExecute(
+		db,
+		'CREATE TABLE sentiment_analysis_indices (
+			id SERIAL PRIMARY KEY,
+			name VARCHAR(255) NOT NULL,
+			source VARCHAR(255) NOT NULL,
+			sector VARCHAR(255) NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP
+		)'
+	)
+	
+	dbExecute(
+		db,
+		'CREATE TABLE sentiment_analysis_index_values (
+			index_id INTEGER NOT NULL, 
+			date DATE NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (index_id, date),
+			CONSTRAINT sentiment_analysis_index_values_fk FOREIGN KEY (index_id)
+				REFERENCES sentiment_analysis_indices (id) ON DELETE CASCADE ON UPDATE CASCADE
+		)'
+	)
+
+}
+})
 
 
 
@@ -494,9 +489,9 @@ local({
 
 
 
-
-
 # Finalize --------------------------------------------------------
+
+## Send to SQL --------------------------------------------------------
 
 ## Close Connections --------------------------------------------------------
 dbDisconnect(db)
