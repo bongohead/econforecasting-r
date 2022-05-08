@@ -44,7 +44,9 @@ local({
 if (RESET_SQL) {
 
 	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_indices CASCADE')
-	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_index CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_index_values CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_benchmarks CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_benchmark_values CASCADE')
 	
 	dbExecute(
 		db,
@@ -62,13 +64,40 @@ if (RESET_SQL) {
 		'CREATE TABLE sentiment_analysis_index_values (
 			index_id INTEGER NOT NULL, 
 			date DATE NOT NULL,
+			count INTEGER NOT NULL,
+			score DECIMAL(10, 4) NOT NULL,
+			score_7dma DECIMAL(10, 4) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (index_id, date),
 			CONSTRAINT sentiment_analysis_index_values_fk FOREIGN KEY (index_id)
 				REFERENCES sentiment_analysis_indices (id) ON DELETE CASCADE ON UPDATE CASCADE
 		)'
 	)
-
+	
+	dbExecute(
+		db,
+		'CREATE TABLE sentiment_analysis_benchmarks (
+			varname VARCHAR(255) PRIMARY KEY,
+			fullname VARCHAR(255) NOT NULL,
+			pull_source VARCHAR(255) NOT NULL,
+			source_key VARCHAR(255) NULL,
+			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP
+		)'
+	)
+	
+	dbExecute(
+		db,
+		'CREATE TABLE sentiment_analysis_benchmark_values (
+			varname VARCHAR(255) NOT NULL,
+			date DATE NOT NULL,
+			value DECIMAL(10, 2) NOT NULL,
+			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (varname, date),
+			CONSTRAINT sentiment_analysis_benchmark_values_fk FOREIGN KEY (varname)
+				REFERENCES sentiment_analysis_benchmarks (varname) ON DELETE CASCADE ON UPDATE CASCADE
+		)'
+	)
+	
 }
 })
 
@@ -234,8 +263,8 @@ local({
 		data %>%
 		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
 		group_by(., created_dt, subreddit_category) %>%
-		summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
-		filter(., count_posts >= 5) %>%
+		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
+		filter(., count >= 5) %>%
 		group_split(., subreddit_category) %>%
 		map_dfr(., function(x)
 			left_join(
@@ -342,7 +371,7 @@ local({
 		filter(., score_model == 'DISTILBERT') %>%
 		group_by(., created_dt, category) %>%
 		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
-		summarize(., mean_score = mean(score, na.rm = T), .groups = 'drop') %>% 
+		summarize(., mean_score = mean(score, na.rm = T), count = n(), .groups = 'drop') %>% 
 		group_split(., category) %>%
 		map_dfr(., function(x)
 			left_join(
@@ -366,44 +395,39 @@ local({
 
 # Benchmarking --------------------------------------------------------
 
-## Benchmark Data --------------------------------------------------------
+## External Data --------------------------------------------------------
 local({
 
-	fred_sources = tribble(
-		~ varname, ~ source_key, ~ fullname, ~ pull_source,
-		'sp500', 'SP500', 'S&P 500', T,
-		'kcflfi', 'FRBKCLMCIM', 'Kansas City Fed Labor Force Index', T,
-		'vix', 'VIXCLS', 'VIX Volatility Index', T,
-		'sp500_tr30', NA, 'S&P 500 Trailing 30-Day Return', F
-	)
+	external_series = as_tibble(dbGetQuery(db, str_glue(
+		'SELECT varname, fullname, pull_source, source_key FROM sentiment_analysis_benchmarks'
+		)))
 	
 	data_raw =
-		fred_sources %>%
-		filter(., pull_source == T) %>%
+		external_series %>%
+		filter(., pull_source == 'fred') %>%
 		purrr::transpose(.) %>%
 		map_dfr(., function(x)
 			get_fred_data(x$source_key, CONST$FRED_API_KEY) %>%
 				transmute(., date, varname = x$varname, value) %>%
-				filter(., date >= as_date('2020-01-01')) %>%
+				filter(., date >= as_date('2019-01-01')) %>%
 				arrange(., date)
 		)
 	
 	data_calculated = bind_rows(
 		data_raw %>%
 			filter(., varname == 'sp500') %>%
-			mutate(., varname = 'sp500_tr30', value = (value/lag(value, 30) - 1) * 100) %>%
+			mutate(., varname = 'sp500tr30', value = (value/lag(value, 30) - 1) * 100) %>%
 			na.omit(.)
 	)
 	
 	data = bind_rows(data_raw, data_calculated)
 
-
 	benchmarks <<- list()
-	benchmarks$external_series <<- fred_sources
+	benchmarks$external_series <<- external_series
 	benchmarks$external_series_values <<- data	
 })
 
-## Financial Market Indices --------------------------------------------------------
+## Combine --------------------------------------------------------
 local({
 	
 	index_hc_series =
@@ -425,11 +449,12 @@ local({
 			))
 	
 	benchmark_hc_series =
-		benchmarks$external_data %>%
+		benchmarks$external_series_values %>%
+		left_join(., benchmarks$external_series, by = 'varname') %>%
 		mutate(., date = as.numeric(as.POSIXct(date)) * 1000) %>%
 		group_split(., varname) %>%
 		imap(., function(x, i) list(
-			name = x$varname[[i]],
+			name = x$fullname[[i]],
 			data =
 				x %>%
 				arrange(., date) %>%
@@ -440,7 +465,7 @@ local({
 		))
 		
 	
-	market_plot =
+	comparison_plot =
 		highchart(type = 'stock') %>%
 		purrr::reduce(index_hc_series, function(accum, x)
 			hc_add_series(
@@ -484,11 +509,19 @@ local({
 		reddit$index_data %>%
 		filter(., subreddit_category %in% c('Financial Markets', 'Labor Market')) %>%
 		transmute(., date = created_dt, category, value = mean_score_7dma) %>%
-		left_join(., sp500, by = 'date')
+		left_join(
+			.,
+			benchmarks$external_series_values %>%
+				filter(., varname == 'sp500') %>%
+				transmute(., date, sp500 = value),
+			by = 'date'
+			) %>%
+		na.omit(.)
 	
 	analysis_data %>%
 		mutate(
 			.,
+			today_index_change = value/lag(value, 1) - 1,
 			yesterday_index_change = lag(value, 1)/lag(value, 2) - 1,
 			today_sp500_change = sp500/lag(sp500, 1) - 1
 			) %>%
@@ -502,15 +535,17 @@ local({
 	analysis_data %>%
 		mutate(
 			.,
+			today_index_change = value/lag(value, 1) - 1,
 			yesterday_index_change = lag(value, 1)/lag(value, 7) - 1,
 			today_sp500_change = sp500/lag(sp500, 1) - 1
 			) %>%
 		mutate(
 			.,
+			today_index_change_sign = ifelse(today_index_change < 0, -1, 1),
 			yesterday_index_change_sign = ifelse(yesterday_index_change < 0, -1, 1),
 			today_sp500_change_sign = ifelse(today_sp500_change < 0, -1, 1)
 			) %>%
-		group_by(., yesterday_index_change_sign, today_sp500_change_sign) %>%
+		group_by(., today_index_change_sign, today_sp500_change_sign) %>%
 		summarize(
 			., 
 			count = n(),
@@ -519,15 +554,122 @@ local({
 			) %>%
 		na.omit(.)
 
-	benchmarks <<- list()
-	benchmarks$financial_index_plot <<- market_plot
+	benchmarks$comparison_plot <<- comparison_plot
 })
 
 
 
 # Finalize --------------------------------------------------------
 
-## Send to SQL --------------------------------------------------------
+## Index Data to SQL --------------------------------------------------------
+local({
+	
+	# Match these up manually to the IDs present in sentiment_analysis_indices table
+	data = bind_rows(
+		# Professional Media General News Sentiment Index
+		media$index_data %>%
+			filter(., created_dt >= as_date('2020-01-01') & category == 'economics') %>%
+			transmute(., index_id = 1, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma),
+		# Social Media Financial Markets Sentiment Index
+		reddit$index_data %>%
+			filter(., created_dt >= as_date('2020-01-01') & category == 'Financial Markets') %>%
+			transmute(., index_id = 2, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma),
+		# Social Media Labor Force Sentiment Index
+		reddit$index_data %>%
+			filter(., created_dt >= as_date('2020-01-01') & category == 'Labor Market') %>%
+			transmute(., index_id = 3, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma),
+		# Social Media General News Sentiment Index
+		reddit$index_data %>%
+			filter(., created_dt >= as_date('2020-01-01') & category == 'News') %>%
+			transmute(., index_id = 4, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma)
+		) %>%
+		mutate(., created_at = now('US/Eastern')) %>%
+		na.omit(.)
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_index_values')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		data %>%
+		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
+		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'sentiment_analysis_index_values',
+				'ON CONFLICT (index_id, date) DO UPDATE SET
+				count=EXCLUDED.count,
+				score=EXCLUDED.score,
+				score_7dma=EXCLUDED.score_7dma,
+				created_at=EXCLUDED.created_at'
+				) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_index_values')$count)
+	message('***** Rows Added: ', final_count - initial_count)
+	
+	create_insert_query(
+		tribble(
+			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
+			JOB_NAME, 'sentiment-analysis-create-indices', today(), 'job-success',
+			toJSON(list(rows_added = final_count - initial_count))
+			),
+		'job_logs',
+		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
+		) %>%
+		dbExecute(db, .)
+	
+	final_data <<- data
+})
+
+## Benchmark to SQL ---------------------------------------------------------
+local({
+	
+	data =
+		benchmarks$external_series_values %>%
+		filter(., date >= as_date('2020-01-01')) %>%
+		mutate(., created_at = now('US/Eastern')) %>%
+		na.omit(.)
+	
+	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_benchmark_values')$count)
+	message('***** Initial Count: ', initial_count)
+	
+	sql_result =
+		data %>%
+		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
+		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
+		group_split(., split, .keep = FALSE) %>%
+		sapply(., function(x)
+			create_insert_query(
+				x,
+				'sentiment_analysis_benchmark_values',
+				'ON CONFLICT (varname, date) DO UPDATE SET
+				value=EXCLUDED.value,
+				created_at=EXCLUDED.created_at'
+				) %>%
+				dbExecute(db, .)
+		) %>%
+		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	
+	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_benchmark_values')$count)
+	message('***** Rows Added: ', final_count - initial_count)
+	
+	create_insert_query(
+		tribble(
+			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
+			JOB_NAME, 'sentiment-analysis-create-indices-benchmarks', today(), 'job-success',
+			toJSON(list(rows_added = final_count - initial_count))
+		),
+		'job_logs',
+		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
+	) %>%
+		dbExecute(db, .)
+	
+	final_external_data <<- data
+})
 
 ## Close Connections --------------------------------------------------------
 dbDisconnect(db)
