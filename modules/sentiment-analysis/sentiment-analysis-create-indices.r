@@ -366,67 +366,104 @@ local({
 
 # Benchmarking --------------------------------------------------------
 
+## Benchmark Data --------------------------------------------------------
+local({
+
+	fred_sources = tribble(
+		~ varname, ~ source_key, ~ fullname, ~ pull_source,
+		'sp500', 'SP500', 'S&P 500', T,
+		'kcflfi', 'FRBKCLMCIM', 'Kansas City Fed Labor Force Index', T,
+		'vix', 'VIXCLS', 'VIX Volatility Index', T,
+		'sp500_tr30', NA, 'S&P 500 Trailing 30-Day Return', F
+	)
+	
+	data_raw =
+		fred_sources %>%
+		filter(., pull_source == T) %>%
+		purrr::transpose(.) %>%
+		map_dfr(., function(x)
+			get_fred_data(x$source_key, CONST$FRED_API_KEY) %>%
+				transmute(., date, varname = x$varname, value) %>%
+				filter(., date >= as_date('2020-01-01')) %>%
+				arrange(., date)
+		)
+	
+	data_calculated = bind_rows(
+		data_raw %>%
+			filter(., varname == 'sp500') %>%
+			mutate(., varname = 'sp500_tr30', value = (value/lag(value, 30) - 1) * 100) %>%
+			na.omit(.)
+	)
+	
+	data = bind_rows(data_raw, data_calculated)
+
+
+	benchmarks <<- list()
+	benchmarks$external_series <<- fred_sources
+	benchmarks$external_series_values <<- data	
+})
+
 ## Financial Market Indices --------------------------------------------------------
 local({
 	
-	# S&P 500
-	sp500 =
-		get_fred_data('SP500', CONST$FRED_API_KEY, .freq = 'd') %>%
-		transmute(., date, sp500 = value) %>%
-		filter(., date >= as_date('2018-01-01')) #%>%
-		#mutate(., sp500 = (lead(sp500, 7)/sp500 - 1) * 100)
-
 	index_hc_series =
 		bind_rows(
 			reddit$index_data,
-			media$index_data %>% filter(., category == 'business' & created_dt >= as_date('2021-12-01'))
+			media$index_data %>% filter(., category == 'economics' & created_dt >= as_date('2020-01-01'))
 		) %>%
 		mutate(., created_dt = as.numeric(as.POSIXct(created_dt)) * 1000) %>%
 		group_split(., category) %>%
-		imap(., function(x, i)
-			list(
-				name = x$category[[1]],
-				yAxis = 0,
-				data =
-					x %>%
-					arrange(., created_dt) %>%
-					transmute(., x = created_dt, y = mean_score_7dma) %>%
-					na.omit(.) %>%
-					purrr::transpose(.) %>%
-					lapply(., function(x) list(x = x[[1]], y = x[[2]]))
-			)
-		)
+		imap(., function(x, i) list(
+			name = x$category[[1]],
+			data =
+				x %>%
+				arrange(., created_dt) %>%
+				transmute(., x = created_dt, y = mean_score_7dma) %>%
+				na.omit(.) %>%
+				purrr::transpose(.) %>%
+				lapply(., function(x) list(x = x[[1]], y = x[[2]]))
+			))
+	
+	benchmark_hc_series =
+		benchmarks$external_data %>%
+		mutate(., date = as.numeric(as.POSIXct(date)) * 1000) %>%
+		group_split(., varname) %>%
+		imap(., function(x, i) list(
+			name = x$varname[[i]],
+			data =
+				x %>%
+				arrange(., date) %>%
+				transmute(., x = date, y = value) %>%
+				na.omit(.) %>%
+				purrr::transpose(.) %>%
+				lapply(., function(x) list(x = x[[1]], y = x[[2]]))
+		))
+		
 	
 	market_plot =
 		highchart(type = 'stock') %>%
 		purrr::reduce(index_hc_series, function(accum, x)
 			hc_add_series(
 				accum,
-				name = x$name, yAxis = x$yAxis, data = x$data,
-				type = 'line', lineWidth = 4
+				name = x$name, data = x$data,
+				type = 'line', lineWidth = 4, yAxis = 0, visible = F
 			),
 			.init = .
 		) %>%
-		hc_add_series(
-			.,
-			name = 'S&P 500 Returns',
-			type = 'line',
-			yAxis = 1,
-			dashStyle = 'shortdot',
-			data =
-				sp500 %>%
-				filter(., date >= min(reddit$index_data$created_dt)) %>%
-				mutate(., date =  as.numeric(as.POSIXct(date)) * 1000) %>%
-				na.omit(.) %>%
-				purrr::transpose(.) %>%
-				map(., ~ list(x = .[[1]], y = .[[2]]))
+		purrr::reduce(benchmark_hc_series, function(accum, x)
+			hc_add_series(
+				accum,
+				name = x$name, data = x$data,
+				type = 'line', lineWidth = 4, dashStyle = 'shortdot', yAxis = 1, visible = F
+			),
+			.init = .
 		) %>%
 		hc_credits(
 			enabled = T, position = list(align = 'right'), text = 'Data represents smoothed 7-day moving averages'
 		) %>%
 		hc_yAxis_multiples(
 			list(title = list(text = 'Test'), opposite = T),
-			list(title = list(text = 'Return'), opposite = F)
+			list(title = list(text = 'Benchmark Data'), opposite = F)
 		) %>%
 		hc_legend(
 			title = list(text =
@@ -485,7 +522,6 @@ local({
 	benchmarks <<- list()
 	benchmarks$financial_index_plot <<- market_plot
 })
-
 
 
 
