@@ -236,31 +236,28 @@ local({
 local({
 	
 	BATCH_SIZE = 1000
-	
-	happytransformer = import('happytransformer')
-	happy_tc = happytransformer$HappyTextClassification(
-		'DISTILBERT', # 'ROBERTA',
-		'distilbert-base-uncased-finetuned-sst-2-english', # 'siebert/sentiment-roberta-large-english',
-		num_labels = 2
-	)
-	
 	# happytransformer$HappyTextClassification(
 	# 	'DistilRoBERTa-base', # 'ROBERTA',
 	# 	'j-hartmann/emotion-english-distilroberta-base',
 	# 	num_labels = 7
 	# 	)
-	
+	happytransformer = import('happytransformer')
+	happy_tc = happytransformer$HappyTextClassification(
+		'DISTILBERT', # 'ROBERTA',
+		'distilbert-base-uncased-finetuned-sst-2-english', # 'siebert/sentiment-roberta-large-english',
+		num_labels = 2
+		
 	batches =
-		unscored_bert %>%
-		# Score first 10k only to prevent overlap
-		head(., MAX_ROWS) %>%
-		as.data.table(.) %>%
-		.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
-		.[order(-source, -created_dt)] %>%
-		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
-		split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
-		unname(.)
-	
+			unscored_bert %>%
+			# Score first 10k only to prevent overlap
+			head(., MAX_ROWS) %>%
+			as.data.table(.) %>%
+			.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
+			.[order(-source, -created_dt)] %>%
+			.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
+			split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
+			unname(.)
+		
 	iwalk(batches, function(x, i) {
 		
 		pull_counts =
@@ -307,9 +304,143 @@ local({
 			) %>%
 			dbExecute(db, .)
 	})
-
+	
+	# Parallelization
+	# USE_CORES = 2
+	# 
+	# batches =
+	# 	unscored_bert %>%
+	# 	# Score first X rows only to prevent overlap
+	# 	head(., MAX_ROWS) %>%
+	# 	as.data.table(.) %>%
+	# 	.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
+	# 	.[order(-source, -created_dt)] %>%
+	# 	.[, split_core := ceiling((1:nrow(.))/(MAX_ROWS/USE_CORES))] %>%
+	# 	split(., by = 'split_core', keep.by = F) %>%
+	# 	lapply(., function(x) {
+	# 		x %>%
+	# 			.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
+	# 			split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
+	# 			unname(.)
+	# 	})
+	# 
+	# ## Setup empty progress-bar file
+	# progress_file = tempfile()
+	# cat('', file = progress_file, append = F)
+	# 
+	# library(future)
+	# plan('multisession', workers = USE_CORES)
+	# 
+	# ## Detect non-exportable objects and give an error asap
+	# options(future.globals.onReference = "error")
+	# promises = lapply(1:USE_CORES, function(i)
+	# 	future({
+	# 		pid = Sys.getpid()
+	# 		# cat(str_glue('\nCore {i}/{pid} initialized'), file = progress_file, append = T)
+	# 		message(pid)
+	# 		library(reticulate)
+	# 		# cat(str_glue('\nImporting Python Modules: {i}/{pid}'), file = progress_file, append = T)
+	# 		import_path = file.path(EF_DIR, '.virtualenvs', 'econforecasting')
+	# 		use_virtualenv(import_path)
+	# 		happytransformer = reticulate::import_from_path(
+	# 			'happytransformer',
+	# 			path = file.path(EF_DIR, '.virtualenvs', 'econforecasting', 'lib64/python3.8/site-packages/happytransformer')
+	# 			)
+	# 		# happytransformer = reticulate::import('happytransformer')
+	# 		# happy_tc = happytransformer$HappyTextClassification(
+	# 		# 	'DISTILBERT', # 'ROBERTA',
+	# 		# 	'distilbert-base-uncased-finetuned-sst-2-english', # 'siebert/sentiment-roberta-large-english',
+	# 		# 	num_labels = 2
+	# 		# )
+	# 	
+	# 		Sys.sleep(10)
+	# 	}, globals = TRUE)
+	# )
+	# 
+	# ## Poll progress every 0.1 s until done
+	# while (all(resolved(promises)) == FALSE) {
+	# 	## Report on progress
+	# 	print('test')
+	# 	# cat(read_file(progress_file))
+	# 	readLines(progress_file)
+	# 	Sys.sleep(1)
+	# }
+	# value(promises[[1]])
 })
-
+	
+	
+## BERT  --------------------------------------------------------
+local({
+	
+	BATCH_SIZE = 100
+	
+	happytransformer = import('happytransformer')
+	happy_tc = 	happytransformer$HappyTextClassification(
+		'DistilRoBERTa-base', # 'ROBERTA',
+		'j-hartmann/emotion-english-distilroberta-base',
+		num_labels = 7
+	)
+	
+	batches =
+		unscored_bert %>%
+		# Score first 10k only to prevent overlap
+		head(., MAX_ROWS) %>%
+		as.data.table(.) %>%
+		.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
+		.[order(-source, -created_dt)] %>%
+		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
+		split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
+		unname(.)
+	
+	iwalk(batches, function(x, i) {
+		
+		pull_counts =
+			x %>%
+			.[, list(count = .N), by = 'created_dt'] %>%
+			.[, x:= paste0(format(created_dt, "%m/%d/%y"), " (", count, ")")] %>%
+			.$x %>%
+			paste0(., collapse = "\n")
+		
+		message(str_glue('***** BERT Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Counts: \n{pull_counts}'))
+		
+		fwrite(set_names(x[, 'text_part_all_text'], 'text'), file.path(tempdir(), 'text.csv'))
+		classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
+		
+		result = data.table(
+			scrape_id = x$id,
+			score = map_chr(classified_text, ~ .$label),
+			score_conf = map_chr(classified_text, ~ .$score)
+		)[, score := ifelse(score == 'POSITIVE', 'p', 'n')]
+		
+		# print(result)
+		
+		sql_data =
+			result %>%
+			transmute(
+				.,
+				scrape_id,
+				text_part = 'all_text',
+				score_model = 'DISTILBERT',
+				score,
+				score_conf,
+				scored_dttm = now()
+			) %>%
+			mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z')))
+		# 
+		# sql_data %>%
+		# 	create_insert_query(
+		# 		.,
+		# 		paste0('sentiment_analysis_', x$source[[1]], '_score'),
+		# 		'ON CONFLICT (scrape_id, text_part, score_model) DO UPDATE SET
+		# 	score=EXCLUDED.score,
+		# 	score_conf=EXCLUDED.score_conf,
+		# 	scored_dttm=EXCLUDED.scored_dttm'
+		# 	) %>%
+		# 	dbExecute(db, .)
+	})
+		
+})
+		
 # Finalize --------------------------------------------------------
 
 ## Close Connections --------------------------------------------------------

@@ -657,7 +657,7 @@ local({
 	
 	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
 	
-	page_to = 100 #100 normally, 3000 for backfill
+	page_to = 20 #100 normally, 3000 for backfill
 	
 	reuters_data =
 		reduce(1:page_to, function(accum, page) {
@@ -721,7 +721,7 @@ local({
 		)))
 	
 	possible_pulls = expand_grid(
-		created_dt = seq(from = as_date('2020-01-01'), to = today(), by = '1 day'),
+		created_dt = seq(from = as_date('2020-01-01'), to = today() + days(1), by = '1 day'),
 		method = method_map$method
 		)
 	

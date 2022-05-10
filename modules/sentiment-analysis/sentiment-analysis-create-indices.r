@@ -68,6 +68,8 @@ if (RESET_SQL) {
 			count INTEGER NOT NULL,
 			score DECIMAL(10, 4) NOT NULL,
 			score_7dma DECIMAL(10, 4) NOT NULL,
+			score_adj DECIMAL(10, 4) NOT NULL,
+			score_adj_7dma DECIMAL(10, 4) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (index_id, date),
 			CONSTRAINT sentiment_analysis_index_values_fk FOREIGN KEY (index_id)
@@ -195,7 +197,7 @@ local({
 	# Scores by group
 	score_by_subreddit = 
 		data %>%
-		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
+		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
 		group_by(., created_dt, subreddit, score_model, finality) %>%
 		summarize(., mean_score = mean(score), .groups = 'drop') %>%
 		ggplot(.) +
@@ -227,7 +229,7 @@ local({
 		reddit$data %>%
 		filter(., score_model == 'DISTILBERT') %>%
 		group_by(., created_dt, subreddit) %>%
-		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
+		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
 		summarize(., mean_score = mean(score, na.rm = T), .groups = 'drop') %>% 
 		group_split(., subreddit) %>%
 		map_dfr(., function(x)
@@ -255,31 +257,32 @@ local({
 			.,
 			score_model == 'DISTILBERT',
 			score_conf > .7,
-			created_dt >= as_date('2020-01-01')
+			created_dt >= as_date('2019-12-01')
 		)
 	
 	index_data =
 		data %>%
-		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
-		group_by(., created_dt, subreddit_category) %>%
+		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+		rename(., category = subreddit_category) %>%
+		group_by(., created_dt, category) %>%
 		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
 		filter(., count >= 5) %>%
-		group_split(., subreddit_category) %>%
+		group_split(., category) %>%
 		map_dfr(., function(x)
 			left_join(
 				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')), x, by = 'created_dt'
 				) %>%
 				mutate(
 					.,
-					category = x$subreddit_category[[1]], mean_score = zoo::na.locf(mean_score),
+					category = x$category[[1]], mean_score = zoo::na.locf(mean_score),
+					count = ifelse(is.na(count), 0, count),
 					mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right')#,
 					# mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right')
 				)
 			)
-	
+
 	index_plot =
 		index_data %>%
-		na.omit(.) %>%
 		ggplot(.) +
 		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
 
@@ -301,7 +304,7 @@ local({
 	# 
 	# index_data =
 	# 	data %>%
-	# 	mutate(., score = ifelse(score == 'p', 100, 0)) %>%
+	# 	mutate(., score = ifelse(score == 'p', 1, -1)) %>%
 	# 	group_by(., created_dt, subreddit_category) %>%
 	# 	summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
 	# 	filter(., count_posts >= 5) %>%
@@ -369,7 +372,7 @@ local({
 		media$data %>%
 		filter(., score_model == 'DISTILBERT') %>%
 		group_by(., created_dt, category) %>%
-		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
+		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
 		summarize(., mean_score = mean(score, na.rm = T), count = n(), .groups = 'drop') %>% 
 		group_split(., category) %>%
 		map_dfr(., function(x)
@@ -560,36 +563,70 @@ local({
 
 # Finalize --------------------------------------------------------
 
-## Index Data to SQL --------------------------------------------------------
+## Adjustments --------------------------------------------------------
 local({
 	
 	# Match these up manually to the IDs present in sentiment_analysis_indices table
-	data = bind_rows(
+	raw_data = bind_rows(
 		# Professional Media General News Sentiment Index
 		media$index_data %>%
-			filter(., created_dt >= as_date('2020-01-01') & category == 'economics') %>%
+			filter(., created_dt >= as_date('2019-12-01') & category == 'economics') %>%
 			transmute(., index_id = 1, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma),
 		# Social Media Financial Markets Sentiment Index
 		reddit$index_data %>%
-			filter(., created_dt >= as_date('2020-01-01') & category == 'Financial Markets') %>%
+			filter(., created_dt >= as_date('2019-12-01') & category == 'Financial Markets') %>%
 			transmute(., index_id = 2, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma),
 		# Social Media Labor Force Sentiment Index
 		reddit$index_data %>%
-			filter(., created_dt >= as_date('2020-01-01') & category == 'Labor Market') %>%
+			filter(., created_dt >= as_date('2019-12-01') & category == 'Labor Market') %>%
 			transmute(., index_id = 3, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma),
 		# Social Media General News Sentiment Index
 		reddit$index_data %>%
-			filter(., created_dt >= as_date('2020-01-01') & category == 'News') %>%
+			filter(., created_dt >= as_date('2019-12-01') & category == 'News') %>%
 			transmute(., index_id = 4, date = created_dt, count, score = mean_score, score_7dma = mean_score_7dma)
+		)
+
+	# Final data
+	adjustments =
+		raw_data %>%
+		filter(., date >= '2022-01-01' & date <= '2022-01-31') %>%
+		group_by(., index_id) %>%
+		summarize(., mean_score = mean(score_7dma)) %>%
+		mutate(., adjustment = 0 - mean_score)
+	
+	k = 5
+	
+	final_data =
+		raw_data %>%
+		left_join(., adjustments, by = 'index_id') %>%
+		mutate(
+			.,
+			score_adj = score + adjustment,
+			score_adj = 100/(1 + exp((-1 * k) * (score_adj - 0)))
+			) %>%
+		group_split(., index_id) %>%
+		map_dfr(., function(x)
+			x %>%
+				arrange(., date) %>%
+				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right'))
 		) %>%
+		select(., -mean_score, -adjustment) %>%
 		mutate(., created_at = now('US/Eastern')) %>%
+		filter(., date >= as_date('2020-01-01')) %>%
 		na.omit(.)
 	
+	final_data %>% ggplot(.) + geom_line(aes(x = date, y = score_adj_7dma, color = as.factor(index_id)))
+	final_data <<- final_data
+})
+
+## Index Data to SQL --------------------------------------------------------
+local({
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_index_values')$count)
 	message('***** Initial Count: ', initial_count)
 	
 	sql_result =
-		data %>%
+		final_data %>%
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
 		group_split(., split, .keep = FALSE) %>%
@@ -601,6 +638,8 @@ local({
 				count=EXCLUDED.count,
 				score=EXCLUDED.score,
 				score_7dma=EXCLUDED.score_7dma,
+				score_adj=EXCLUDED.score_adj,
+				score_adj_7dma=EXCLUDED.score_adj_7dma,
 				created_at=EXCLUDED.created_at'
 				) %>%
 				dbExecute(db, .)
@@ -670,16 +709,6 @@ local({
 # 	final_external_data <<- data
 # })
 
-
-## Get Adjustments to Indicies --------------------------------------------------------
-local({
-	# Final data
-	final_data %>%
-		filter(., date >= '2022-01-01' & date <= '2022-01-31') %>%
-		group_by(., index_id) %>%
-		summarize(., mean_score = mean(score_7dma)) %>%
-		mutate(., adjustment = 50 - mean_score)
-})
 
 ## Close Connections --------------------------------------------------------
 dbDisconnect(db)
