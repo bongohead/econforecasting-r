@@ -246,6 +246,7 @@ local({
 		'DISTILBERT', # 'ROBERTA',
 		'distilbert-base-uncased-finetuned-sst-2-english', # 'siebert/sentiment-roberta-large-english',
 		num_labels = 2
+	)
 		
 	batches =
 			unscored_bert %>%

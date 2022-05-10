@@ -18,6 +18,7 @@ virtualenv_create(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasti
 # Camelot-py and opencv for PDF parsing
 # Img2pdf for SVG parsing to PDF
 # Matplotlib for diagnosing issues with camelot-py
+# Note: if Happytransformer fails on Windows, run  D:\OneDrive\__Projects\econforecasting\.virtualenvs\econforecasting\Scripts\python.exe -m pip install --upgrade pip' command
 lapply(c('camelot-py', 'opencv-python', 'svglib', 'requests', 'matplotlib', 'happytransformer'), function(x) 
 	virtualenv_install(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'), x)
 )
