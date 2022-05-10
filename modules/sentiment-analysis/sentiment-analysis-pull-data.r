@@ -714,19 +714,24 @@ local({
 	)
 	
 	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
-		"SELECT created_dt, method
+		"SELECT created_dt, method, COUNT(*) as count
 		FROM sentiment_analysis_media_scrape
 		WHERE source = 'ft'
 		GROUP BY created_dt, method"
 		)))
 	
 	possible_pulls = expand_grid(
-		created_dt = seq(from = as_date('2020-01-01'), to = today() - days(1), by = '1 day'),
+		created_dt = seq(from = as_date('2020-01-01'), to = today(), by = '1 day'),
 		method = method_map$method
 		)
 	
 	new_pulls =
-		anti_join(possible_pulls, existing_pulls, by = c('created_dt', 'method')) %>%
+		anti_join(
+			possible_pulls,
+			# Always pull last week articles
+			existing_pulls %>% filter(., created_dt <= today() - days(7)),
+			by = c('created_dt', 'method')
+			) %>%
 		left_join(., method_map, by = 'method')
 	
 	message('*** New Pulls')
