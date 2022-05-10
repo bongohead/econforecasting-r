@@ -116,7 +116,7 @@ local({
 	pushshift_data = dbGetQuery(db, str_glue(
 		"SELECT
 			r1.method AS source, r1.subreddit, DATE(r1.created_dttm) AS created_dt, r1.ups,
-			r2.score_model, r2.score, r2.score_conf, r2.scored_dttm,
+			r2.score_model, r2.score AS score, r2.score_conf, r2.scored_dttm,
 			b.category AS subreddit_category
 		FROM sentiment_analysis_reddit_scrape r1
 		INNER JOIN sentiment_analysis_reddit_score r2
@@ -135,7 +135,7 @@ local({
 		(
 			SELECT
 				r1.method AS source, r1.subreddit, DATE(r1.created_dttm) AS created_dt, r1.ups,
-				r2.score_model, r2.score, r2.score_conf, r2.scored_dttm,
+				r2.score_model, (r2.score + 2) * 50 AS score, r2.score_conf, r2.scored_dttm,
 				b.category AS subreddit_category,
 				-- Get latest scraped value of post if multiple
 				r1.name, r1.scraped_dttm, 
@@ -196,7 +196,7 @@ local({
 	# Scores by group
 	score_by_subreddit = 
 		data %>%
-		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
 		group_by(., created_dt, subreddit, score_model, finality) %>%
 		summarize(., mean_score = mean(score), .groups = 'drop') %>%
 		ggplot(.) +
@@ -228,7 +228,7 @@ local({
 		reddit$data %>%
 		filter(., score_model == 'DISTILBERT') %>%
 		group_by(., created_dt, subreddit) %>%
-		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
 		summarize(., mean_score = mean(score, na.rm = T), .groups = 'drop') %>% 
 		group_split(., subreddit) %>%
 		map_dfr(., function(x)
@@ -261,7 +261,7 @@ local({
 	
 	index_data =
 		data %>%
-		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
 		group_by(., created_dt, subreddit_category) %>%
 		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
 		filter(., count >= 5) %>%
@@ -302,7 +302,7 @@ local({
 	# 
 	# index_data =
 	# 	data %>%
-	# 	mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+	# 	mutate(., score = ifelse(score == 'p', 100, 0)) %>%
 	# 	group_by(., created_dt, subreddit_category) %>%
 	# 	summarize(., mean_score = mean(score), count_posts = n(), .groups = 'drop') %>%
 	# 	filter(., count_posts >= 5) %>%
@@ -338,7 +338,7 @@ local({
 	data = dbGetQuery(db, str_glue(
 		"SELECT
 			m1.source, m1.method AS category, m1.created_dt,
-			m2.score_model, m2.score, m2.score_conf, m2.scored_dttm
+			m2.score_model, (m2.score + 2) * 50 AS score, m2.score_conf, m2.scored_dttm
 		FROM sentiment_analysis_media_scrape m1
 		INNER JOIN sentiment_analysis_media_score m2
 			ON m1.id = m2.scrape_id
@@ -370,7 +370,7 @@ local({
 		media$data %>%
 		filter(., score_model == 'DISTILBERT') %>%
 		group_by(., created_dt, category) %>%
-		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
+		mutate(., score = ifelse(score == 'p', 100, 0)) %>%
 		summarize(., mean_score = mean(score, na.rm = T), count = n(), .groups = 'drop') %>% 
 		group_split(., category) %>%
 		map_dfr(., function(x)
