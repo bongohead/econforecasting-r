@@ -97,91 +97,63 @@ local({
 ## Pull Unscored Data --------------------------------------------------------
 local({
 	
-	# Pull data NULL
-	unscored_bert = dbGetQuery(db,
-		"(
-			SELECT
-				'reddit' AS source, DATE(r1.created_dttm) as created_dt,
-				r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
-			FROM sentiment_analysis_reddit_scrape r1
-			LEFT JOIN
-				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DISTILBERT') r2
-				ON r1.id = r2.scrape_id
-			-- Only keep subreddits in scrape_boards directory and above score_ups_floor
-			INNER JOIN sentiment_analysis_reddit_boards b
-				ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
-			WHERE r2.scrape_id IS NULL
-		)
-		UNION ALL
-		(
-			SELECT 
-				'media' AS source, m1.created_dt,
-				m1.id, m1.title AS text_part_title, m1.description AS text_part_content
-			FROM sentiment_analysis_media_scrape m1
-			LEFT JOIN 
-				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DISTILBERT') m2
-				ON m1.id = m2.scrape_id
-			WHERE m2.scrape_id IS NULL
-		)") %>%
-		as_tibble(.) %>%
-		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
+	score_models = c('DICT', 'DISTILBERT', 'ROBERTA')
 	
-	unscored_roberta = dbGetQuery(db,
-		 "(
-			SELECT
-				'reddit' AS source, DATE(r1.created_dttm) as created_dt,
-				r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
-			FROM sentiment_analysis_reddit_scrape r1
-			LEFT JOIN
-				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'ROBERTA') r2
-				ON r1.id = r2.scrape_id
-			-- Only keep subreddits in scrape_boards directory and above score_ups_floor
-			INNER JOIN sentiment_analysis_reddit_boards b
-				ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
-			WHERE r2.scrape_id IS NULL
-		)
-		UNION ALL
-		(
-			SELECT 
-				'media' AS source, m1.created_dt,
-				m1.id, m1.title AS text_part_title, m1.description AS text_part_content
-			FROM sentiment_analysis_media_scrape m1
-			LEFT JOIN 
-				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'ROBERTA') m2
-				ON m1.id = m2.scrape_id
-			WHERE m2.scrape_id IS NULL
-		)") %>%
-		as_tibble(.) %>%
-		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
+	unscored_text = lapply(score_models %>% setNames(., .), function(x)
+		dbGetQuery(db, str_glue(
+			"(
+				SELECT
+					'reddit' AS source, DATE(r1.created_dttm) as created_dt,
+					r1.id,
+					CONCAT(r1.title, COALESCE(CONCAT('. ', r1.selftext), '')) AS text_part_all_text
+				FROM sentiment_analysis_reddit_scrape r1
+				LEFT JOIN
+					(
+					SELECT scrape_id
+					FROM sentiment_analysis_reddit_score
+					WHERE score_model = '{x}'
+					) r2
+					ON r1.id = r2.scrape_id
+				-- Only keep subreddits in scrape_boards directory and above score_ups_floor
+				INNER JOIN sentiment_analysis_reddit_boards b
+					ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
+				WHERE r2.scrape_id IS NULL
+			)
+			UNION ALL
+			(
+				SELECT 
+					'media' AS source, m1.created_dt,
+					m1.id, 
+					CONCAT(m1.title, COALESCE(CONCAT('. ', m1.description), '')) AS text_part_all_text
+				FROM sentiment_analysis_media_scrape m1
+				LEFT JOIN 
+					(
+					SELECT scrape_id
+					FROM sentiment_analysis_media_score
+					WHERE score_model = '{x}'
+					) m2
+					ON m1.id = m2.scrape_id
+				WHERE m2.scrape_id IS NULL
+			)"
+			)) %>%
+			as_tibble(.) %>%
+			mutate(
+				.,
+				text_part_all_text = 
+					text_part_all_text %>%
+					str_replace_all(., '[^\x01-\x7F]', '') %>%
+					str_squish(.) %>%
+					str_sub(., 1, 512)
+				)
+	)
 	
-	unscored_dict = dbGetQuery(db,
-		"(
-			SELECT
-				'reddit' AS source, DATE(r1.created_dttm) AS created_dt,
-				r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
-			FROM sentiment_analysis_reddit_scrape r1
-			LEFT JOIN 
-				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'DICT') r2
-				ON r1.id = r2.scrape_id
-			WHERE r2.scrape_id IS NULL
-		)
-		UNION ALL
-		(
-			SELECT
-				'media' AS source, m1.created_dt,
-				m1.id, m1.title AS text_part_title, m1.description AS text_part_content
-			FROM sentiment_analysis_media_scrape m1
-			LEFT JOIN 
-				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DICT') m2
-				ON m1.id = m2.scrape_id
-			WHERE m2.scrape_id IS NULL
-		)") %>%
-		as_tibble(.) %>%
-		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
+	unscored_text %>%
+		bind_rows(.) %>%
+		sample_n(., size = 20) %>%
+		.$text_part_all_text %>%
+		print(.)
 	
-	unscored_bert <<- unscored_bert
-	unscored_roberta <<- unscored_roberta
-	unscored_dict <<- unscored_dict
+	unscored_text <<- unscored_text
 })
 
 
@@ -208,7 +180,7 @@ local({
 		.[, list(sentiment = head(sentiment, 1)), by = 'word']
 	
 	batches =
-		unscored_dict %>%
+		unscored_text$DICT %>%
 		as.data.table(.) %>%
 		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
 		split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
@@ -264,7 +236,7 @@ local({
 local({
 	
 	BATCH_SIZE = 1000
-	message('UNSCORED DISTILBERT: ', nrow(unscored_bert))
+	message('UNSCORED DISTILBERT: ', nrow(unscored_text$DISTILBERT))
 
 	happytransformer = import('happytransformer')
 	happy_tc = happytransformer$HappyTextClassification(
@@ -274,11 +246,10 @@ local({
 	)
 		
 	batches =
-			unscored_bert %>%
+		unscored_text$DISTILBERT %>%
 			# Score first 10k only to prevent overlap
 			head(., MAX_ROWS) %>%
 			as.data.table(.) %>%
-			.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
 			.[order(-source, -created_dt)] %>%
 			.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
 			split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
@@ -293,7 +264,7 @@ local({
 			.$x %>%
 			paste0(., collapse = "\n")
 		
-		message(str_glue('***** BERT Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Counts: \n{pull_counts}'))
+		message(str_glue('***** DISTILBERT Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Counts: \n{pull_counts}'))
 		
 		fwrite(set_names(x[, 'text_part_all_text'], 'text'), file.path(tempdir(), 'text.csv'))
 		classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
@@ -399,7 +370,7 @@ local({
 local({
 	
 	BATCH_SIZE = 1000
-	message('UNSCORED ROBERTA: ', nrow(unscored_roberta))
+	message('UNSCORED ROBERTA: ', nrow(unscored_text$ROBERTA))
 	
 	happytransformer = import('happytransformer')
 	happy_tc = 	happytransformer$HappyTextClassification(
@@ -409,11 +380,9 @@ local({
 	)
 	
 	batches =
-		unscored_roberta %>%
-		# Score first 10k only to prevent overlap
+		unscored_text$ROBERTA %>%
 		head(., MAX_ROWS) %>%
 		as.data.table(.) %>%
-		.[, text_part_all_text := str_sub(text_part_all_text, 1, 512)] %>%
 		.[order(-source, -created_dt)] %>%
 		.[, split := ceiling((1:nrow(.))/BATCH_SIZE)] %>%
 		split(., by = c('source', 'split'), keep.by = T, flatten = T) %>%
@@ -428,7 +397,7 @@ local({
 			.$x %>%
 			paste0(., collapse = "\n")
 		
-		message(str_glue('***** BERT Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Counts: \n{pull_counts}'))
+		message(str_glue('***** ROBERTA Scoring {i} of {length(batches)} | Source: {x$source[[1]]} | Counts: \n{pull_counts}'))
 		
 		fwrite(set_names(x[, 'text_part_all_text'], 'text'), file.path(tempdir(), 'text.csv'))
 		classified_text = happy_tc$test(file.path(tempdir(), 'text.csv'))
