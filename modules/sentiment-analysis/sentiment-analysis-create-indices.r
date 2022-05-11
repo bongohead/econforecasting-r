@@ -206,9 +206,16 @@ local({
 	
 	
 	# Merge Coutns
-	merge_counts =
+	distilbert_merge_counts =
 		data %>%
 		filter(., score_model == 'DISTILBERT') %>%
+		group_by(., finality, created_dt) %>%
+		summarize(., n = n(), .groups = 'drop') %>%
+		pivot_wider(., names_from = finality, values_from = n) 
+	
+	roberta_merge_counts =
+		data %>%
+		filter(., score_model == 'ROBERTA') %>%
 		group_by(., finality, created_dt) %>%
 		summarize(., n = n(), .groups = 'drop') %>%
 		pivot_wider(., names_from = finality, values_from = n) 
@@ -219,10 +226,12 @@ local({
 	reddit$count_by_model_plot <<- count_by_model_plot
 	reddit$count_by_board_plot <<- count_by_board_plot
 	reddit$score_by_subreddit <<- score_by_subreddit
-	reddit$merge_counts <<- merge_counts
+	reddit$distilbert_merge_counts <<- distilbert_merge_counts
+	reddit$roberta_merge_counts <<- roberta_merge_counts
 })
 
-## Plot DISTILBERT By Board -----------------------------------------------------------
+
+## DISTILBERT By Board -----------------------------------------------------------
 local({
 	
 	plot =
@@ -248,7 +257,7 @@ local({
 	reddit$index_by_subreddit_plot <<- plot
 })
 
-## Plot DISTILBERT By Category --------------------------------------------------------
+## DISTILBERT By Category --------------------------------------------------------
 local({
 	
 	data =
