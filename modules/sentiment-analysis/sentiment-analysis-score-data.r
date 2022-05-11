@@ -110,7 +110,6 @@ local({
 			-- Only keep subreddits in scrape_boards directory and above score_ups_floor
 			INNER JOIN sentiment_analysis_reddit_boards b
 				ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
-			-- 
 			WHERE r2.scrape_id IS NULL
 		)
 		UNION ALL
@@ -121,6 +120,34 @@ local({
 			FROM sentiment_analysis_media_scrape m1
 			LEFT JOIN 
 				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'DISTILBERT') m2
+				ON m1.id = m2.scrape_id
+			WHERE m2.scrape_id IS NULL
+		)") %>%
+		as_tibble(.) %>%
+		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
+	
+	unscored_roberta = dbGetQuery(db,
+		 "(
+			SELECT
+				'reddit' AS source, DATE(r1.created_dttm) as created_dt,
+				r1.id, r1.title AS text_part_title, r1.selftext as text_part_content
+			FROM sentiment_analysis_reddit_scrape r1
+			LEFT JOIN
+				(SELECT scrape_id FROM sentiment_analysis_reddit_score WHERE score_model = 'ROBERTA') r2
+				ON r1.id = r2.scrape_id
+			-- Only keep subreddits in scrape_boards directory and above score_ups_floor
+			INNER JOIN sentiment_analysis_reddit_boards b
+				ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
+			WHERE r2.scrape_id IS NULL
+		)
+		UNION ALL
+		(
+			SELECT 
+				'media' AS source, m1.created_dt,
+				m1.id, m1.title AS text_part_title, m1.description AS text_part_content
+			FROM sentiment_analysis_media_scrape m1
+			LEFT JOIN 
+				(SELECT scrape_id FROM sentiment_analysis_media_score WHERE score_model = 'ROBERTA') m2
 				ON m1.id = m2.scrape_id
 			WHERE m2.scrape_id IS NULL
 		)") %>%
@@ -153,6 +180,7 @@ local({
 		mutate(., text_part_all_text = paste0(text_part_title, ' ', text_part_content))
 	
 	unscored_bert <<- unscored_bert
+	unscored_roberta <<- unscored_roberta
 	unscored_dict <<- unscored_dict
 })
 
@@ -232,15 +260,12 @@ local({
 	
 })
 
-## BERT  --------------------------------------------------------
+## DISTILBERT  --------------------------------------------------------
 local({
 	
 	BATCH_SIZE = 1000
-	# happytransformer$HappyTextClassification(
-	# 	'DistilRoBERTa-base', # 'ROBERTA',
-	# 	'j-hartmann/emotion-english-distilroberta-base',
-	# 	num_labels = 7
-	# 	)
+	message('UNSCORED DISTILBERT: ', nrow(unscored_bert))
+
 	happytransformer = import('happytransformer')
 	happy_tc = happytransformer$HappyTextClassification(
 		'DISTILBERT', # 'ROBERTA',
@@ -370,10 +395,11 @@ local({
 })
 	
 	
-## BERT  --------------------------------------------------------
+## ROBERTA  --------------------------------------------------------
 local({
 	
-	BATCH_SIZE = 100
+	BATCH_SIZE = 1000
+	message('UNSCORED ROBERTA: ', nrow(unscored_roberta))
 	
 	happytransformer = import('happytransformer')
 	happy_tc = 	happytransformer$HappyTextClassification(
@@ -383,7 +409,7 @@ local({
 	)
 	
 	batches =
-		unscored_bert %>%
+		unscored_roberta %>%
 		# Score first 10k only to prevent overlap
 		head(., MAX_ROWS) %>%
 		as.data.table(.) %>%
@@ -411,9 +437,7 @@ local({
 			scrape_id = x$id,
 			score = map_chr(classified_text, ~ .$label),
 			score_conf = map_chr(classified_text, ~ .$score)
-		)[, score := ifelse(score == 'POSITIVE', 'p', 'n')]
-		
-		# print(result)
+		)
 		
 		sql_data =
 			result %>%
@@ -421,23 +445,23 @@ local({
 				.,
 				scrape_id,
 				text_part = 'all_text',
-				score_model = 'DISTILBERT',
+				score_model = 'ROBERTA',
 				score,
 				score_conf,
 				scored_dttm = now()
 			) %>%
 			mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z')))
-		# 
-		# sql_data %>%
-		# 	create_insert_query(
-		# 		.,
-		# 		paste0('sentiment_analysis_', x$source[[1]], '_score'),
-		# 		'ON CONFLICT (scrape_id, text_part, score_model) DO UPDATE SET
-		# 	score=EXCLUDED.score,
-		# 	score_conf=EXCLUDED.score_conf,
-		# 	scored_dttm=EXCLUDED.scored_dttm'
-		# 	) %>%
-		# 	dbExecute(db, .)
+		
+		sql_data %>%
+			create_insert_query(
+				.,
+				paste0('sentiment_analysis_', x$source[[1]], '_score'),
+				'ON CONFLICT (scrape_id, text_part, score_model) DO UPDATE SET
+			score=EXCLUDED.score,
+			score_conf=EXCLUDED.score_conf,
+			scored_dttm=EXCLUDED.scored_dttm'
+			) %>%
+			dbExecute(db, .)
 	})
 		
 })

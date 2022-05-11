@@ -126,7 +126,7 @@ local({
 			ON r1.subreddit = b.subreddit
 		WHERE r1.method = 'pushshift_all_by_board'
 			AND text_part = 'all_text'
-			AND score_model IN ('DISTILBERT', 'DICT')"
+			AND score_model IN ('DISTILBERT', 'ROBERTA', 'DICT')"
 		)) %>%
 		as_tibble(.) %>%
 		arrange(., created_dt)
@@ -148,7 +148,7 @@ local({
 				ON r1.subreddit = b.subreddit
 			WHERE r1.method IN ('top_200_today_by_board', 'top_1000_month_by_board')
 				AND text_part = 'all_text'
-				AND score_model IN ('DISTILBERT', 'DICT')
+				AND score_model IN ('DISTILBERT', 'ROBERTA', 'DICT')
 		)
 		SELECT * FROM cte WHERE rn = 1"
 		)) %>%
@@ -222,7 +222,7 @@ local({
 	reddit$merge_counts <<- merge_counts
 })
 
-## Plot By Board -----------------------------------------------------------
+## Plot DISTILBERT By Board -----------------------------------------------------------
 local({
 	
 	plot =
@@ -248,7 +248,7 @@ local({
 	reddit$index_by_subreddit_plot <<- plot
 })
 
-## Plot By Category --------------------------------------------------------
+## Plot DISTILBERT By Category --------------------------------------------------------
 local({
 	
 	data =
@@ -286,6 +286,85 @@ local({
 		ggplot(.) +
 		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
 
+	reddit$index_data <<- index_data
+	reddit$index_plot <<- index_plot
+})
+
+## ROBERTA By Board -----------------------------------------------------------
+local({
+	
+	plot =
+		reddit$data %>%
+		filter(., score_model == 'ROBERTA') %>%
+		group_by(., score, created_dt, subreddit) %>%
+		summarize(., sent_count = n(), .groups = 'drop') %>%
+		group_by(., created_dt, subreddit) %>%
+		mutate(., prop = sent_count/n()) %>%
+		ungroup(.) %>%
+		group_split(., subreddit) %>%
+		map_dfr(., function(x)
+			left_join(
+				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
+				x,
+				by = 'created_dt'
+			) %>%
+				mutate(., subreddit = x$subreddit[[1]], prop = coalesce(prop, 0)) %>%
+				mutate(., mean_prop_7dma = zoo::rollmean(prop, 7, fill = NA, na.pad = TRUE, align = 'right'))
+		) %>%
+		ggplot(.) + 
+		geom_line(aes(x = created_dt, y = mean_prop_7dma, color = score)) +
+		facet_wrap(vars(subreddit))
+	
+	print(plot)
+	reddit$roberta_by_subreddit_plot <<- plot
+})
+
+## ROBERTA By Category -----------------------------------------------------------
+local({
+	
+	data =
+		reddit$data %>%
+		filter(
+			.,
+			score_model == 'ROBERTA',
+			score_conf > .5,
+			created_dt >= as_date('2019-12-01')
+		)
+	
+	data %>%
+		group_by(., subreddit, score) %>%
+		filter(., score != 'neutral') %>% 
+		summarize(., n = n(), .groups = 'drop') %>%
+		group_by(., subreddit) %>% mutate(., prop = n/sum(n)) %>%
+		ungroup(.) %>%
+		ggplot(.) + geom_col(aes(x = subreddit, y = prop, fill = score))
+	
+	index_data =
+		data %>%
+		mutate(., score = ifelse(score == 'fear', 1, -1)) %>%
+		rename(., category = subreddit_category) %>%
+		group_by(., created_dt, category) %>%
+		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
+		filter(., count >= 5) %>%
+		group_split(., category) %>%
+		map_dfr(., function(x)
+			left_join(
+				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')), x, by = 'created_dt'
+			) %>%
+				mutate(
+					.,
+					category = x$category[[1]], mean_score = zoo::na.locf(mean_score),
+					count = ifelse(is.na(count), 0, count),
+					mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right')#,
+					# mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right')
+				)
+		)
+	
+	index_plot =
+		index_data %>%
+		ggplot(.) +
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
+	
 	reddit$index_data <<- index_data
 	reddit$index_plot <<- index_plot
 })
