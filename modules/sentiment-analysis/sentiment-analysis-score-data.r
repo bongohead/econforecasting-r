@@ -6,7 +6,7 @@
 JOB_NAME = 'sentiment-analysis-score-data'
 EF_DIR = Sys.getenv('EF_DIR')
 RESET_SQL = FALSE
-MAX_ROWS = 120000 # Max numbers of rows to process with jobs
+MAX_ROWS = 50000 # Max numbers of rows to process with jobs
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE && rstudioapi::isAvailable(child_ok = T) == F) {
