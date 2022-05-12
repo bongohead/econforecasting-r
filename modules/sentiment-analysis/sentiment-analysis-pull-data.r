@@ -403,7 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2020-01-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2019-12-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
@@ -470,7 +470,7 @@ local({
 						'&before=', x$end,
 						'&locked=false&stickied=false&contest_mode=false'
 					)
-					# message(page, ' ', url)
+					message(page, ' ', url)
 					response = content(RETRY('GET', url, times = 20))$data
 					if (length(response) == 0) {
 						message('***** End | Empty Response | Page: ', page)
