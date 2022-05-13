@@ -273,18 +273,17 @@ local({
 	index_data =
 		data %>%
 		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
-		rename(., category = subreddit_category) %>%
-		group_by(., created_dt, category) %>%
+		group_by(., created_dt, subreddit_category) %>%
 		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
 		filter(., count >= 5) %>%
-		group_split(., category) %>%
+		group_split(., subreddit_category) %>%
 		map_dfr(., function(x)
 			left_join(
 				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')), x, by = 'created_dt'
 				) %>%
 				mutate(
 					.,
-					category = x$category[[1]], mean_score = zoo::na.locf(mean_score),
+					subreddit_category = x$subreddit_category[[1]], mean_score = zoo::na.locf(mean_score),
 					count = ifelse(is.na(count), 0, count),
 					mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'),
 					mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right')
@@ -295,7 +294,7 @@ local({
 		index_data %>%
 		na.omit(.) %>%
 		ggplot(.) +
-		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = subreddit_category))
 
 	reddit$distilbert_index_data <<- index_data
 	reddit$distilbert_index_plot <<- index_plot
@@ -422,9 +421,8 @@ local({
 	index_data =
 		input_data %>%
 		mutate(., score = case_when(
-			score %in% c('anger', 'disgust', 'fear') ~ -1,
-			score == 'sadness' ~ -.5,
-			score == 'surprise' ~ .5,
+			score %in% c('anger', 'disgust', 'fear', 'sadness') ~ -1,
+			score == 'surprise' ~ 1,
 			score == 'joy' ~ 1
 			)) %>%
 		group_by(., created_dt, subreddit_category) %>%
@@ -583,7 +581,7 @@ local({
 		input_data %>%
 		mutate(., score = case_when(
 			score %in% c('anger', 'disgust', 'fear', 'sadness') ~ -1,
-			score == 'surprise' ~ .5,
+			score == 'surprise' ~ 1,
 			score == 'joy' ~ 1
 		)) %>%
 		group_by(., created_dt, category) %>%
@@ -784,10 +782,158 @@ local({
 })
 
 
+# Create Indices --------------------------------------------------------
 
-# Finalize Indices --------------------------------------------------------
+## Combine & Adjust Reddit Indices --------------------------------------------------------
+local({
+	
+	LOGISTIC_STEEPNESS = 2
+	
+	# Combine & adjust Reddit indices
+	combined_data =
+		bind_rows(
+			reddit$roberta_index_data %>% mutate(., model = 'ROBERTA'),
+			reddit$distilbert_index_data %>% mutate(., model = 'DISTILBERT')
+		) %>% 
+		group_by(., created_dt, subreddit_category) %>%
+		summarize(
+			.,
+			n_score_models = n(),
+			count = sum(count),
+			score = mean(mean_score),
+			score_7dma = mean(mean_score_7dma),
+			score_models = paste0(model, collapse = ','),
+			.groups = 'drop'
+			) %>%
+		filter(., n_score_models == 2) %>%
+		filter(., !is.na(score) & !is.na(score_7dma))
+	
+	# Adjust to fix Jan. 2022 levels at ~ 50
+	adjustments =
+		combined_data %>%
+		filter(., created_dt >= '2022-01-01' & created_dt <= '2022-01-31') %>%
+		group_by(., subreddit_category) %>%
+		summarize(., mean_score = mean(score_7dma))
 
-## Adjust R1 Indices --------------------------------------------------------
+	adjusted_data =
+		combined_data %>%
+		left_join(., adjustments, by = 'subreddit_category') %>%
+		mutate(
+			.,
+			score_adj = score - mean_score,
+			score_adj = 100/(1 + exp((-1 * LOGISTIC_STEEPNESS) * (score_adj - 0)))
+		) %>%
+		group_split(., subreddit_category) %>%
+		map_dfr(., function(x)
+			x %>%
+				arrange(., created_dt) %>%
+				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right'))
+		) %>%
+		inner_join(
+			.,
+			dbGetQuery(db, 'SELECT id AS index_id, sector FROM sentiment_analysis_indices'),
+			by = c('subreddit_category' = 'sector')
+			) %>%
+		filter(., created_dt >= as_date('2020-01-01') ) %>%
+		na.omit(.) %>%
+		transmute(
+			.,
+			date = created_dt,
+			index_id,
+			count,
+			score,
+			score_7dma,
+			score_adj,
+			score_adj_7dma,
+			created_at = now('US/Eastern')
+			)
+	
+	ggplot(adjusted_data) +
+		geom_line(aes(x = date, y = score_adj_7dma, color = as.factor(index_id)))
+	
+	reddit$final_index_data <<- adjusted_data
+})
+
+## Combine & Adjust Media Indices --------------------------------------------------------
+local({
+	
+	LOGISTIC_STEEPNESS = 2
+	
+	combined_data =
+		bind_rows(
+			media$roberta_index_data %>% mutate(., model = 'ROBERTA'),
+			media$distilbert_index_data %>% mutate(., model = 'DISTILBERT')
+		) %>% 
+		group_by(., created_dt, category) %>%
+		summarize(
+			.,
+			n_score_models = n(),
+			count = sum(count),
+			score = mean(mean_score),
+			score_7dma = mean(mean_score_7dma),
+			score_models = paste0(model, collapse = ','),
+			.groups = 'drop'
+		) %>%
+		filter(., n_score_models == 2) %>%
+		filter(., !is.na(score) & !is.na(score_7dma))
+	
+	# Adjust to fix Jan. 2022 levels at ~ 50
+	adjustments =
+		combined_data %>%
+		filter(., created_dt >= '2022-01-01' & created_dt <= '2022-01-31') %>%
+		group_by(., category) %>%
+		summarize(., mean_score = mean(score_7dma))
+	
+	adjusted_data =
+		combined_data %>%
+		left_join(., adjustments, by = 'category') %>%
+		mutate(
+			.,
+			score_adj = score - mean_score,
+			score_adj = 100/(1 + exp((-1 * LOGISTIC_STEEPNESS) * (score_adj - 0)))
+		) %>%
+		group_split(., category) %>%
+		map_dfr(., function(x)
+			x %>%
+				arrange(., created_dt) %>%
+				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right'))
+		) %>%
+		inner_join(
+			.,
+			dbGetQuery(db, 'SELECT id AS index_id, sector FROM sentiment_analysis_indices'),
+			by = c('category' = 'sector')
+		) %>%
+		filter(., created_dt >= as_date('2020-01-01') ) %>%
+		na.omit(.) %>%
+		transmute(
+			.,
+			date = created_dt,
+			index_id,
+			count,
+			score,
+			score_7dma,
+			score_adj,
+			score_adj_7dma,
+			created_at = now('US/Eastern')
+		)
+	
+	ggplot(adjusted_data) +
+		geom_line(aes(x = date, y = score_adj_7dma, color = as.factor(index_id)))
+	
+	media$final_index_data <<- adjusted_data
+})
+
+
+## Aggregate --------------------------------------------------------
+local({
+	
+	index_data = bind_rows(reddit$final_index_data, media$final_index_data)
+	
+	
+	index_data <<- index_data
+})
+
+## Combine & Adjust R1 Indices --------------------------------------------------------
 local({
 	
 	# Match these up manually to the IDs present in sentiment_analysis_indices table
