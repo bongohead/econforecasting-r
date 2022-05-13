@@ -304,7 +304,7 @@ local({
 	
 	input_data =
 		reddit$data %>%
-		filter(., score_model == 'ROBERTA' & score != 'neutral') %>%
+		filter(., score_model == 'ROBERTA') %>%
 		select(., score, created_dt, subreddit) 
 	
 	subreddit_data_starts =
@@ -354,18 +354,47 @@ local({
 		geom_area(aes(x = created_dt, y = prop_14d, fill = score)) +
 		facet_wrap(vars(subreddit))
 	
+	plot_neg_only =
+		sent_counts_by_board_date %>%
+		filter(., !score %in% c('joy', 'surprise', 'anger', 'neutral')) %>%
+		na.omit(.) %>%
+		ggplot(.) + 
+		geom_area(aes(x = created_dt, y = prop_14d, fill = score)) +
+		facet_wrap(vars(subreddit))
+	
+	plot_pos_only =
+		sent_counts_by_board_date %>%
+		filter(., score %in% c('joy', 'neutral')) %>%
+		na.omit(.) %>%
+		ggplot(.) + 
+		geom_area(aes(x = created_dt, y = prop_14d, fill = score)) +
+		facet_wrap(vars(subreddit))
+	
+	mood_affilliation = tribble(
+		~ score, ~ mood_score,
+		'joy', 1,
+		'surprise', .5,
+		'neutral', 0,
+		'anger', -.5,
+		'disgust', -.5,
+		'sadness', -1,
+		'fear', -1
+	)
+	
 	print(plot)
 	reddit$roberta_by_subreddit_data <<- sent_counts_by_board_date
 	reddit$roberta_by_subreddit_plot <<- plot
+	reddit$roberta_by_subreddit_plot_neg_only <<- plot_neg_only
+	reddit$roberta_by_subreddit_plot_pos_only <<- plot_pos_only
+	reddit$roberta_mood_affiliation <<- mood_affilliation
 })
-
 
 ## ROBERTA Categories -----------------------------------------------------------
 local({
 	
 	input_data =
 		reddit$data %>%
-		filter(., score_model == 'ROBERTA' & score != 'neutral') %>%
+		filter(., score_model == 'ROBERTA') %>%
 		select(., score, created_dt, subreddit, subreddit_category) 
 	
 	subreddit_data_starts =
@@ -419,14 +448,11 @@ local({
 	# Index
 	index_data =
 		input_data %>%
-		mutate(., score = case_when(
-			score %in% c('anger', 'disgust', 'fear', 'sadness') ~ -1,
-			score == 'surprise' ~ 1,
-			score == 'joy' ~ 1
-			)) %>%
+		inner_join(., reddit$roberta_mood_affiliation, by = 'score') %>%
+		mutate(., score = mood_score) %>%
+		select(., -mood_score) %>%
 		group_by(., created_dt, subreddit_category) %>%
 		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
-		filter(., count >= 5) %>%
 		group_split(., subreddit_category) %>%
 		map_dfr(., function(x)
 			left_join(
@@ -454,11 +480,9 @@ local({
 	# Index with equal weighting between boards in dataset
 	index_weighted_raw =
 		input_data %>%
-		mutate(., score = case_when(
-			score %in% c('anger', 'disgust', 'fear', 'sadness') ~ -1,
-			score == 'surprise' ~ 1,
-			score == 'joy' ~ 1
-		)) %>%
+		inner_join(., reddit$roberta_mood_affiliation, by = 'score') %>%
+		mutate(., score = mood_score) %>%
+		select(., -mood_score) %>%
 		group_by(., created_dt, subreddit, subreddit_category) %>%
 		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
 		group_split(., subreddit, subreddit_category) %>%
@@ -626,11 +650,9 @@ local({
 	# Index
 	index_data =
 		input_data %>%
-		mutate(., score = case_when(
-			score %in% c('anger', 'disgust', 'fear', 'sadness') ~ -1,
-			score == 'surprise' ~ 1,
-			score == 'joy' ~ 1
-		)) %>%
+		inner_join(., reddit$roberta_mood_affiliation, by = 'score') %>%
+		mutate(., score = mood_score) %>%
+		select(., -mood_score) %>%
 		group_by(., created_dt, category) %>%
 		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
 		filter(., count >= 5) %>%
@@ -669,7 +691,7 @@ local({
 ## Combine & Adjust Reddit Indices --------------------------------------------------------
 local({
 	
-	LOGISTIC_STEEPNESS = 5
+	LOGISTIC_STEEPNESS = 10
 	
 	# Combine & adjust Reddit indices
 	combined_data =
@@ -739,7 +761,7 @@ local({
 ## Combine & Adjust Media Indices --------------------------------------------------------
 local({
 	
-	LOGISTIC_STEEPNESS = 5
+	LOGISTIC_STEEPNESS = 10
 	
 	combined_data =
 		bind_rows(
