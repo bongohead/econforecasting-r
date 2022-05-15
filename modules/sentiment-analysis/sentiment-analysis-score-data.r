@@ -109,7 +109,7 @@ local({
 				FROM sentiment_analysis_reddit_scrape r1
 				LEFT JOIN
 					(
-					SELECT scrape_id
+					SELECT scrape_id, DATE(scrape_dttm) AS scrape_date
 					FROM sentiment_analysis_reddit_score
 					WHERE score_model = '{x}'
 					) r2
@@ -117,7 +117,9 @@ local({
 				-- Only keep subreddits in scrape_boards directory and above score_ups_floor
 				INNER JOIN sentiment_analysis_reddit_boards b
 					ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
-				WHERE r2.scrape_id IS NULL
+				WHERE r2.scrape_id IS NULL 
+					-- Rescore comments scored before 5/10/22
+					OR DATE(r2.scrape_date) <= '2022-05-01'
 			)
 			UNION ALL
 			(
@@ -128,12 +130,14 @@ local({
 				FROM sentiment_analysis_media_scrape m1
 				LEFT JOIN 
 					(
-					SELECT scrape_id
+					SELECT scrape_id, DATE(scrape_dttm) AS scrape_date
 					FROM sentiment_analysis_media_score
 					WHERE score_model = '{x}'
 					) m2
 					ON m1.id = m2.scrape_id
 				WHERE m2.scrape_id IS NULL
+					-- Rescore comments scored before 5/10/22
+					OR DATE(r2.scrape_date) <= '2022-05-01'
 			)"
 			)) %>%
 			as_tibble(.) %>%

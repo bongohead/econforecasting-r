@@ -352,6 +352,9 @@ local({
 		na.omit(.) %>%
 		ggplot(.) + 
 		geom_area(aes(x = created_dt, y = prop_14d, fill = score)) +
+		geom_vline(aes(xintercept = as_date('2020-03-19'))) +
+		geom_vline(aes(xintercept = as_date('2020-06-13'))) +
+		
 		facet_wrap(vars(subreddit))
 	
 	plot_neg_only =
@@ -475,7 +478,7 @@ local({
 		na.omit(.) %>%
 		ggplot(.) +
 		geom_line(aes(x = created_dt, y = mean_score_7dma, color = subreddit_category))
-	
+
 	
 	# Index with equal weighting between boards in dataset
 	index_weighted_raw =
@@ -692,6 +695,19 @@ local({
 local({
 	
 	LOGISTIC_STEEPNESS = 10
+	
+	# Note whether is final
+	full_join(
+		reddit$distilbert_merge_counts %>% rename(., distilbert_pushshift = pushshift, top_200_pushshift = top_200),
+		reddit$roberta_merge_counts %>% rename(., roberta_pushshift = pushshift, top_200_roberta = top_200),
+		by = 'created_dt'
+		) %>%
+		arrange(., created_dt) %>%
+		transmute(
+			.,
+			created_dt,
+			is_final = !is.na(distilbert_pushshift) & !is.na(roberta_pushshift)
+		)
 	
 	# Combine & adjust Reddit indices
 	combined_data =
@@ -952,7 +968,7 @@ local({
 	
 	analysis_data =
 		index_data %>%
-		filter(., name %in% c('Social Media Financial Markets Sentiment Index')) %>%
+		filter(., name %in% c('Social Media Financial Market Sentiment')) %>%
 		transmute(., date = date, name, value = score_adj_7dma) %>%
 		left_join(
 			.,
