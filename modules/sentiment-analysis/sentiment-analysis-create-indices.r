@@ -69,8 +69,10 @@ if (RESET_SQL) {
 			count INTEGER NOT NULL,
 			score DECIMAL(10, 4) NOT NULL,
 			score_7dma DECIMAL(10, 4) NOT NULL,
+			score_14dma DECIMAL(10, 4) NOT NULL,
 			score_adj DECIMAL(10, 4) NOT NULL,
 			score_adj_7dma DECIMAL(10, 4) NOT NULL,
+			score_adj_14dma DECIMAL(10, 4) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (index_id, date),
 			CONSTRAINT sentiment_analysis_index_values_fk FOREIGN KEY (index_id)
@@ -745,6 +747,7 @@ local({
 			count = sum(count),
 			score = mean(mean_score),
 			score_7dma = mean(mean_score_7dma),
+			score_14dma = mean(mean_score_14dma),
 			score_models = paste0(model, collapse = ','),
 			.groups = 'drop'
 			) %>%
@@ -770,7 +773,8 @@ local({
 		map_dfr(., function(x)
 			x %>%
 				arrange(., created_dt) %>%
-				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right'))
+				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right')) %>%
+				mutate(., score_adj_14dma = zoo::rollmean(score_adj, 14, fill = NA, na.pad = TRUE, align = 'right'))
 		) %>%
 		inner_join(
 			.,
@@ -786,8 +790,10 @@ local({
 			count,
 			score,
 			score_7dma,
+			score_14dma,
 			score_adj,
 			score_adj_7dma,
+			score_adj_14dma,
 			created_at = now('US/Eastern')
 			)
 	
@@ -819,6 +825,7 @@ local({
 			count = sum(count),
 			score = mean(mean_score),
 			score_7dma = mean(mean_score_7dma),
+			score_14dma = mean(mean_score_14dma),
 			score_models = paste0(model, collapse = ','),
 			.groups = 'drop'
 		) %>%
@@ -844,7 +851,8 @@ local({
 		map_dfr(., function(x)
 			x %>%
 				arrange(., created_dt) %>%
-				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right'))
+				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right')) %>%
+				mutate(., score_adj_14dma = zoo::rollmean(score_adj, 14, fill = NA, na.pad = TRUE, align = 'right'))
 		) %>%
 		inner_join(., content_type_map, by = 'category') %>%
 		inner_join(
@@ -861,8 +869,10 @@ local({
 			count,
 			score,
 			score_7dma,
+			score_14dma,
 			score_adj,
 			score_adj_7dma,
+			score_adj_14dma,
 			created_at = now('US/Eastern')
 		)
 	
@@ -1067,7 +1077,13 @@ local({
 	
 	sql_result =
 		index_data %>%
-		select(., date, index_id, count, score, score_7dma, score_adj, score_adj_7dma, created_at) %>%
+		select(
+			.,
+			date, index_id, count,
+			score, score_7dma, score_14dma,
+			score_adj, score_adj_7dma, score_adj_14dma,
+			created_at
+			) %>%
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
 		mutate(., split = ceiling((1:nrow(.))/2000)) %>%
 		group_split(., split, .keep = FALSE) %>%
@@ -1079,8 +1095,10 @@ local({
 				count=EXCLUDED.count,
 				score=EXCLUDED.score,
 				score_7dma=EXCLUDED.score_7dma,
+				score_14dma=EXCLUDED.score_14dma,
 				score_adj=EXCLUDED.score_adj,
 				score_adj_7dma=EXCLUDED.score_adj_7dma,
+				score_adj_14dma=EXCLUDED.score_adj_14dma,
 				created_at=EXCLUDED.created_at'
 				) %>%
 				dbExecute(db, .)
