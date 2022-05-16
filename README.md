@@ -17,10 +17,12 @@ gantt
       Sentiment Model Scraping - FT, Reuters, Reddit/PushShift      :4/3/22, 5/8/22
       Sentiment Model DB Setup      :5/1/22, 5/8/22
       Sentiment Model Web Page Setup      :5/8/22, 5/15/22
-      Rebuild Asset Contagion Index    :5/15/22, 5/22/22
+      Sentiment Model Release       :5/15/22, 5/15/22
 ```
+## [v1.02] (TBD)
+- TBD: Add Conference Board, TD Forecasts
 
-## [v1.01] (Model Improvements) (2022-05-22)
+## [v1.01] (Model Improvements & Sentiment Index) (2022-05-16)
 This adds sentiment index modeling, along with minor modeling improvements and additions. 
 - Added ICE scraper with SONIA, ESTR rates (Euribor rates delayed due to historical data issues)
 - Added Reuters scraper and Reddit API scraper for sentiment analysis
@@ -28,10 +30,10 @@ This adds sentiment index modeling, along with minor modeling improvements and a
 - Added sentiment index scraping for official media sources
 - Added sentiment index scraping for PushShift & Reddit
 - Added sentiment index ReReddit scraper for backfilling data
-- Added sentiment index BERT & dictionary scoring
+- Added sentiment index DistilBERT, RoBERTa, and dictionary scoring
 - Added sentiment index DB storage
-- Added sentiment index aggregation and creation
-- TBD: Add Conference Board, TD Forecasts
+- Added sentiment index aggregation and model stacking
+- Added sentiment index scoring fixes and pull fixes
 
 ## [v.020 -> v1.00] (Model Modularization & Re-Release) (2022-03-02)
 This continues modularization & adds an initial web release on beta.econforecasting.com.
