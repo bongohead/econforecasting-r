@@ -1184,8 +1184,8 @@ local({
 			.,
 			reddit$roberta_by_category_data %>%
 				group_by(., created_dt, content_type) %>%
-				summarize(., n_sent_count_7d = sum(sent_count_7d), .groups = 'drop') %>%
-				filter(., n_sent_count_7d > 0),
+				summarize(., n_sent_count_14d = sum(sent_count_14d), .groups = 'drop') %>%
+				filter(., n_sent_count_14d > 0),
 			by = c('created_dt', 'content_type')
 		) %>%
 		# Only keep those that match an existing index
@@ -1195,7 +1195,7 @@ local({
 			by = 'content_type'
 		) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
-		transmute(., date = created_dt, emotion = score, index_id, value = sent_count_7d) %>% 
+		transmute(., date = created_dt, emotion = score, index_id, value = sent_count_14d) %>% 
 		na.omit(.) %>%
 		mutate(., created_at = now('US/Eastern'))
 
@@ -1207,8 +1207,8 @@ local({
 			.,
 			media$roberta_by_category_data %>%
 				group_by(., created_dt, content_type) %>%
-				summarize(., n_sent_count_7d = sum(sent_count_7d), .groups = 'drop') %>%
-				filter(., n_sent_count_7d > 0),
+				summarize(., n_sent_count_14d = sum(sent_count_14d), .groups = 'drop') %>%
+				filter(., n_sent_count_14d > 0),
 			by = c('created_dt', 'content_type')
 		) %>%
 		# Only keep those that match an existing index
@@ -1218,7 +1218,7 @@ local({
 			by = 'content_type'
 		) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
-		transmute(., date = created_dt, emotion = score, index_id, value = sent_count_7d) %>% 
+		transmute(., date = created_dt, emotion = score, index_id, value = sent_count_14d) %>% 
 		na.omit(.) %>%
 		mutate(., created_at = now('US/Eastern'))
 	
@@ -1264,12 +1264,12 @@ local({
 			.,
 			reddit$roberta_by_subreddit_data %>%
 				group_by(., created_dt, subreddit) %>%
-				summarize(., n_sent_count_7d = sum(sent_count_7d), .groups = 'drop') %>%
-				filter(., n_sent_count_7d > 0),
+				summarize(., n_sent_count_14d = sum(sent_count_14d), .groups = 'drop') %>%
+				filter(., n_sent_count_14d > 0),
 			by = c('created_dt', 'subreddit')
 		) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
-		transmute(., date = created_dt, emotion = score, subreddit, value = sent_count_7d) %>% 
+		transmute(., date = created_dt, emotion = score, subreddit, value = sent_count_14d) %>% 
 		na.omit(.) %>%
 		mutate(., created_at = now('US/Eastern'))
 
