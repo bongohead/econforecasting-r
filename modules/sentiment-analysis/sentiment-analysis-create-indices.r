@@ -48,7 +48,7 @@ if (RESET_SQL) {
 	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_benchmarks CASCADE')
 	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_benchmark_values CASCADE')
 	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_roberta_subreddit_values CASCADE')
-	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_roberta_category_values CASCADE')
+	dbExecute(db, 'DROP TABLE IF EXISTS sentiment_analysis_index_roberta_values CASCADE')
 	
 	dbExecute(
 		db,
@@ -118,13 +118,13 @@ if (RESET_SQL) {
 	
 	dbExecute(
 		db,
-		"CREATE TABLE sentiment_analysis_roberta_category_values (
-			category VARCHAR(100) NOT NULL,
+		"CREATE TABLE sentiment_analysis_index_roberta_values (
+			index_id INTEGER NOT NULL,
 			date DATE NOT NULL,
 			emotion VARCHAR(100) NOT NULL,
 			value DECIMAL(10, 2) NOT NULL,
 			created_at TIMESTAMP WITH TIME ZONE NULL DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (category, date, emotion)
+			PRIMARY KEY (index_id, date, emotion)
 		)"
 	)
 	
@@ -559,6 +559,18 @@ local({
 
 # Media --------------------------------------------------------
 
+## Create Map --------------------------------------------------------
+local({
+	
+	content_type_map = tribble(
+		~ source, ~ category, ~ content_type,
+		'ft', 'economics', 'financial'
+	)
+	
+	media <<- list()
+	media$content_type_map <<- content_type_map
+})
+
 ## Pull Data -------------------------------------------------------------------
 local({
 	
@@ -572,9 +584,10 @@ local({
 		WHERE text_part = 'all_text'
 			AND score_model IN ('DISTILBERT', 'DICT', 'ROBERTA')
 			AND created_dt >= '2019-01-01'"
-	)) %>%
-	as_tibble(.) %>%
-	arrange(., created_dt)
+		)) %>%
+		as_tibble(.) %>%
+		inner_join(., media$content_type_map, by = c('source', 'category')) %>%
+		arrange(., created_dt)
 	
 	# Prelim Checks
 	count_by_source_plot =
@@ -586,7 +599,6 @@ local({
 		geom_line(aes(x = created_dt, y = n, color = score_model)) +
 		facet_wrap(vars(source))
 
-	media <<- list()
 	media$data <<- data
 	media$count_by_source_plot <<- count_by_source_plot
 })
@@ -597,24 +609,25 @@ local({
 	index_data =
 		media$data %>%
 		filter(., score_model == 'DISTILBERT') %>%
-		group_by(., created_dt, category) %>%
+		group_by(., created_dt, content_type) %>%
 		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
 		summarize(., mean_score = mean(score, na.rm = T), count = n(), .groups = 'drop') %>% 
-		group_split(., category) %>%
+		group_split(., content_type) %>%
 		map_dfr(., function(x)
 			left_join(
 				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
 				x,
 				by = 'created_dt'
 			) %>%
-				mutate(., category = x$category[[1]], mean_score = coalesce(mean_score, 0)) %>%
-				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'))
+				mutate(., content_type = x$content_type[[1]], mean_score = coalesce(mean_score, 0)) %>%
+				mutate(., mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right')) %>%
+				mutate(., mean_score_14dma = zoo::rollmean(mean_score, 14, fill = NA, na.pad = TRUE, align = 'right'))
 		)
 	
 	index_plot =
 		index_data %>%
 		ggplot(.) + 
-		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = content_type))
 	
 	media$distilbert_index_data <<- index_data
 	media$distilbert_index_plot <<- index_plot
@@ -625,26 +638,26 @@ local({
 	
 	input_data =
 		media$data %>%
-		filter(., score_model == 'ROBERTA' & score != 'neutral') %>%
-		select(., score, created_dt, category) 
+		filter(., score_model == 'ROBERTA') %>%
+		select(., score, created_dt, content_type) 
 	
 	category_date_starts =
 		input_data %>%
-		group_by(., category, score) %>%
+		group_by(., content_type, score) %>%
 		summarize(., min_dt = min(created_dt), .groups = 'drop')  %>%
-		group_by(., category) %>%
+		group_by(., content_type) %>%
 		summarize(., max_min_dt = max(min_dt))
 	
 	sent_counts_by_board_date =
 		input_data %>%
-		group_by(., score, created_dt, category) %>%
+		group_by(., score, created_dt, content_type) %>%
 		summarize(., sent_count = n(), .groups = 'drop') %>%
 		ungroup(.) %>%
-		group_split(., score, category) %>%
+		group_split(., score, content_type) %>%
 		map_dfr(., function(x)
 			left_join(
 				tibble(created_dt = seq(
-					filter(category_date_starts, category == x$category[[1]])$max_min_dt[[1]],
+					filter(category_date_starts, content_type == x$content_type[[1]])$max_min_dt[[1]],
 					to = max(x$created_dt),
 					by = '1 day'
 				)),
@@ -654,13 +667,13 @@ local({
 				mutate(
 					.,
 					score = x$score[[1]], 
-					category = x$category[[1]],
+					content_type = x$content_type[[1]],
 					sent_count = ifelse(is.na(sent_count), 0, sent_count),
 					sent_count_7d = zoo::rollsum(sent_count, 7, fill = NA, na.pad = TRUE, align = 'right'),
 					sent_count_14d = zoo::rollsum(sent_count, 14, fill = NA, na.pad = TRUE, align = 'right')
 				)
 		) %>%
-		group_by(., created_dt, category) %>%
+		group_by(., created_dt, content_type) %>%
 		mutate(
 			.,
 			prop_7d = sent_count_7d/sum(sent_count_7d),
@@ -673,7 +686,7 @@ local({
 		na.omit(.) %>%
 		ggplot(.) + 
 		geom_area(aes(x = created_dt, y = prop_7d, fill = score)) +
-		facet_wrap(vars(category))
+		facet_wrap(vars(content_type))
 	
 	# Index
 	index_data =
@@ -681,10 +694,10 @@ local({
 		inner_join(., reddit$roberta_mood_affiliation, by = 'score') %>%
 		mutate(., score = mood_score) %>%
 		select(., -mood_score) %>%
-		group_by(., created_dt, category) %>%
+		group_by(., created_dt, content_type) %>%
 		summarize(., mean_score = mean(score), count = n(), .groups = 'drop') %>%
 		filter(., count >= 5) %>%
-		group_split(., category) %>%
+		group_split(., content_type) %>%
 		map_dfr(., function(x)
 			left_join(
 				tibble(created_dt = seq(min(x$created_dt), to = max(x$created_dt), by = '1 day')),
@@ -693,7 +706,7 @@ local({
 			) %>%
 				mutate(
 					.,
-					category = x$category[[1]],
+					content_type = x$content_type[[1]],
 					mean_score = zoo::na.locf(mean_score),
 					count = ifelse(is.na(count), 0, count),
 					mean_score_7dma = zoo::rollmean(mean_score, 7, fill = NA, na.pad = TRUE, align = 'right'),
@@ -705,7 +718,7 @@ local({
 		index_data %>%
 		na.omit(.) %>%
 		ggplot(.) +
-		geom_line(aes(x = created_dt, y = mean_score_7dma, color = category))
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = content_type))
 	
 	print(plot)
 	media$roberta_by_category_data <<- sent_counts_by_board_date
@@ -778,7 +791,7 @@ local({
 		) %>%
 		inner_join(
 			.,
-			dbGetQuery(db, 'SELECT id AS index_id, content_type FROM sentiment_analysis_indices'),
+			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'reddit'"),
 			by = c('subreddit_category' = 'content_type')
 			) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
@@ -808,17 +821,12 @@ local({
 	
 	LOGISTIC_STEEPNESS = 10
 	
-	content_type_map = tribble(
-		~ category, ~ content_type,
-		'economics', 'financial'
-	)
-	
 	combined_data =
 		bind_rows(
 			media$roberta_index_data %>% mutate(., model = 'ROBERTA'),
 			media$distilbert_index_data %>% mutate(., model = 'DISTILBERT')
 		) %>% 
-		group_by(., created_dt, category) %>%
+		group_by(., created_dt, content_type) %>%
 		summarize(
 			.,
 			n_score_models = n(),
@@ -836,28 +844,27 @@ local({
 	adjustments =
 		combined_data %>%
 		filter(., created_dt >= '2022-01-01' & created_dt <= '2022-01-31') %>%
-		group_by(., category) %>%
+		group_by(., content_type) %>%
 		summarize(., mean_score = mean(score_7dma))
 	
 	adjusted_data =
 		combined_data %>%
-		left_join(., adjustments, by = 'category') %>%
+		left_join(., adjustments, by = 'content_type') %>%
 		mutate(
 			.,
 			score_adj = score - mean_score,
 			score_adj = 100/(1 + exp((-1 * LOGISTIC_STEEPNESS) * (score_adj - 0)))
 		) %>%
-		group_split(., category) %>%
+		group_split(., content_type) %>%
 		map_dfr(., function(x)
 			x %>%
 				arrange(., created_dt) %>%
 				mutate(., score_adj_7dma = zoo::rollmean(score_adj, 7, fill = NA, na.pad = TRUE, align = 'right')) %>%
 				mutate(., score_adj_14dma = zoo::rollmean(score_adj, 14, fill = NA, na.pad = TRUE, align = 'right'))
 		) %>%
-		inner_join(., content_type_map, by = 'category') %>%
 		inner_join(
 			.,
-			dbGetQuery(db, 'SELECT id AS index_id, content_type FROM sentiment_analysis_indices'),
+			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'trad'"),
 			by = c('content_type')
 		) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
@@ -1167,51 +1174,100 @@ local({
 ## Breakdown ---------------------------------------------------------
 local({
 	
-	message('*** Sending ROBERTA Subreddit Breakdowns to SQL')
-	
-	initial_count = as.numeric(
-		dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_roberta_subreddit_values')$count
-		)
-	message('***** Initial Count: ', initial_count)
-	
-	sql_result =
-		reddit$roberta_by_subreddit_data %>%
-		transmute(., date = created_dt, emotion = score, subreddit, value = sent_count_7d) %>% 
-		na.omit(.) %>%
-		mutate(., created_at = now('US/Eastern')) %>%
-		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
-		mutate(., split = ceiling((1:nrow(.))/20000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
-			create_insert_query(
-				x,
-				'sentiment_analysis_roberta_subreddit_values',
-				'ON CONFLICT (subreddit, date, emotion) DO UPDATE SET
-				value=EXCLUDED.value,
-				created_at=EXCLUDED.created_at'
-			) %>%
-				dbExecute(db, .)
+	# message('*** Sending ROBERTA Subreddit Breakdowns to SQL')
+	# 
+	# initial_count = as.numeric(
+	# 	dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_roberta_subreddit_values')$count
+	# 	)
+	# message('***** Initial Count: ', initial_count)
+	# 
+	# sql_result =
+	# 	reddit$roberta_by_subreddit_data %>%
+	# 	transmute(., date = created_dt, emotion = score, subreddit, value = sent_count_7d) %>% 
+	# 	na.omit(.) %>%
+	# 	mutate(., created_at = now('US/Eastern')) %>%
+	# 	mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
+	# 	mutate(., split = ceiling((1:nrow(.))/20000)) %>%
+	# 	group_split(., split, .keep = FALSE) %>%
+	# 	sapply(., function(x)
+	# 		create_insert_query(
+	# 			x,
+	# 			'sentiment_analysis_roberta_subreddit_values',
+	# 			'ON CONFLICT (subreddit, date, emotion) DO UPDATE SET
+	# 			value=EXCLUDED.value,
+	# 			created_at=EXCLUDED.created_at'
+	# 		) %>%
+	# 			dbExecute(db, .)
+	# 	) %>%
+	# 	{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+	# 
+	# final_count = as.numeric(
+	# 	dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_roberta_subreddit_values')$count
+	# 	)
+	# message('***** Rows Added: ', final_count - initial_count)
+
+	reddit_data =
+		reddit$roberta_by_category_data %>%
+		# Only keep dates with non-zero component counts
+		inner_join(
+			.,
+			reddit$roberta_by_category_data %>%
+				group_by(., created_dt, subreddit_category) %>%
+				summarize(., n_sent_count_7d = sum(sent_count_7d), .groups = 'drop') %>%
+				filter(., n_sent_count_7d > 0),
+			by = c('created_dt', 'subreddit_category')
 		) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	final_count = as.numeric(
-		dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_roberta_subreddit_values')$count
-		)
-	message('***** Rows Added: ', final_count - initial_count)
+		# Only keep those that match an existing index
+		inner_join(
+			.,
+			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'reddit'"),
+			by = c('subreddit_category' = 'content_type')
+		) %>%
+		filter(., created_dt >= as_date('2019-02-01') ) %>%
+		transmute(., date = created_dt, emotion = score, index_id, value = sent_count_7d) %>% 
+		na.omit(.) %>%
+		mutate(., created_at = now('US/Eastern'))
 
 	
+	media_data = 
+		media$roberta_by_category_data %>%
+		# Only keep dates with non-zero component counts
+		inner_join(
+			.,
+			media$roberta_by_category_data %>%
+				group_by(., created_dt, category) %>%
+				summarize(., n_sent_count_7d = sum(sent_count_7d), .groups = 'drop') %>%
+				filter(., n_sent_count_7d > 0),
+			by = c('created_dt', 'category')
+		) %>%
+		# Only keep those that match an existing index
+		inner_join(
+			.,
+			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'trad'"),
+			by = c('category' = 'content_type')
+		) %>%
+		filter(., created_dt >= as_date('2019-02-01') ) %>%
+		transmute(., date = created_dt, emotion = score, index_id, value = sent_count_7d) %>% 
+		na.omit(.) %>%
+		mutate(., created_at = now('US/Eastern'))
 	
 	message('*** Sending ROBERTA Category Breakdowns to SQL')
 	
 	initial_count = as.numeric(
-		dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_roberta_category_values')$count
+		dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_index_roberta_values')$count
 	)
 	
 	message('***** Initial Count: ', initial_count)
-	
+	# reddit$roberta_by_category_data %>% group_by(., created_dt, subreddit_category) %>% summarize(., n_sent_count_7d = sum(sent_count_7d), .groups = 'drop')
 	sql_result =
 		reddit$roberta_by_category_data %>%
-		transmute(., date = created_dt, emotion = score, category = subreddit_category, value = sent_count_7d) %>% 
+		inner_join(
+			.,
+			dbGetQuery(db, 'SELECT id AS index_id, content_type FROM sentiment_analysis_indices'),
+			by = c('subreddit_category' = 'content_type')
+		) %>%
+		filter(., created_dt >= as_date('2019-02-01') ) %>%
+		transmute(., date = created_dt, emotion = score, index_id, value = sent_count_7d) %>% 
 		na.omit(.) %>%
 		mutate(., created_at = now('US/Eastern')) %>%
 		mutate(., across(where(is.POSIXt), function(x) format(x, '%Y-%m-%d %H:%M:%S %Z'))) %>%
@@ -1220,8 +1276,8 @@ local({
 		sapply(., function(x)
 			create_insert_query(
 				x,
-				'sentiment_analysis_roberta_category_values',
-				'ON CONFLICT (category, date, emotion) DO UPDATE SET
+				'sentiment_analysis_index_roberta_values',
+				'ON CONFLICT (index_id, date, emotion) DO UPDATE SET
 				value=EXCLUDED.value,
 				created_at=EXCLUDED.created_at'
 			) %>%
@@ -1230,7 +1286,7 @@ local({
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 	
 	final_count = as.numeric(
-		dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_roberta_category_values')$count
+		dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_index_roberta_values')$count
 	)
 	message('***** Rows Added: ', final_count - initial_count)
 	
