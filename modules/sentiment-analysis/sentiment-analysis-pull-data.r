@@ -403,6 +403,7 @@ local({
 	# Get possible dates (Eastern Time)
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
+		# Start from 2019-01-01 if no data, but can be skipped to later if older data already pulled
 		created_dt = seq(today('US/Eastern') - days(4), as_date('2019-01-01'), '-1 day'),
 		reddit$scrape_boards
 		)
