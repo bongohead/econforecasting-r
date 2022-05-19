@@ -158,9 +158,10 @@ local({
 	
 	pushshift_data = dbGetQuery(db, str_glue(
 		"SELECT
-			r1.method AS source, r1.subreddit, DATE(r1.created_dttm) AS created_dt, r1.ups,
+			-- Timezone is critical or will default to the UTC Date
+			r1.method AS source, r1.subreddit, DATE(r1.created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, r1.ups,
 			r2.score_model, r2.score, r2.score_conf, r2.scored_dttm,
-			b.category AS content_type
+			r1.name, b.category AS content_type
 		FROM sentiment_analysis_reddit_scrape r1
 		INNER JOIN sentiment_analysis_reddit_score r2
 			ON r1.id = r2.scrape_id
@@ -169,7 +170,8 @@ local({
 		WHERE r1.method = 'pushshift_all_by_board'
 			AND text_part = 'all_text'
 			AND score_model IN ('DISTILBERT', 'ROBERTA', 'DICT')
-			AND DATE(created_dttm) >= '2019-01-01'"
+			AND DATE(created_dttm) >= '2019-01-01'
+			AND r1.ups >= b.score_ups_floor"
 		)) %>%
 		as_tibble(.) %>%
 		arrange(., created_dt)
@@ -178,7 +180,7 @@ local({
 		"WITH cte AS 
 		(
 			SELECT
-				r1.method AS source, r1.subreddit, DATE(r1.created_dttm) AS created_dt, r1.ups,
+				r1.method AS source, r1.subreddit, DATE(r1.created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, r1.ups,
 				r2.score_model, r2.score, r2.score_conf, r2.scored_dttm,
 				b.category AS content_type,
 				-- Get latest scraped value of post if multiple
@@ -193,35 +195,63 @@ local({
 				AND text_part = 'all_text'
 				AND score_model IN ('DISTILBERT', 'ROBERTA', 'DICT')
 				AND DATE(created_dttm) >= '2019-01-01'
+				AND r1.ups >= b.score_ups_floor
 		)
 		SELECT * FROM cte WHERE rn = 1"
 		)) %>%
 		as_tibble(.) %>%
 		arrange(., created_dt)
 	
-	# Get list of score_model x subreddit x created_dt combinations not already in pushshift_data
-	to_keep =
-		recent_data %>%
-		group_by(., score_model, subreddit, created_dt) %>%
-		summarize(., .groups = 'drop') %>%
-		anti_join(
-			.,
-			pushshift_data %>%
-				group_by(., score_model, subreddit, created_dt) %>% 
-				summarize(., .groups = 'drop'),
-			by = c('score_model', 'subreddit', 'created_dt')
-		)
+	# # Get list of score_model x subreddit x created_dt combinations not already in pushshift_data
+	# to_keep =
+	# 	recent_data %>%
+	# 	group_by(., score_model, subreddit, created_dt) %>%
+	# 	summarize(., .groups = 'drop') %>%
+	# 	anti_join(
+	# 		.,
+	# 		pushshift_data %>%
+	# 			group_by(., score_model, subreddit, created_dt) %>% 
+	# 			summarize(., .groups = 'drop'),
+	# 		by = c('score_model', 'subreddit', 'created_dt')
+	# 	)
+	# 
+	# kept_recent_data =
+	# 	recent_data %>%
+	# 	inner_join(., to_keep, by = c('score_model', 'subreddit', 'created_dt'))
+	# 
+	# data = bind_rows(
+	# 	pushshift_data %>% mutate(., finality = 'pushshift'),
+	# 	kept_recent_data %>% mutate(., finality = 'top_200')
+	# 	)
+	
+	# 5/18/22 - Use all available recent_data, just dump anything that overlaps with Pushshift data
+	# Overlap verification
+	recent_data %>%
+		mutate(., in_pushshift = name %in% pushshift_data$name) %>%
+		group_by(., created_dt, in_pushshift) %>%
+		summarize(., n = n(), .groups = 'drop') %>%
+		pivot_wider(., id_cols = 'created_dt', values_from = n, names_from = in_pushshift, names_prefix = 'in_pushshift_') %>%
+		print(., n = 100)
 	
 	kept_recent_data =
 		recent_data %>%
-		inner_join(., to_keep, by = c('score_model', 'subreddit', 'created_dt'))
+		filter(., !name %in% pushshift_data$name)
 	
 	data = bind_rows(
 		pushshift_data %>% mutate(., finality = 'pushshift'),
 		kept_recent_data %>% mutate(., finality = 'top_200')
 		)
-
+	
 	# Prelim Checks
+	count_by_source_plot =
+		data %>%
+		filter(., created_dt >= today() - months(3)) %>%
+		group_by(., created_dt, source) %>%
+		summarize(., n = n(), .groups = 'drop') %>% 
+		arrange(., created_dt) %>%
+		ggplot(.) +
+		geom_line(aes(x = created_dt, y = n, color = source))
+	
 	count_by_model_plot =
 		data %>%
 		group_by(., created_dt, score_model, finality) %>%
@@ -266,6 +296,7 @@ local({
 	reddit <<- list()
 	reddit$data <<- data
 	reddit$boards <<- boards
+	reddit$count_by_source_plot <<- count_by_model_plot
 	reddit$count_by_model_plot <<- count_by_model_plot
 	reddit$count_by_board_plot <<- count_by_board_plot
 	reddit$distilbert_score_by_subreddit <<- distilbert_score_by_subreddit
@@ -781,10 +812,10 @@ local({
 		filter(., n_score_models == 2) %>%
 		filter(., !is.na(score) & !is.na(score_7dma))
 	
-	# Adjust to fix Jan. 2022 levels at ~ 50
+	# Adjust to fix Jan. 2020 levels at ~ 50
 	adjustments =
 		combined_data %>%
-		filter(., created_dt >= '2022-01-01' & created_dt <= '2022-01-31') %>%
+		filter(., created_dt >= '2020-01-01' & created_dt <= '2020-01-31') %>%
 		group_by(., content_type) %>%
 		summarize(., mean_score = mean(score_7dma))
 
