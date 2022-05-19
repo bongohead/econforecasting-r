@@ -1,4 +1,5 @@
 #' Sentiment Analysis with Dictionary Analysis & BERT
+#' Run this script after score-data finishes (will take approx. 2 hours)
 
 # Initialize ----------------------------------------------------------
 
@@ -118,6 +119,12 @@ if (RESET_SQL) {
 	)
 	
 	dbExecute(
+		db, 
+		"CREATE INDEX sentiment_analysis_index_roberta_values_subreddit_idx
+			ON sentiment_analysis_index_roberta_values USING btree (index_id)"
+	)
+	
+	dbExecute(
 		db,
 		"CREATE TABLE sentiment_analysis_subreddit_roberta_values (
 			subreddit VARCHAR(255) NOT NULL,
@@ -128,6 +135,12 @@ if (RESET_SQL) {
 			PRIMARY KEY (subreddit, date, emotion)
 		)"
 	)
+	
+	dbExecute(
+		db, 
+		"CREATE INDEX sentiment_analysis_roberta_values_subreddit_idx
+			ON sentiment_analysis_subreddit_roberta_values USING btree (subreddit)"
+		)
 	
 }
 })
