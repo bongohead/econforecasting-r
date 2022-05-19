@@ -103,7 +103,7 @@ local({
 		dbGetQuery(db, str_glue(
 			"(
 				SELECT
-					'reddit' AS source, DATE(r1.created_dttm) as created_dt,
+					'reddit' AS source, DATE(r1.created_dttm AT TIME ZONE 'US/Eastern') as created_dt,
 					r1.id,
 					CONCAT(r1.title, COALESCE(CONCAT('. ', r1.selftext), '')) AS text_part_all_text
 				FROM sentiment_analysis_reddit_scrape r1
