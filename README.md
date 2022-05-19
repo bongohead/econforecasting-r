@@ -20,6 +20,7 @@ gantt
       Sentiment Model Release       :5/15/22, 5/15/22
 ```
 ## [v1.02] (TBD)
+- TBD: Bugfix - why is official media index delayed to 5/13?
 - TBD: Add Conference Board, TD Forecasts
 
 ## [v1.01] (Model Improvements & Sentiment Index) (2022-05-16)
