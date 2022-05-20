@@ -231,7 +231,8 @@ local({
 		group_by(., created_dt, in_pushshift) %>%
 		summarize(., n = n(), .groups = 'drop') %>%
 		pivot_wider(., id_cols = 'created_dt', values_from = n, names_from = in_pushshift, names_prefix = 'in_pushshift_') %>%
-		print(., n = 100)
+		arrange(., desc(created_dt)) %>%
+		print(., n = 20)
 	
 	kept_recent_data =
 		recent_data %>%
@@ -296,7 +297,7 @@ local({
 	reddit <<- list()
 	reddit$data <<- data
 	reddit$boards <<- boards
-	reddit$count_by_source_plot <<- count_by_model_plot
+	reddit$count_by_source_plot <<- count_by_source_plot
 	reddit$count_by_model_plot <<- count_by_model_plot
 	reddit$count_by_board_plot <<- count_by_board_plot
 	reddit$distilbert_score_by_subreddit <<- distilbert_score_by_subreddit
