@@ -20,6 +20,7 @@ gantt
       Sentiment Model Release       :5/15/22, 5/15/22
 ```
 ## [v1.02] (TBD)
+- Fixed critical bug with sentiment aggregation TZ casting
 - TBD: Add Conference Board, TD Forecasts
 
 ## [v1.01] (Model Improvements & Sentiment Index) (2022-05-16)

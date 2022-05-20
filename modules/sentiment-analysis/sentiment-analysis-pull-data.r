@@ -397,6 +397,10 @@ local({
 ## PushShift ---------------------------------------------------------------
 local({
 	
+	# List of subreddits to force a full repull of data
+	# Leave as an empty vector generally
+	BOARDS_FULL_REPULL = c('jobs', 'careerguidance')
+
 	# Pull top 50 comments by day
 	message(str_glue('*** Pulling Pushshift: {format(now(), "%H:%M")}'))
 	
@@ -423,7 +427,10 @@ local({
 	new_pulls =
 		anti_join(
 			possible_pulls,
+			# Things to not pull
 			existing_pulls %>%
+				# 5/20/22: Forcibly repull jobs & careerguidance
+				filter(., !subreddit %in% BOARDS_FULL_REPULL) %>% 
 				# Always repull last week
 				filter(., created_dt <= today() - days(7)),
 			by = c('created_dt', 'subreddit')
