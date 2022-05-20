@@ -20,6 +20,7 @@ gantt
       Sentiment Model Release       :5/15/22, 5/15/22
 ```
 ## [v1.02] (TBD)
+- Added initial detailed labor market modeling
 - Fixed critical bug with sentiment aggregation TZ casting
 - TBD: Add Conference Board, TD Forecasts
 
