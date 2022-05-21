@@ -36,13 +36,17 @@ db = dbConnect(
 )
 
 
-# Pull Data ------------------------------------------------------------------
+# Pull Data ------------------------------------------------------------------\
+
+## Collect Data ------------------------------------------------------------------
 local({
 	
 	boards = collect(tbl(db, sql(
 		"SELECT subreddit, scrape_ups_floor FROM sentiment_analysis_reddit_boards
 		WHERE score_active = TRUE
-		AND category IN ('labor_market')"
+			AND subreddit = 'jobs'
+			--AND category IN ('labor_market')
+			AND 1=1"
 	)))
 	
 	pushshift_data = dbGetQuery(db, str_glue(
@@ -55,25 +59,26 @@ local({
 		WHERE r1.method = 'pushshift_all_by_board'
 			AND DATE(created_dttm) >= '2019-01-01'
 			AND r1.ups >= b.score_ups_floor
-			AND category IN ('labor_market')
+			AND r1.subreddit = 'jobs'
+			--AND category IN ('labor_market')
 			LIMIT 100000"
 		)) %>%
 		as.data.table(.) %>%
 		.[, text := paste0(title, selftext)] %>%
 		.[, ind_type := fcase(
 			str_detect(text, 'layoff|laid off|fired|unemployed|lost my job'), 'layoff',
-			str_detect(text, 'quit|resign|leave a job|leave my job'), 'quit',
+			str_detect(text, 'quit|resign|leave (a|my|) job'), 'quit',
 			# One critical verb & then more tokenized
-			str_detect(text, 'hired|new job|(found|got|landed)( the|a|)( new|)( job|offer)|starting a job|background check'),
+			str_detect(text, 'hired|new job|(found|got|landed|accepted|starting)( the|a|)( new|)( job|offer)|background check'),
 			'hired',
-			str_detect(text, 'job search|application|applying|rejected|interview'), 'searching',
+			str_detect(text, 'job search|application|applying|rejected|interview|hunting'), 'searching',
 			default = 'other'
 		)]
 
 	
 	ind_data =
 		pushshift_data %>%
-		# .[ind_type != 'other'] %>%
+		.[ind_type != 'other'] %>%
 		# Get number of posts by ind_type and created_dt, filling in missing combinations with 0s
 		.[, list(n_ind_type_by_dt = .N), by = c('created_dt', 'ind_type')] %>%
 		merge(
@@ -100,8 +105,8 @@ local({
 		# Get 7-day count by ind_type
 		.[order(created_dt, ind_type)] %>%
 		.[, n_ind_type_by_dt_7d := frollsum(n_ind_type_by_dt, n = 7, algo = 'exact'), by = c('ind_type')] %>%
-		.[, n_ind_type_by_dt_14d := frollsum(n_ind_type_by_dt, n = 14, algo = 'exact'),by = c('ind_type')] %>%
-		.[, n_ind_type_by_dt_30d := frollsum(n_ind_type_by_dt, n = 30, algo = 'exact'),by = c('ind_type')] %>%
+		.[, n_ind_type_by_dt_14d := frollsum(n_ind_type_by_dt, n = 14, algo = 'exact'), by = c('ind_type')] %>%
+		.[, n_ind_type_by_dt_30d := frollsum(n_ind_type_by_dt, n = 30, algo = 'exact'), by = c('ind_type')] %>%
 		# Calculate proportion for 7d rates
 		.[, rate_7d := n_ind_type_by_dt_7d/n_created_dt_7d] %>%
 		.[, rate_14d := n_ind_type_by_dt_14d/n_created_dt_14d] %>%
@@ -109,8 +114,19 @@ local({
 		
 	ind_data %>%
 		.[ind_type != 'other'] %>%
-		ggplot(.) +
-		geom_line(aes(x = created_dt, y = rate_30d, color = ind_type)) 
+		hchart(., 'line', hcaes(x = created_dt, y = rate_14d, group = ind_type))
+	
+	
+	
+	ratios =
+		ind_data %>%
+		dcast(., created_dt ~ ind_type, value.var = c('rate_7d', 'rate_14d', 'rate_30d')) %>%
+		.[, layoff_to_quit_14d := rate_14d_layoff/rate_14d_quit] %>%
+		.[, layoff_to_quit_14d := rate_14d_layoff/rate_14d_quit] %>%
+		melt(., id.vars = 'created_dt', measure.vars = c('layoff_to_quit_14d'), variable.name = 'ratio', value.name = 'value')
+	
+	ratios %>%
+		hchart(., 'line', hcaes(x = created_dt, y = value, group = ratio))
 	
 	pushshift_data %>%
 		.[, list(n_layoff_date = .N), by = c('created_dt', 'ind_layoff')] %>%
