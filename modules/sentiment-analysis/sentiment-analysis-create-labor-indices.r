@@ -59,8 +59,58 @@ local({
 			LIMIT 100000"
 		)) %>%
 		as.data.table(.) %>%
-		.[, ind_layoff := str_detect(paste0(title, selftext), 'layoff|laid off|fired|unemployed')]
+		.[, text := paste0(title, selftext)] %>%
+		.[, ind_type := fcase(
+			str_detect(text, 'layoff|laid off|fired|unemployed|lost my job'), 'layoff',
+			str_detect(text, 'quit|resign|leave a job|leave my job'), 'quit',
+			# One critical verb & then more tokenized
+			str_detect(text, 'hired|new job|(found|got|landed)( the|a|)( new|)( job|offer)|starting a job|background check'),
+			'hired',
+			str_detect(text, 'job search|application|applying|rejected|interview'), 'searching',
+			default = 'other'
+		)]
 
+	
+	ind_data =
+		pushshift_data %>%
+		# .[ind_type != 'other'] %>%
+		# Get number of posts by ind_type and created_dt, filling in missing combinations with 0s
+		.[, list(n_ind_type_by_dt = .N), by = c('created_dt', 'ind_type')] %>%
+		merge(
+			.,
+			CJ(
+				created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day'),
+				ind_type = unique(.$ind_type)
+				),
+			by = c('created_dt', 'ind_type'),
+			all.y = T
+		) %>%
+		.[, n_ind_type_by_dt := fifelse(is.na(n_ind_type_by_dt), 0, n_ind_type_by_dt)] %>%
+		# Now merge to get number of total posts per day
+		merge(
+			.,
+			.[, list(n_created_dt = sum(n_ind_type_by_dt)), by = 'created_dt'] %>%
+				.[order(created_dt)] %>%
+				.[, n_created_dt_7d := frollsum(n_created_dt, n = 7, algo = 'exact')] %>%
+				.[, n_created_dt_14d := frollsum(n_created_dt, n = 14, algo = 'exact')] %>%
+				.[, n_created_dt_30d := frollsum(n_created_dt, n = 30, algo = 'exact')],
+			by = 'created_dt',
+			all.x = T
+		) %>%
+		# Get 7-day count by ind_type
+		.[order(created_dt, ind_type)] %>%
+		.[, n_ind_type_by_dt_7d := frollsum(n_ind_type_by_dt, n = 7, algo = 'exact'), by = c('ind_type')] %>%
+		.[, n_ind_type_by_dt_14d := frollsum(n_ind_type_by_dt, n = 14, algo = 'exact'),by = c('ind_type')] %>%
+		.[, n_ind_type_by_dt_30d := frollsum(n_ind_type_by_dt, n = 30, algo = 'exact'),by = c('ind_type')] %>%
+		# Calculate proportion for 7d rates
+		.[, rate_7d := n_ind_type_by_dt_7d/n_created_dt_7d] %>%
+		.[, rate_14d := n_ind_type_by_dt_14d/n_created_dt_14d] %>%
+		.[, rate_30d := n_ind_type_by_dt_30d/n_created_dt_30d]
+		
+	ind_data %>%
+		.[ind_type != 'other'] %>%
+		ggplot(.) +
+		geom_line(aes(x = created_dt, y = rate_30d, color = ind_type)) 
 	
 	pushshift_data %>%
 		.[, list(n_layoff_date = .N), by = c('created_dt', 'ind_layoff')] %>%
@@ -111,6 +161,30 @@ local({
 		ggplot(.) + 
 		geom_line(aes(x = created_dt, y = layoff_rate_7dma))
 	
+	# Same but 14d
+	pushshift_data %>%
+		.[, list(n_layoff_date = .N), by = c('created_dt', 'ind_layoff')] %>%
+		.[, ind_layoff := fifelse(ind_layoff == T, 'ind_layoff_1', 'ind_layoff_0')] %>%
+		dcast(., created_dt ~ ind_layoff, value.var = 'n_layoff_date') %>%
+		merge(
+			.,
+			data.table(created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day')),
+			by = 'created_dt',
+			all.y = T
+		) %>%
+		.[order(created_dt)] %>%
+		.[, c('ind_layoff_0', 'ind_layoff_1') := 
+				lapply(.SD, function(x) replace_na(x, 0)), 
+			.SDcols = c('ind_layoff_0', 'ind_layoff_1')
+		] %>%
+		.[, c('ind_layoff_0_7d', 'ind_layoff_1_7d') :=
+				lapply(.SD, function(x) frollsum(x, n = 14, fill = NA, algo = 'exact', align = 'right')),
+			.SDcols = c('ind_layoff_0', 'ind_layoff_1')
+		] %>%
+		.[, layoff_rate_7dma := ind_layoff_1_7d/(ind_layoff_0_7d + ind_layoff_1_7d)] %>%
+		print(.) %>%
+		ggplot(.) + 
+		geom_line(aes(x = created_dt, y = layoff_rate_7dma))
 	
 	recent_data = dbGetQuery(db, str_glue(
 		"WITH cte AS 
