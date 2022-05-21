@@ -66,10 +66,18 @@ local({
 		as.data.table(.) %>%
 		.[, text := paste0(title, selftext)] %>%
 		.[, ind_type := fcase(
-			str_detect(text, 'layoff|laid off|fired|unemployed|lost my job'), 'layoff',
-			str_detect(text, 'quit|resign|leave (a|my|) job'), 'quit',
+			str_detect(text, 'layoff|laid off|fired|unemployed|lost( my|) job'), 'layoff',
+			str_detect(text, 'quit|resign|weeks notice|(leave|leaving)( a| my|)( job)'), 'quit',
+			# str_detect(text, 'quit|resign|leave (a|my|) job'), 'quit',
 			# One critical verb & then more tokenized
-			str_detect(text, 'hired|new job|(found|got|landed|accepted|starting)( the|a|)( new|)( job|offer)|background check'),
+			str_detect(
+				text,
+				paste0(
+					'hired|new job|background check|job offer|',
+					'(found|got|landed|accepted|starting)( the| a|)( new|)( job| offer)',
+					collapse = ''
+					)
+				),
 			'hired',
 			str_detect(text, 'job search|application|applying|rejected|interview|hunting'), 'searching',
 			default = 'other'
@@ -108,6 +116,7 @@ local({
 		.[, n_ind_type_by_dt_14d := frollsum(n_ind_type_by_dt, n = 14, algo = 'exact'), by = c('ind_type')] %>%
 		.[, n_ind_type_by_dt_30d := frollsum(n_ind_type_by_dt, n = 30, algo = 'exact'), by = c('ind_type')] %>%
 		# Calculate proportion for 7d rates
+		.[, rate := n_ind_type_by_dt/n_created_dt] %>%
 		.[, rate_7d := n_ind_type_by_dt_7d/n_created_dt_7d] %>%
 		.[, rate_14d := n_ind_type_by_dt_14d/n_created_dt_14d] %>%
 		.[, rate_30d := n_ind_type_by_dt_30d/n_created_dt_30d]
@@ -117,12 +126,11 @@ local({
 		hchart(., 'line', hcaes(x = created_dt, y = rate_14d, group = ind_type))
 	
 	
-	
 	ratios =
 		ind_data %>%
 		dcast(., created_dt ~ ind_type, value.var = c('rate_7d', 'rate_14d', 'rate_30d')) %>%
 		.[, layoff_to_quit_14d := rate_14d_layoff/rate_14d_quit] %>%
-		.[, layoff_to_quit_14d := rate_14d_layoff/rate_14d_quit] %>%
+		.[, layoff_to_quit_30d := rate_30d_layoff/rate_30d_quit] %>%
 		melt(., id.vars = 'created_dt', measure.vars = c('layoff_to_quit_14d'), variable.name = 'ratio', value.name = 'value')
 	
 	ratios %>%
