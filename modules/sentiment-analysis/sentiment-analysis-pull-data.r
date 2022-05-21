@@ -240,7 +240,84 @@ local({
 	
 	reddit$data$top_200_today_by_board <<- top_200_today_by_board
 })
+
+## Top (By Board, Week) --------------------------------------------------------
+local({
 	
+	message(str_glue('*** Pulling Top 1k/Week By Board: {format(now(), "%H:%M")}'))
+	
+	top_1000_week_by_board = lapply(purrr::transpose(reddit$scrape_boards), function(board) {
+		
+		message('*** Pull for: ', board$subreddit)
+		
+		# Only top possible for top
+		reduce(1:9, function(accum, i) {
+			
+			message('***** Pull ', i)
+			query =
+				list(t = 'week', limit = 100, show = 'all', after = {if (i == 1) NULL else tail(accum, 1)$after}) %>%
+				compact(.) %>%
+				paste0(names(.), '=', .) %>%
+				paste0(collapse = '&')
+			
+			http_result = GET(
+				paste0('https://oauth.reddit.com/r/', board$subreddit, '/top?', query),
+				add_headers(c(
+					'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
+					'Authorization' = paste0('bearer ', reddit$token)
+				))
+			)
+			
+			calls_remaining = as.integer(headers(http_result)$`x-ratelimit-remaining`)
+			reset_seconds = as.integer(headers(http_result)$`x-ratelimit-reset`)
+			if (calls_remaining == 0) Sys.sleep(reset_seconds)
+			result = content(http_result, 'parsed')
+			
+			parsed =
+				lapply(result$data$children, function(y) 
+					y[[2]] %>% keep(., ~ !is.null(.) && !is.list(.)) %>% as_tibble(.)
+				) %>%
+				rbindlist(., fill = T) %>%
+				select(., any_of(c(
+					'name', 'subreddit', 'title', 'created',
+					'selftext', 'upvote_ratio', 'ups', 'is_self', 'domain', 'url_overridden_by_dest'
+				))) %>%
+				as.data.table(.) %>%
+				.[, i := i] %>%
+				.[, after := result$data$after %||% NA] %>%
+				.[ups >= board$scrape_ups_floor]
+			
+			if (is.null(result$data$after)) {
+				message('----- Break, missing AFTER')
+				return(done(rbindlist(list(accum, parsed), fill = TRUE)))
+			} else {
+				return(rbindlist(list(accum, parsed), fill = TRUE))
+			}
+			
+		}, .init = data.table()) %>%
+			.[, created := with_tz(as_datetime(created, tz = 'UTC'), 'US/Eastern')] %>%
+			return(.)
+	}) %>%
+		rbindlist(., fill = TRUE) %>%
+		transmute(
+			.,
+			method = 'top_1000_week_by_board', name,
+			subreddit, title, 
+			created_dttm = created, scraped_dttm = now('US/Eastern'),
+			selftext, upvote_ratio, ups, is_self, domain, url = url_overridden_by_dest
+		)
+	
+	# Verify no duplicated unique posts (name should be unique)
+	top_1000_week_by_board %>%
+		as_tibble(.) %>%
+		group_by(., name) %>%
+		summarize(., n = n()) %>%
+		arrange(., desc(n)) %>%
+		print(.)
+	
+	reddit$data$top_1000_week_by_board <<- top_1000_week_by_board
+})
+
 ## Top (By Board, Month) --------------------------------------------------------
 local({
 	
@@ -399,7 +476,7 @@ local({
 	
 	# List of subreddits to force a full repull of data
 	# Leave as an empty vector generally
-	BOARDS_FULL_REPULL = c('jobs', 'careerguidance')
+	# BOARDS_FULL_REPULL = c('jobs', 'careerguidance')
 
 	# Pull top 50 comments by day
 	message(str_glue('*** Pulling Pushshift: {format(now(), "%H:%M")}'))
