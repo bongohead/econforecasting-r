@@ -476,7 +476,7 @@ local({
 	
 	# List of subreddits to force a full repull of data
 	# Leave as an empty vector generally
-	# BOARDS_FULL_REPULL = c('jobs', 'careerguidance')
+	BOARDS_FULL_REPULL = c()
 
 	# Pull top 50 comments by day
 	message(str_glue('*** Pulling Pushshift: {format(now(), "%H:%M")}'))
@@ -485,6 +485,7 @@ local({
 	possible_pulls = expand_grid(
 		# Pushshift can have a delay up to 3 days
 		# Start from 2019-01-01 if no data, but can be skipped to later if older data already pulled
+		# As of 5/23/22: Moved back to 4/1/2018
 		created_dt = seq(today('US/Eastern') - days(4), as_date('2019-01-01'), '-1 day'),
 		reddit$scrape_boards
 		)
