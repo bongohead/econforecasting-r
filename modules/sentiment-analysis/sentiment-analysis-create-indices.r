@@ -449,8 +449,8 @@ local({
 		'joy', 1,
 		'surprise', .5,
 		'neutral', 0,
-		'anger', -.5,
-		'disgust', -.5,
+		'anger', -1,
+		'disgust', -1,
 		'sadness', -1,
 		'fear', -1
 	)
