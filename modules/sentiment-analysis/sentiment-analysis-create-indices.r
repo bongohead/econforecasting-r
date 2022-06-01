@@ -191,7 +191,7 @@ local({
 				ON r1.id = r2.scrape_id
 			INNER JOIN sentiment_analysis_reddit_boards b
 				ON r1.subreddit = b.subreddit
-			WHERE r1.method IN ('top_200_today_by_board', 'top_1000_month_by_board')
+			WHERE r1.method IN ('top_200_today_by_board', 'top_1000_week_by_board', 'top_1000_month_by_board')
 				AND text_part = 'all_text'
 				AND score_model IN ('DISTILBERT', 'ROBERTA', 'DICT')
 				AND DATE(created_dttm) >= '2019-01-01'
@@ -619,26 +619,34 @@ local({
 	
 	boards = collect(tbl(db, sql(
 		"SELECT subreddit, scrape_ups_floor FROM sentiment_analysis_reddit_boards
-	WHERE score_active = TRUE
+		WHERE score_active = TRUE
 		AND subreddit = 'jobs'
 		--AND category IN ('labor_market')
 		AND 1=1"
 	)))
 	
-	pushshift_data = dbGetQuery(db, str_glue(
-		"SELECT
-		r1.method AS source, r1.subreddit, DATE(r1.created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, r1.ups,
-		r1.name, b.category, title, selftext
-	FROM sentiment_analysis_reddit_scrape r1
-	INNER JOIN sentiment_analysis_reddit_boards b
-		ON r1.subreddit = b.subreddit
-	WHERE r1.method = 'pushshift_all_by_board'
-		AND DATE(created_dttm) >= '2019-01-01'
-		AND r1.ups >= b.score_ups_floor
-		AND r1.subreddit = 'jobs'
-		--AND category IN ('labor_market')
-		LIMIT 100000"
-	)) %>%
+
+	input_data = dbGetQuery(db, str_glue(
+		"WITH cte AS 
+		(
+			SELECT
+				r1.method AS source, r1.subreddit, DATE(r1.created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, r1.ups,
+				r1.name, b.category, title, selftext,
+				ROW_NUMBER() OVER (PARTITION BY r1.name, r1.method ORDER BY scraped_dttm DESC) AS rn
+			FROM sentiment_analysis_reddit_scrape r1
+			INNER JOIN sentiment_analysis_reddit_boards b
+				ON r1.subreddit = b.subreddit
+			WHERE r1.method IN ('pushshift_all_by_board', 'top_1000_week_by_board', 'top_1000_month_by_board')
+				AND DATE(created_dttm) >= '2019-01-01'
+				AND r1.ups >= b.score_ups_floor
+				--AND r1.subreddit IN 'jobs'
+				AND category IN ('labor_market')
+				LIMIT 100000
+		)
+		SELECT * FROM cte WHERE rn = 1"
+		)) %>%
+		as_tibble(.) %>%
+		arrange(., created_dt) %>%
 		as.data.table(.) %>%
 		.[, text := paste0(title, selftext)] %>%
 		.[, ind_type := fcase(
@@ -659,9 +667,21 @@ local({
 			default = 'other'
 		)]
 	
+	# Overlap verification
+	input_data %>%
+		group_by(., created_dt, source) %>%
+		summarize(., n = n(), .groups = 'drop') %>%
+		pivot_wider(
+			.,
+			id_cols = 'created_dt', values_from = n,
+			names_from = source, names_prefix = 'source_'
+		) %>%
+		arrange(., desc(created_dt)) %>%
+		print(., n = 20)
+	
 	
 	ind_data =
-		pushshift_data %>%
+		input_data %>%
 		.[ind_type != 'other'] %>%
 		# Get number of posts by ind_type and created_dt, filling in missing combinations with 0s
 		.[, list(n_ind_type_by_dt = .N), by = c('created_dt', 'ind_type')] %>%
