@@ -21,8 +21,10 @@ gantt
 ```
 ## [v1.02] (TBD)
 - Added initial detailed labor market modeling
+- Added labor market subindex integration with main index
 - Fixed critical bug with sentiment aggregation TZ casting
 - TBD: Add Conference Board, TD Forecasts
+- TBD: Consider replacing 14d default w/28d default
 
 ## [v1.01] (Model Improvements & Sentiment Index) (2022-05-16)
 This adds sentiment index modeling, along with minor modeling improvements and additions. 
