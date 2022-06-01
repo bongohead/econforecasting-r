@@ -726,10 +726,11 @@ local({
 	# Match reddit$distilbert_index_data and reddit$roberta_index_data format
 	index_data =
 		ind_data %>%
-		dcast(., created_dt + n_created_dt ~ ind_type, value.var = c('rate', 'rate_7d', 'rate_14d')) %>%
+		dcast(., created_dt + n_created_dt ~ ind_type, value.var = c('rate', 'rate_7d', 'rate_14d', 'rate_30d')) %>%
 		.[, mean_score := (rate_quit + rate_hired)/(rate_layoff + rate_quit + rate_hired)] %>%
 		.[, mean_score_7dma := (rate_7d_quit + rate_7d_hired)/(rate_7d_layoff + rate_7d_quit + rate_7d_hired)] %>%
-		.[, mean_score_14dma := (rate_14d_quit + rate_14d_hired)/(rate_14d_layoff + rate_14d_quit + rate_14d_hired)] %>%
+		# TEMP - Use 30d for 14dma
+		.[, mean_score_14dma := (rate_30d_quit + rate_30d_hired)/(rate_30d_layoff + rate_30d_quit + rate_30d_hired)] %>%
 		as_tibble(.) %>%
 		transmute(
 			.,
@@ -739,7 +740,7 @@ local({
 			mean_score, mean_score_7dma, mean_score_14dma
 		) %>%
 		# Normalize to between -1 to 1
-		mutate(., across(starts_with('mean_score'), function(x) x - 1))
+		mutate(., across(starts_with('mean_score'), function(x) (x * 2) - .5))
 
 	
 	index_plot =
@@ -958,7 +959,8 @@ local({
 	combined_data =
 		bind_rows(
 			reddit$roberta_index_data %>% mutate(., model = 'ROBERTA'),
-			reddit$distilbert_index_data %>% mutate(., model = 'DISTILBERT')
+			reddit$distilbert_index_data %>% mutate(., model = 'DISTILBERT'),
+			reddit$human_index_data %>% mutate(., model = 'HUMAN')
 		) %>% 
 		group_by(., created_dt, content_type) %>%
 		summarize(
@@ -971,7 +973,7 @@ local({
 			score_models = paste0(model, collapse = ','),
 			.groups = 'drop'
 			) %>%
-		filter(., n_score_models == 2) %>%
+		filter(., n_score_models >= 2) %>%
 		filter(., !is.na(score) & !is.na(score_7dma))
 	
 	# Adjust to fix Jan. 2020 levels at ~ 50
