@@ -130,10 +130,12 @@ local({
 		dcast(., created_dt ~ ind_type, value.var = c('rate_7d', 'rate_14d', 'rate_30d')) %>%
 		.[, layoff_to_quit_14d := rate_14d_layoff/rate_14d_quit] %>%
 		.[, layoff_to_quit_30d := rate_30d_layoff/rate_30d_quit] %>%
+		.[, hired_quit_to_layoff_14d := (rate_14d_quit + rate_14d_hired)/rate_14d_layoff] %>%
+		.[, hired_quit_to_layoff_30d := (rate_30d_quit + rate_30d_hired)/rate_30d_layoff] %>%
 		melt(
 			.,
 			id.vars = 'created_dt',
-			measure.vars = c('layoff_to_quit_14d', 'layoff_to_quit_30d'),
+			measure.vars = c('layoff_to_quit_14d', 'layoff_to_quit_30d', 'hired_quit_to_layoff_14d', 'hired_quit_to_layoff_30d'),
 			variable.name = 'ratio',
 			value.name = 'value'
 			)

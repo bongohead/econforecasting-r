@@ -230,7 +230,11 @@ local({
 		mutate(., in_pushshift = name %in% pushshift_data$name) %>%
 		group_by(., created_dt, in_pushshift) %>%
 		summarize(., n = n(), .groups = 'drop') %>%
-		pivot_wider(., id_cols = 'created_dt', values_from = n, names_from = in_pushshift, names_prefix = 'in_pushshift_') %>%
+		pivot_wider(
+			.,
+			id_cols = 'created_dt', values_from = n,
+			names_from = in_pushshift, names_prefix = 'in_pushshift_'
+			) %>%
 		arrange(., desc(created_dt)) %>%
 		print(., n = 20)
 	
@@ -578,7 +582,7 @@ local({
 		)
 	
 	index_weighted_raw %>%
-		filter(., content_type == 'ffinancial') %>%
+		filter(., content_type == 'financial') %>%
 		ggplot(.) + 
 		geom_line(aes(x = created_dt, y = mean_score_14dma, color = subreddit))
 	
@@ -602,6 +606,163 @@ local({
 	reddit$roberta_index_plot <<- index_plot
 })
 
+# Reddit Human Match Indices -----------------------------------------------------------
+
+## Create Object -----------------------------------------------------------
+local({
+	
+	reddit$human_indices <<- list()
+})
+	
+## Labor Market -----------------------------------------------------------
+local({
+	
+	boards = collect(tbl(db, sql(
+		"SELECT subreddit, scrape_ups_floor FROM sentiment_analysis_reddit_boards
+	WHERE score_active = TRUE
+		AND subreddit = 'jobs'
+		--AND category IN ('labor_market')
+		AND 1=1"
+	)))
+	
+	pushshift_data = dbGetQuery(db, str_glue(
+		"SELECT
+		r1.method AS source, r1.subreddit, DATE(r1.created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, r1.ups,
+		r1.name, b.category, title, selftext
+	FROM sentiment_analysis_reddit_scrape r1
+	INNER JOIN sentiment_analysis_reddit_boards b
+		ON r1.subreddit = b.subreddit
+	WHERE r1.method = 'pushshift_all_by_board'
+		AND DATE(created_dttm) >= '2019-01-01'
+		AND r1.ups >= b.score_ups_floor
+		AND r1.subreddit = 'jobs'
+		--AND category IN ('labor_market')
+		LIMIT 100000"
+	)) %>%
+		as.data.table(.) %>%
+		.[, text := paste0(title, selftext)] %>%
+		.[, ind_type := fcase(
+			str_detect(text, 'layoff|laid off|fired|unemployed|lost( my|) job'), 'layoff',
+			str_detect(text, 'quit|resign|weeks notice|(leave|leaving)( a| my|)( job)'), 'quit',
+			# str_detect(text, 'quit|resign|leave (a|my|) job'), 'quit',
+			# One critical verb & then more tokenized
+			str_detect(
+				text,
+				paste0(
+					'hired|new job|background check|job offer|',
+					'(found|got|landed|accepted|starting)( the| a|)( new|)( job| offer)',
+					collapse = ''
+				)
+			),
+			'hired',
+			str_detect(text, 'job search|application|applying|rejected|interview|hunting'), 'searching',
+			default = 'other'
+		)]
+	
+	
+	ind_data =
+		pushshift_data %>%
+		.[ind_type != 'other'] %>%
+		# Get number of posts by ind_type and created_dt, filling in missing combinations with 0s
+		.[, list(n_ind_type_by_dt = .N), by = c('created_dt', 'ind_type')] %>%
+		merge(
+			.,
+			CJ(
+				created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day'),
+				ind_type = unique(.$ind_type)
+			),
+			by = c('created_dt', 'ind_type'),
+			all.y = T
+		) %>%
+		.[, n_ind_type_by_dt := fifelse(is.na(n_ind_type_by_dt), 0, n_ind_type_by_dt)] %>%
+		# Now merge to get number of total posts per day
+		merge(
+			.,
+			.[, list(n_created_dt = sum(n_ind_type_by_dt)), by = 'created_dt'] %>%
+				.[order(created_dt)] %>%
+				.[, n_created_dt_7d := frollsum(n_created_dt, n = 7, algo = 'exact')] %>%
+				.[, n_created_dt_14d := frollsum(n_created_dt, n = 14, algo = 'exact')] %>%
+				.[, n_created_dt_30d := frollsum(n_created_dt, n = 30, algo = 'exact')],
+			by = 'created_dt',
+			all.x = T
+		) %>%
+		# Get 7-day count by ind_type
+		.[order(created_dt, ind_type)] %>%
+		.[, n_ind_type_by_dt_7d := frollsum(n_ind_type_by_dt, n = 7, algo = 'exact'), by = c('ind_type')] %>%
+		.[, n_ind_type_by_dt_14d := frollsum(n_ind_type_by_dt, n = 14, algo = 'exact'), by = c('ind_type')] %>%
+		.[, n_ind_type_by_dt_30d := frollsum(n_ind_type_by_dt, n = 30, algo = 'exact'), by = c('ind_type')] %>%
+		# Calculate proportion for 7d rates
+		.[, rate := n_ind_type_by_dt/n_created_dt] %>%
+		.[, rate_7d := n_ind_type_by_dt_7d/n_created_dt_7d] %>%
+		.[, rate_14d := n_ind_type_by_dt_14d/n_created_dt_14d] %>%
+		.[, rate_30d := n_ind_type_by_dt_30d/n_created_dt_30d]
+	
+	ind_plot =
+		ind_data %>%
+		.[ind_type != 'other'] %>%
+		hchart(., 'line', hcaes(x = created_dt, y = rate_14d, group = ind_type))
+	
+	ratios =
+		ind_data %>%
+		dcast(., created_dt ~ ind_type, value.var = c('rate_7d', 'rate_14d', 'rate_30d')) %>%
+		.[, layoff_to_quit_14d := rate_14d_layoff/rate_14d_quit] %>%
+		.[, layoff_to_quit_30d := rate_30d_layoff/rate_30d_quit] %>%
+		.[, hired_quit_to_layoff_14d := (rate_14d_quit + rate_14d_hired)/rate_14d_layoff] %>%
+		.[, hired_quit_to_layoff_30d := (rate_30d_quit + rate_30d_hired)/rate_30d_layoff] %>%
+		melt(
+			.,
+			id.vars = 'created_dt',
+			measure.vars = c(
+				'layoff_to_quit_14d', 'layoff_to_quit_30d', 'hired_quit_to_layoff_14d', 'hired_quit_to_layoff_30d'
+				),
+			variable.name = 'ratio',
+			value.name = 'value'
+		)
+	
+	ratios_plot =
+		ratios %>%
+		hchart(., 'line', hcaes(x = created_dt, y = value, group = ratio))
+	
+	# Match reddit$distilbert_index_data and reddit$roberta_index_data format
+	index_data =
+		ind_data %>%
+		dcast(., created_dt + n_created_dt ~ ind_type, value.var = c('rate', 'rate_7d', 'rate_14d')) %>%
+		.[, mean_score := (rate_quit + rate_hired)/(rate_layoff + rate_quit + rate_hired)] %>%
+		.[, mean_score_7dma := (rate_7d_quit + rate_7d_hired)/(rate_7d_layoff + rate_7d_quit + rate_7d_hired)] %>%
+		.[, mean_score_14dma := (rate_14d_quit + rate_14d_hired)/(rate_14d_layoff + rate_14d_quit + rate_14d_hired)] %>%
+		as_tibble(.) %>%
+		transmute(
+			.,
+			created_dt,
+			content_type = 'labor_market',
+			count = n_created_dt,
+			mean_score, mean_score_7dma, mean_score_14dma
+		) %>%
+		# Normalize to between -1 to 1
+		mutate(., across(starts_with('mean_score'), function(x) x - 1))
+
+	
+	index_plot =
+		index_data %>%
+		na.omit(.) %>%
+		ggplot(.) +
+		geom_line(aes(x = created_dt, y = mean_score_7dma, color = content_type))
+	
+	reddit$human_indices$labor_market$ind_plot <<- ind_plot
+	reddit$human_indices$labor_market$ratios_plot <<- ratios_plot
+	reddit$human_indices$labor_market$index_data <<- index_data
+	reddit$human_indices$labor_market$index_plot <<- index_plot
+})
+
+## Bind --------------------------------------------------------
+local({
+	
+	index_data = bind_rows(
+		reddit$human_indices$labor_market$index_data
+	)
+	
+	reddit$human_index_data <<- index_data
+})
 
 # Media --------------------------------------------------------
 
@@ -837,7 +998,10 @@ local({
 		) %>%
 		inner_join(
 			.,
-			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'reddit'"),
+			dbGetQuery(
+				db,
+				"SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'reddit'"
+				),
 			by = 'content_type'
 			) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
@@ -910,7 +1074,10 @@ local({
 		) %>%
 		inner_join(
 			.,
-			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'trad'"),
+			dbGetQuery(
+				db,
+				"SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'trad'"
+				),
 			by = c('content_type')
 		) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
@@ -958,6 +1125,7 @@ local({
 	print(plot)
 	index_data <<- index_data
 })
+
 
 
 # Benchmarking --------------------------------------------------------
@@ -1182,7 +1350,10 @@ local({
 		mutate(., created_at = now('US/Eastern')) %>%
 		na.omit(.)
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_benchmark_values')$count)
+	initial_count = as.numeric(dbGetQuery(
+		db,
+		'SELECT COUNT(*) AS count FROM sentiment_analysis_benchmark_values')$count
+		)
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -1236,7 +1407,10 @@ local({
 		# Only keep those that match an existing index
 		inner_join(
 			.,
-			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'reddit'"),
+			dbGetQuery(
+				db,
+				"SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'reddit'"
+				),
 			by = 'content_type'
 		) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
@@ -1259,7 +1433,10 @@ local({
 		# Only keep those that match an existing index
 		inner_join(
 			.,
-			dbGetQuery(db, "SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'trad'"),
+			dbGetQuery(
+				db,
+				"SELECT id AS index_id, content_type FROM sentiment_analysis_indices WHERE source_type = 'trad'"
+				),
 			by = 'content_type'
 		) %>%
 		filter(., created_dt >= as_date('2019-02-01') ) %>%
