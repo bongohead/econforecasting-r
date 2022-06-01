@@ -125,194 +125,22 @@ local({
 		.[ind_type != 'other'] %>%
 		hchart(., 'line', hcaes(x = created_dt, y = rate_14d, group = ind_type))
 	
-	
 	ratios =
 		ind_data %>%
 		dcast(., created_dt ~ ind_type, value.var = c('rate_7d', 'rate_14d', 'rate_30d')) %>%
 		.[, layoff_to_quit_14d := rate_14d_layoff/rate_14d_quit] %>%
 		.[, layoff_to_quit_30d := rate_30d_layoff/rate_30d_quit] %>%
-		melt(., id.vars = 'created_dt', measure.vars = c('layoff_to_quit_14d'), variable.name = 'ratio', value.name = 'value')
+		melt(
+			.,
+			id.vars = 'created_dt',
+			measure.vars = c('layoff_to_quit_14d', 'layoff_to_quit_30d'),
+			variable.name = 'ratio',
+			value.name = 'value'
+			)
 	
 	ratios %>%
 		hchart(., 'line', hcaes(x = created_dt, y = value, group = ratio))
-	
-	pushshift_data %>%
-		.[, list(n_layoff_date = .N), by = c('created_dt', 'ind_layoff')] %>%
-		.[, ind_layoff := fifelse(ind_layoff == T, 'ind_layoff_1', 'ind_layoff_0')] %>%
-		dcast(., created_dt ~ ind_layoff, value.var = 'n_layoff_date') %>%
-		merge(
-			.,
-			data.table(created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day')),
-			by = 'created_dt',
-			all.y = T
-			) %>%
-		.[order(created_dt)] %>%
-		.[, c('ind_layoff_0', 'ind_layoff_1') := 
-				lapply(.SD, function(x) replace_na(x, 0)), 
-				.SDcols = c('ind_layoff_0', 'ind_layoff_1')
-			] %>%
-		.[, c('ind_layoff_0_7d', 'ind_layoff_1_7d') :=
-			lapply(.SD, function(x) frollsum(x, n = 7, fill = NA, algo = 'exact', align = 'right')),
-			.SDcols = c('ind_layoff_0', 'ind_layoff_1')
-			] %>%
-		.[, layoff_rate_7dma := ind_layoff_1_7d/(ind_layoff_0_7d + ind_layoff_1_7d)] %>%
-		print(.) %>%
-		ggplot(.) + 
-		geom_line(aes(x = created_dt, y = layoff_rate_7dma))
-	
-	# Same but 30d
-	pushshift_data %>%
-		.[, list(n_layoff_date = .N), by = c('created_dt', 'ind_layoff')] %>%
-		.[, ind_layoff := fifelse(ind_layoff == T, 'ind_layoff_1', 'ind_layoff_0')] %>%
-		dcast(., created_dt ~ ind_layoff, value.var = 'n_layoff_date') %>%
-		merge(
-			.,
-			data.table(created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day')),
-			by = 'created_dt',
-			all.y = T
-		) %>%
-		.[order(created_dt)] %>%
-		.[, c('ind_layoff_0', 'ind_layoff_1') := 
-				lapply(.SD, function(x) replace_na(x, 0)), 
-			.SDcols = c('ind_layoff_0', 'ind_layoff_1')
-		] %>%
-		.[, c('ind_layoff_0_7d', 'ind_layoff_1_7d') :=
-				lapply(.SD, function(x) frollsum(x, n = 30, fill = NA, algo = 'exact', align = 'right')),
-			.SDcols = c('ind_layoff_0', 'ind_layoff_1')
-		] %>%
-		.[, layoff_rate_7dma := ind_layoff_1_7d/(ind_layoff_0_7d + ind_layoff_1_7d)] %>%
-		print(.) %>%
-		ggplot(.) + 
-		geom_line(aes(x = created_dt, y = layoff_rate_7dma))
-	
-	# Same but 14d
-	pushshift_data %>%
-		.[, list(n_layoff_date = .N), by = c('created_dt', 'ind_layoff')] %>%
-		.[, ind_layoff := fifelse(ind_layoff == T, 'ind_layoff_1', 'ind_layoff_0')] %>%
-		dcast(., created_dt ~ ind_layoff, value.var = 'n_layoff_date') %>%
-		merge(
-			.,
-			data.table(created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day')),
-			by = 'created_dt',
-			all.y = T
-		) %>%
-		.[order(created_dt)] %>%
-		.[, c('ind_layoff_0', 'ind_layoff_1') := 
-				lapply(.SD, function(x) replace_na(x, 0)), 
-			.SDcols = c('ind_layoff_0', 'ind_layoff_1')
-		] %>%
-		.[, c('ind_layoff_0_7d', 'ind_layoff_1_7d') :=
-				lapply(.SD, function(x) frollsum(x, n = 14, fill = NA, algo = 'exact', align = 'right')),
-			.SDcols = c('ind_layoff_0', 'ind_layoff_1')
-		] %>%
-		.[, layoff_rate_7dma := ind_layoff_1_7d/(ind_layoff_0_7d + ind_layoff_1_7d)] %>%
-		print(.) %>%
-		ggplot(.) + 
-		geom_line(aes(x = created_dt, y = layoff_rate_7dma))
-	
-	recent_data = dbGetQuery(db, str_glue(
-		"WITH cte AS 
-		(
-			SELECT
-				r1.method AS source, r1.subreddit, DATE(r1.created_dttm AT TIME ZONE 'US/Eastern') AS created_dt, r1.ups,
-				r2.score_model, r2.score, r2.score_conf, r2.scored_dttm,
-				b.category AS content_type,
-				-- Get latest scraped value of post if multiple
-				r1.name, r1.scraped_dttm, 
-				ROW_NUMBER() OVER (PARTITION BY r1.name, r2.score_model ORDER BY scraped_dttm DESC) AS rn
-			FROM sentiment_analysis_reddit_scrape r1
-			INNER JOIN sentiment_analysis_reddit_score r2
-				ON r1.id = r2.scrape_id
-			INNER JOIN sentiment_analysis_reddit_boards b
-				ON r1.subreddit = b.subreddit
-			WHERE r1.method IN ('top_200_today_by_board', 'top_1000_month_by_board')
-				AND text_part = 'all_text'
-				AND score_model IN ('DISTILBERT', 'ROBERTA', 'DICT')
-				AND DATE(created_dttm) >= '2019-01-01'
-				AND r1.ups >= b.score_ups_floor
-		)
-		SELECT * FROM cte WHERE rn = 1"
-	)) %>%
-		as_tibble(.) %>%
-		arrange(., created_dt)
-	
 
-	# 5/18/22 - Use all available recent_data, just dump anything that overlaps with Pushshift data
-	# Overlap verification
-	recent_data %>%
-		mutate(., in_pushshift = name %in% pushshift_data$name) %>%
-		group_by(., created_dt, in_pushshift) %>%
-		summarize(., n = n(), .groups = 'drop') %>%
-		pivot_wider(., id_cols = 'created_dt', values_from = n, names_from = in_pushshift, names_prefix = 'in_pushshift_') %>%
-		print(., n = 100)
-	
-	kept_recent_data =
-		recent_data %>%
-		filter(., !name %in% pushshift_data$name)
-	
-	data = bind_rows(
-		pushshift_data %>% mutate(., finality = 'pushshift'),
-		kept_recent_data %>% mutate(., finality = 'top_200')
-	)
-	
-	# Prelim Checks
-	count_by_source_plot =
-		data %>%
-		filter(., created_dt >= today() - months(3)) %>%
-		group_by(., created_dt, source) %>%
-		summarize(., n = n(), .groups = 'drop') %>% 
-		arrange(., created_dt) %>%
-		ggplot(.) +
-		geom_line(aes(x = created_dt, y = n, color = source))
-	
-	count_by_model_plot =
-		data %>%
-		group_by(., created_dt, score_model, finality) %>%
-		summarize(., n = n(), .groups = 'drop') %>% 
-		arrange(., created_dt) %>%
-		ggplot(.) +
-		geom_line(aes(x = created_dt, y = n, color = score_model, linetype = finality))
-	
-	count_by_board_plot =
-		data %>%
-		group_by(., created_dt, subreddit) %>%
-		summarize(., n = n(), .groups = 'drop') %>%
-		arrange(., created_dt) %>%
-		ggplot(.) + 
-		geom_line(aes(x = created_dt, y = n, color = subreddit))
-	
-	# Scores by group
-	distilbert_score_by_subreddit = 
-		data %>%
-		mutate(., score = ifelse(score == 'p', 1, -1)) %>%
-		group_by(., created_dt, subreddit, score_model, finality) %>%
-		summarize(., mean_score = mean(score), .groups = 'drop') %>%
-		ggplot(.) +
-		geom_line(aes(x = created_dt, y = mean_score, color = score_model, linetype = finality)) +
-		facet_wrap(vars(subreddit))
-	
-	# Merge Coutns
-	distilbert_merge_counts =
-		data %>%
-		filter(., score_model == 'DISTILBERT') %>%
-		group_by(., finality, created_dt) %>%
-		summarize(., n = n(), .groups = 'drop') %>%
-		pivot_wider(., names_from = finality, values_from = n) 
-	
-	roberta_merge_counts =
-		data %>%
-		filter(., score_model == 'ROBERTA') %>%
-		group_by(., finality, created_dt) %>%
-		summarize(., n = n(), .groups = 'drop') %>%
-		pivot_wider(., names_from = finality, values_from = n) 
-	
-	reddit <<- list()
-	reddit$data <<- data
-	reddit$boards <<- boards
-	reddit$count_by_source_plot <<- count_by_model_plot
-	reddit$count_by_model_plot <<- count_by_model_plot
-	reddit$count_by_board_plot <<- count_by_board_plot
-	reddit$distilbert_score_by_subreddit <<- distilbert_score_by_subreddit
-	reddit$distilbert_merge_counts <<- distilbert_merge_counts
-	reddit$roberta_merge_counts <<- roberta_merge_counts
+	ind_plot <<- ind_plot
+	ratios_plot <<- ratios_plot
 })
