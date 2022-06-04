@@ -50,18 +50,143 @@ zips =
 
 # Scrape ----------------------------------------------------------
 
-## Scrape ----------------------------------------------------------
+
+## Scrape (Top-Level Details) ----------------------------------------------------------
+
+get_zip_data = function(zip) {
+	
+	job_overview_data = accumulate(1:100, .init = tibble(), .f = function(accum, page_number) {
+		
+		message(str_glue('Scraping page {page_number}'))
+		
+		repeat {
+			try({
+				page_html = content(
+					RETRY(
+						verb = 'GET',
+						url = str_glue('https://www.indeed.com/jobs?l={zip}&fromage=1&radius=25&start={(page_number - 1) * 10}'),
+						times = 10
+					),
+					encoding = 'UTF-8'
+				)
+				
+				avail_pages = page_html %>% html_nodes('ul.pagination-list > li') %>% html_text(.) %>% keep(., ~ . != '')
+				this_page = page_html %>% html_node('ul.pagination-list > li > b') %>% html_text(.)
+				if (length(avail_pages) == 0 || length(this_page) != 1) {
+					Sys.sleep(10)
+					stop('Retrying')
+				}
+
+				break
+			}, silent = FALSE)
+		}
+		
+		page_html = content(
+			RETRY(
+				verb = 'GET',
+				url = str_glue('https://www.indeed.com/jobs?l={zip}&fromage=1&radius=25&start={(page_number - 1) * 10}'),
+				times = 10
+			),
+			encoding = 'UTF-8'
+		)
+		
+		avail_pages = page_html %>% html_nodes('ul.pagination-list > li') %>% html_text(.) %>% keep(., ~ . != '')
+		this_page = page_html %>% html_node('ul.pagination-list > li > b') %>% html_text(.)
+		
+		message(str_glue('Available page {paste0(avail_pages, collapse = ", ")}'))
+		
+		page_data =
+			page_html %>%
+			html_node(., '#mosaic-zone-jobcards')
+		
+		page_info =
+			page_data %>%
+			html_nodes('.tapItem') %>%
+			lapply(., function(x) data.table(
+				job_title = x %>% html_node(., '.jobTitle > a') %>% html_text(.),
+				job_id = x %>% html_node(., '.jobTitle > a') %>% html_attr(., 'data-jk'),
+				company_name = x %>% html_node(., 'span.companyName') %>% html_text(.),
+				company_location = x %>% html_node(., 'div.companyLocation') %>% html_text(.),
+				job_snippet = x %>% html_node(., 'div.job-snippet') %>% html_text(.)
+			)) %>%
+			rbindlist(.)
+		
+		gc()
+		Sys.sleep(1)
+		if (this_page == tail(avail_pages, 1)) return(done(page_info))
+		
+		return(page_data)
+	})
+	
+	return(job_overview_data)
+}
+
+
+get_zip_data('31904')
+
+job_overview_data = accumulate(1:100, .init = tibble(), .f = function(accum, page_number) {
+	
+	message(str_glue('Scraping page {page_number}'))
+	
+	page_html = content(
+		RETRY(
+			verb = 'GET',
+			url = str_glue('https://www.indeed.com/jobs?l=31904&fromage=1&radius=25&start={(page_number - 1) * 10}'),
+			times = 10
+		),
+		encoding = 'UTF-8'
+	)
+	
+	avail_pages = page_html %>% html_nodes('ul.pagination-list > li') %>% html_text(.) %>% keep(., ~ . != '')
+	this_page = page_html %>% html_node('ul.pagination-list > li > b') %>% html_text(.)
+	
+	message(str_glue('Available page {paste0(avail_pages, collapse = ", ")}'))
+	
+	page_data =
+		page_html %>%
+		html_node(., '#mosaic-zone-jobcards')
+	
+	page_info =
+		page_data %>%
+		html_nodes('.tapItem') %>%
+		lapply(., function(x) data.table(
+			job_title = x %>% html_node(., '.jobTitle > a') %>% html_text(.),
+			job_id = x %>% html_node(., '.jobTitle > a') %>% html_attr(., 'data-jk'),
+			company_name = x %>% html_node(., 'span.companyName') %>% html_text(.),
+			company_location = x %>% html_node(., 'div.companyLocation') %>% html_text(.),
+			job_snippet = x %>% html_node(., 'div.job-snippet') %>% html_text(.)
+		)) %>%
+		rbindlist(.)
+	
+	gc()
+	Sys.sleep(1)
+	if (this_page == tail(avail_pages, 1)) return(done(page_info))
+	
+	return(page_data)
+})
+
+
+
+
+
+
+## Scrape (Activity Details) ----------------------------------------------------------
 
 page_html =
 	GET('https://www.indeed.com/jobs?l=31904&fromage=1&radius=25') %>%
 	content(.)
 
-zip_scrape = purrr::reduce(1:50, .init = tibble(), .f = function(accum, page_number) {
+
+job_data_scrape = purrr::accumulate(1:100, .init = tibble(), .f = function(accum, page_number) {
 	
 	message(str_glue('Scraping page {page_number}'))
 	
 	page_html = content(
-		GET(str_glue('https://www.indeed.com/jobs?l=31904&fromage=1&radius=25&start={(page_number - 1) * 10}')),
+		RETRY(
+			verb = 'GET',
+			url = str_glue('https://www.indeed.com/jobs?l=31904&fromage=1&radius=25&start={(page_number - 1) * 10}'),
+			times = 10
+			),
 		encoding = 'UTF-8'
 		)
 	
@@ -77,13 +202,14 @@ zip_scrape = purrr::reduce(1:50, .init = tibble(), .f = function(accum, page_num
 	page_info =
 		page_data %>%
 		html_nodes('.tapItem') %>%
-		map_dfr(., function(x) tibble(
+		lapply(., function(x) data.table(
 			job_title = x %>% html_node(., '.jobTitle > a') %>% html_text(.),
 			job_id = x %>% html_node(., '.jobTitle > a') %>% html_attr(., 'data-jk'),
 			company_name = x %>% html_node(., 'span.companyName') %>% html_text(.),
 			company_location = x %>% html_node(., 'div.companyLocation') %>% html_text(.),
 			job_snippet = x %>% html_node(., 'div.job-snippet') %>% html_text(.)
-			))
+			)) %>%
+		rbindlist(.)
 	
 	page_data =
 		page_info %>%
@@ -91,7 +217,11 @@ zip_scrape = purrr::reduce(1:50, .init = tibble(), .f = function(accum, page_num
 		imap_dfr(., function(x, i) {
 			# message(i)
 			job_embed =
-				GET(str_glue('https://www.indeed.com/viewjob?viewtype=embedded&jk={x$job_id}')) %>%
+				RETRY(
+					verb = 'GET',
+					url = str_glue('https://www.indeed.com/viewjob?viewtype=embedded&jk={x$job_id}'),
+					times = 10
+					) %>%
 				content(.) %>%
 				html_node(., 'div.jobsearch-JobComponent')
 			
@@ -203,9 +333,13 @@ zip_scrape = purrr::reduce(1:50, .init = tibble(), .f = function(accum, page_num
 					job_activity
 				) %>%
 				mutate(., indeed_id = x$job_id, scrape_page_number = page_number)
+			
+			return(res)
 		})
 	
-	if (this_page == tail(avail_pages, 1)) return(done(page_data))
+	gc()
+	Sys.sleep(1)
+	if (this_page == tail(avail_pages, 1)) return(page_data)
 	
 	return(page_data)
 })
