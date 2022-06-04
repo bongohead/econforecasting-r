@@ -486,7 +486,7 @@ local({
 		# Pushshift can have a delay up to 3 days
 		# Start from 2019-01-01 if no data, but can be skipped to later if older data already pulled
 		# As of 5/23/22: Moved back to 4/1/2018
-		created_dt = seq(today('US/Eastern') - days(4), as_date('2019-01-01'), '-1 day'),
+		created_dt = seq(today('US/Eastern') - days(4), as_date('2018-01-01'), '-1 day'),
 		reddit$scrape_boards
 		)
 	
