@@ -58,13 +58,14 @@ get_zip_data = function(zip) {
 	job_overview_data = accumulate(1:100, .init = tibble(), .f = function(accum, page_number) {
 		
 		message(str_glue('Scraping page {page_number}'))
-		
-		repeat {
-			try({
+
+		page_scrape = insistently(
+			function(x) {
+				
 				page_html = content(
 					RETRY(
 						verb = 'GET',
-						url = str_glue('https://www.indeed.com/jobs?l={zip}&fromage=1&radius=25&start={(page_number - 1) * 10}'),
+						url = paste0('https://www.indeed.com/jobs?l=', zip,'&fromage=1&radius=25&start=', (page_number - 1) * 10),
 						times = 10
 					),
 					encoding = 'UTF-8'
@@ -73,26 +74,19 @@ get_zip_data = function(zip) {
 				avail_pages = page_html %>% html_nodes('ul.pagination-list > li') %>% html_text(.) %>% keep(., ~ . != '')
 				this_page = page_html %>% html_node('ul.pagination-list > li > b') %>% html_text(.)
 				if (length(avail_pages) == 0 || length(this_page) != 1) {
-					Sys.sleep(10)
 					stop('Retrying')
+					Sys.sleep(10)
 				}
+				
+				list(
+					page_html = page_html,
+					is_last_page = avail_pages[[length(avail_pages)]] == this_page
+				)
+			},
+			rate = rate_delay(),
+			quiet = FALSE
+		)()
 
-				break
-			}, silent = FALSE)
-		}
-		
-		page_html = content(
-			RETRY(
-				verb = 'GET',
-				url = str_glue('https://www.indeed.com/jobs?l={zip}&fromage=1&radius=25&start={(page_number - 1) * 10}'),
-				times = 10
-			),
-			encoding = 'UTF-8'
-		)
-		
-		avail_pages = page_html %>% html_nodes('ul.pagination-list > li') %>% html_text(.) %>% keep(., ~ . != '')
-		this_page = page_html %>% html_node('ul.pagination-list > li > b') %>% html_text(.)
-		
 		message(str_glue('Available page {paste0(avail_pages, collapse = ", ")}'))
 		
 		page_data =
