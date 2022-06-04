@@ -1051,7 +1051,7 @@ local({
 ## Combine & Adjust Media Indices --------------------------------------------------------
 local({
 	
-	LOGISTIC_STEEPNESS = 10
+	LOGISTIC_STEEPNESS = 20
 	
 	combined_data =
 		bind_rows(
