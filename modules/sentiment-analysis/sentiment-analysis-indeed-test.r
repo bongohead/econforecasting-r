@@ -95,14 +95,35 @@ parse_details = function(page_html) {
 				job_snippet = x %>% html_node(., 'div.job-snippet') %>% html_text(.)
 			)) %>%
 			rbindlist(.)
-}
 		
-
-main_page = get_main_page(zip, 1)
-
-
+		page_info
+}
 
 
+get_page = function(zip, page_number, dt) {
+	
+	print(page_number)
+	main_page = get_main_page(zip, 1)
+	page_details = parse_details(main_page$page_html)
+	
+	if (is_last_page == T) return(TRUE)
+	else return(get_page(zip, page_number + 1, rbindlist(list(dt, page_details))))
+}
+
+
+result = get_page('31904', 1, data.table())
+
+
+is_last_page = FALSE
+page_number = 1
+while (is_last_page == FALSE) {
+	
+	main_page = get_main_page(zip, 1)
+	page_details = parse_details(main_page$page_html)
+	
+	is_last_page = main_page$is_last_page
+	page_number = page_number + 1
+}
 
 
 
