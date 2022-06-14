@@ -55,25 +55,24 @@ zips =
 
 get_main_page = insistently(function(zip, page_number) {
 	
+	url = paste0('https://www.indeed.com/jobs?l=', zip,'&fromage=1&radius=25&start=', (page_number - 1) * 10)
+	
 	page_html = content(
-		RETRY(
-			verb = 'GET',
-			url = paste0('https://www.indeed.com/jobs?l=', zip,'&fromage=1&radius=25&start=', (page_number - 1) * 10),
-			times = 10
-		),
+		RETRY(verb = 'GET', url = url, times = 10),
 		encoding = 'UTF-8'
 	)
 	
 	avail_pages = page_html %>% html_nodes('ul.pagination-list > li') %>% html_text(.) %>% keep(., ~ . != '')
 	this_page = page_html %>% html_node('ul.pagination-list > li > b') %>% html_text(.)
 	if (length(avail_pages) == 0 || length(this_page) != 1) {
+		print(url)
 		stop('Retrying')
 		Sys.sleep(10)
 	}
 	
 	list(
 		page_html = page_html,
-		is_last_page = avail_pages[[length(avail_pages)]] == this_page
+		is_last_page = avail_pages[[length(avail_pages)]] == this_pagewwww
 	)
 	
 }, rate = rate_delay(), quiet = F)
