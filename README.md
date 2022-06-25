@@ -20,7 +20,8 @@ gantt
       Sentiment Model Release       :5/15/22, 5/15/22
 ```
 ## [v1.03] 
-- TBD: Add Conference Board, TD Forecasts
+- Add Conference Board
+- TBD: Add TD Forecasts
 - TBD: Consider replacing 14d default w/28d default
 
 ## [v1.02] (Sentiment Index Improvements)
