@@ -38,7 +38,22 @@ db = dbConnect(
 
 ## Get Data ------------------------------------------------------------------
 local({
-	
+
+	varnames_map = tribble(
+		~ varname, ~ fullname,
+		'gdp', 'Real GDP',
+		'pce', 'Real consumer spending',
+		'pdir', 'Residential investment',
+		'pdin', 'Nonresidential investment',
+		'govt', 'Total gov\'t spending',
+		'ex', 'Exports',
+		'im', 'Imports',
+		'ue', 'Unemployment rate (%)',
+		'inf', 'Core PCE Inflation (%Y/Y)',
+		'ffr', 'Fed Funds (%, Mid-point, Period End)'
+		) %>%
+		mutate(., fullname = str_to_lower(fullname))
+		
 	html_content =
 		GET('https://www.conference-board.org/research/us-forecast/us-forecast') %>%
 		content(.)
@@ -57,32 +72,90 @@ local({
 		html_element(., 'table.data_grid_table')
 	
 	# Try to match up table header line 1 & 2
+	# table_el %>% rvest::html_table(., header = FALSE, trim = TRUE) 
 	# Table header line 1
-	th_1 =
+	th_1_raw =
 		table_el %>%
-		html_elements(., 'thead > tr:first-child > th') %>%
+		html_elements(., 'thead > tr:first-child > *') %>%
 		lapply(., function(x) {
 			# Return nothing if there's a rowspan
 			# Retrun 1 if no colspan
 			# Else return colspan counts
-			if (!is.na(html_attr(x, 'rowspan', NA))) c()
-			else if (is.na(html_attr(x, 'colspan', NA))) c(html_text(x))
+			if (!is.na(html_attr(x, 'rowspan', NA))) NA
+			else if (is.na(html_attr(x, 'colspan', NA))) html_text(x)
 			else rep(html_text(x), times = as.numeric(html_attr(x, 'colspan')))
-		})
-
+		}) %>%
+		unlist(.) %>%
+		str_trim(.) %>%
+		.[2:length(.)]
+	
+	# Skip multirow (full-year-indicators) at the end
+	th_multirow_cells = length(keep(th_1_raw, is.na))
+	
+	th_1 = keep(th_1_raw, ~ !is.na(.))
 	
 	th_2 =
 		table_el %>%
-		html_elements(., 'thead > tr:nth-child(2) > td') %>%
-		html_text(.)
+		html_elements(., 'thead > tr:nth-child(2) > *') %>%
+		html_text(.) %>%
+		str_trim(.) %>%
+		.[2:length(.)]
 	
-	tibble(
-		th_1 = th_1,
-		th_2 = th_2
+	
+	# Tbody scrape
+	tb_varnames =
+		table_el %>%
+		html_elements(., 'tbody > tr > *:first_child')  %>%
+		html_text(.) %>%
+		str_to_lower(.)
+	
+	# nth-child(n+2) - 2+ positions onward
+	# nth-child(-n+16) - all children up to position 16
+	tb_data =
+		table_el %>%
+		html_elements(., 'tbody > tr') %>%
+		lapply(., function(x) 
+			# Note: need to add 1 to account for initial column skip
+			html_elements(x, paste0('*:nth-child(n+2):nth-child(-n+', length(th_1) + 1,')')) %>%
+				html_text(.)
+			)
+	
+	# Now collapse back together
+	full_data_raw = imap_dfr(tb_data, function(x, i) 
+		tibble(
+			year_raw = th_1,
+			quarter_raw = th_2
+			) %>%
+			mutate(., is_hist = str_detect(quarter_raw, coll('*'))) %>%
+			bind_cols(
+				.,
+				fullname = tb_varnames[[i]],
+				value = x)
 		)
+	
+	print(full_data_raw, n = 100)
+	
+	final_data =
+		full_data_raw %>%
+		filter(., is_hist == FALSE) %>%
+		mutate(., date = paste0(year_raw, 'Q', as.integer(as.roman(str_replace_all(quarter_raw, 'Q', ''))))) %>%
+		mutate(., date = from_pretty_date(date, 'q')) %>%
+		inner_join(., varnames_map, by = 'fullname') %>%
+		transmute(
+			.,
+			forecast = 'cb',
+			form = 'd1',
+			freq = 'q',
+			varname,
+			vdate = vintage_date,
+			date,
+			value
+		)
+	
+	print(unique(final_data$varname))
+	if (length(unique(final_data$varname)) != nrow(varnames_map)) stop('Missing variables!')
 
-
-	raw_data <<- cbo_data
+	raw_data <<- final_data
 })
 
 
