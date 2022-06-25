@@ -48,8 +48,8 @@ local({
 		'govt', 'Total gov\'t spending',
 		'ex', 'Exports',
 		'im', 'Imports',
-		'ue', 'Unemployment rate (%)',
-		'inf', 'Core PCE Inflation (%Y/Y)',
+		'unemp', 'Unemployment rate (%)',
+		'cpi', 'Core PCE Inflation (%Y/Y)', # should be pcepi!
 		'ffr', 'Fed Funds (%, Mid-point, Period End)'
 		) %>%
 		mutate(., fullname = str_to_lower(fullname))
