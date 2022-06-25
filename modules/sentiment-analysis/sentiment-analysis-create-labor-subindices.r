@@ -66,7 +66,7 @@ local({
 		as.data.table(.) %>%
 		.[, text := paste0(title, selftext)] %>%
 		.[, ind_type := fcase(
-			str_detect(text, 'layoff|laid off|fired|unemployed|lost( my|) job'), 'layoff',
+			str_detect(text, 'layoff|laid off|fired|lost( my|) job'), 'layoff',
 			str_detect(text, 'quit|resign|weeks notice|(leave|leaving)( a| my|)( job)'), 'quit',
 			# str_detect(text, 'quit|resign|leave (a|my|) job'), 'quit',
 			# One critical verb & then more tokenized
