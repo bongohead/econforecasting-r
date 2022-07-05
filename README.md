@@ -19,12 +19,15 @@ gantt
       Sentiment Model Web Page Setup      :5/8/22, 5/15/22
       Sentiment Model Release       :5/15/22, 5/15/22
 ```
-## [v1.02] (TBD)
+## [v1.03] 
+- Add Conference Board
+- TBD: Add TD Forecasts
+- TBD: Consider replacing 14d default w/28d default
+
+## [v1.02] (Sentiment Index Improvements)
 - Added initial detailed labor market modeling
 - Added labor market subindex integration with main index
 - Fixed critical bug with sentiment aggregation TZ casting
-- TBD: Add Conference Board, TD Forecasts
-- TBD: Consider replacing 14d default w/28d default
 
 ## [v1.01] (Model Improvements & Sentiment Index) (2022-05-16)
 This adds sentiment index modeling, along with minor modeling improvements and additions. 
