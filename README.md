@@ -21,6 +21,9 @@ gantt
 ```
 ## [v1.03] 
 - Add Conference Board
+- Added websocket test scraper for futures rates
+- Added barchart scraper for backfilling missing futures data
+- Fixed bug related to ALFRED 2000 vintage date limit
 - TBD: Add TD Forecasts
 - TBD: Consider replacing 14d default w/28d default
 
