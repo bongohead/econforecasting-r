@@ -373,6 +373,84 @@ local({
 	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 	# 		View(.)
 
+	
+	## Barchart.com data
+	message('Starting Barchart data scrape...')
+	barchart_sources = tribble(
+		~ month, ~ code,
+		1, 'F',
+		2, 'G',
+		3, 'H',
+		4, 'J',
+		5, 'K',
+		6, 'M',
+		7, 'N',
+		8, 'Q',
+		9, 'U', 
+		10, 'V',
+		11, 'X',
+		12, 'Z'
+		) %>%
+		expand_grid(., tibble(year = 2020:(year(today()) + 5))) %>%
+		mutate(., code = paste0('ZQ', code, str_sub(year, -2))) %>%
+		transmute(., code, date = as_date(paste0(year, str_pad(month, 2, pad = '0'), '-01'))) %>%
+		arrange(., date) %>%
+		purrr::transpose(.)
+	
+	cookies =
+		GET(
+		'https://www.barchart.com/futures/quotes/ZQV22',
+		) %>%
+		cookies(.) %>%
+		as_tibble(.)
+	
+	res = lapply(barchart_sources, function(x) {
+		
+		print(as_date(x$date))
+		Sys.sleep(.1)
+		
+		http_response = RETRY(
+			'GET',
+			times = 5,
+			paste0(
+				'https://www.barchart.com/proxies/timeseries/queryeod.ashx?',
+				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
+				'&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration'
+			),
+			add_headers(c(
+				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:102.0) Gecko/20100101 Firefox/102.0',
+				'X-XSRF-TOKEN' = URLdecode(filter(cookies, name == 'XSRF-TOKEN')$value),#'eyJpdiI6ImhOQ0pzMHRzcDl2MDgvNGRZSE1GSUE9PSIsInZhbHVlIjoiYUkxSFVDSGxVZEhqTGptOHFlclVMc0dvRk4xTGFzYkxGcHdlVHc2YkoyTUcvbDA4bSswaEtTUWQ0YXVSY1ZRTnR1MHJqbFBqNnB4ODdWR084TGFLclg0VjhDZnM3L05jQlB6MVE2UXpXbzZVQm9CVjJnZHgzS3p0ZUxoSThFUy8iLCJtYWMiOiJjOTFjYzk1MDQzNDMwZDYwYzA1ZmY2MDhhODIzYTc4ODMzYzlhMWFlMTJjYjAxNmMxYTdhMTRlOGViYTRmMmY0In0=',
+				'DNT' = '1',
+				'Referer' = 'https://www.barchart.com/futures/quotes/ZQZ20',
+				'Cookie' = URLdecode(paste0(
+					'bcFreeUserPageView=0; webinar113WebinarClosed=true; ',
+					paste0(paste0(cookies$name, '=', cookies$value), collapse = '; ')
+					)),#'laravel_token=eyJpdiI6IkNDWDlPWnErWmhrVVlxeFFWNU0zb2c9PSIsInZhbHVlIjoieXhoczdqQmludmxWK0NUSWZwOHg3VzhmNUM0ZTVxeGphd0ZJWHR5dXVybjBRSnlYUlV2OEJLQ0RncE44MklRbFRmbWFmeHYrQ20wdmIrSlFoR3JOTFB0dlNHeFNwZGFzdXNOUUpPYUtHNWlYdzg5Y0pCTDdzc28zMW9acnVPTElWTXhxdnAwTDZTYjlEaGRjOHlMcWc3OGYyVmNuUG0yZHRTd0Y0OHNNYXJYNkhDeklMSmQxRTNWMXJ4TnowdUU1MEZ4L0Y2WVhQcGVRaUl1UXlHSG95WGRxQVNxQTlTVGxvcGlaZjk4d1BkNk44ZitIdXJ4SCtZWGFyVzZ5L3Y5cHNKSkNiT1hyQ3FWQ3RRVDZJdEpDWlhFNEFOSTdNc3cyaXoyL0J2ek0zeFRwaEZ5TmdVWkpPZEdMYnFtdDRUVkYiLCJtYWMiOiJmZDY5NmQxMTg4MGQyNDAyMzhkN2Q3NmMwMGUwNGI4M2M0NjM0NmFmMDM2YjUzN2UxZThhMThlNzE0YzhiNzI3In0%3D; XSRF-TOKEN=eyJpdiI6ImhOQ0pzMHRzcDl2MDgvNGRZSE1GSUE9PSIsInZhbHVlIjoiYUkxSFVDSGxVZEhqTGptOHFlclVMc0dvRk4xTGFzYkxGcHdlVHc2YkoyTUcvbDA4bSswaEtTUWQ0YXVSY1ZRTnR1MHJqbFBqNnB4ODdWR084TGFLclg0VjhDZnM3L05jQlB6MVE2UXpXbzZVQm9CVjJnZHgzS3p0ZUxoSThFUy8iLCJtYWMiOiJjOTFjYzk1MDQzNDMwZDYwYzA1ZmY2MDhhODIzYTc4ODMzYzlhMWFlMTJjYjAxNmMxYTdhMTRlOGViYTRmMmY0In0%3D; laravel_session=eyJpdiI6IjF4NGNXSFdWRjRUaUpDY2pkTmRXOGc9PSIsInZhbHVlIjoiNEo4aGhvYUxwTjhxejluUmJkUExJUys3alk3SU5zVWwrS0J0aFBISkkxVkhvV2dCSzUxZVA2RzdjSFY0YVFKSGo5NXFOQW5mditSR05zSDFRNGlJYVp5UkN5eFcrVXFVSTMvRU5Zb1djZkZwakxTc2FsNEpKRmtjYkdDV01JV1AiLCJtYWMiOiI5ZjFmNzA2MzZjOWQyZmY5ODI0MThkZmU3NDRjYTlkNGM1ZWQxYjk3OGI0MGFhMzM1ODg2ZmU3NzNiNTljMTJlIn0%3D; market=eyJpdiI6InJEN0g5QjlUWTVjdFhWd3liL0VJRGc9PSIsInZhbHVlIjoiN2xoYUZ1VjZ2M3ovOU5vRm9yNklqZ0lSV01GeFdydkJKSE9TVEhWVDZDWXJGWFBRTjdHT0RyY2xGQXpHTTlyRSIsIm1hYyI6IjZkYzA0NDhkZmJlMTQzMjY1ZDEwNTFlYWFmY2U5MWJmNmY2MTU2MGVhOGRmNmExNWJiYTU3NzI4OWI5MTcxOWIifQ%3D%3D; bcFreeUserPageView=0; webinar113WebinarClosed=true',
+				'Pragma' = 'no-cache',
+				'Cache-Control' = 'no-cache'
+				))
+			)
+
+		if (http_response$status_code != 200) {
+			print('No response, skipping')
+			return(NULL)
+		}
+		
+		http_response %>%
+			content(.) %>%
+			read_csv(
+				.,
+				col_names = c('contract', 'vdate', 'open', 'high', 'low', 'close', 'volume', 'oi'),
+				col_types = 'cDdddddd'
+			) %>%
+			select(., contract, vdate, close) %>%
+			mutate(., vdate = vdate - days(1), date = as_date(x$date)) %>%
+			return(.)
+		}) %>%
+		compact(.) %>%
+		bind_rows(.)
+	
+	
 	## Bloom forecasts
 	# These are necessary to fill in missing BSBY forecasts for first 3 months before
 	# date of first CME future
