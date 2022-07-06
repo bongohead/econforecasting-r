@@ -407,7 +407,7 @@ local({
 	barchart_data = lapply(barchart_sources, function(x) {
 		
 		print(as_date(x$date))
-		Sys.sleep(.5)
+		Sys.sleep(1)
 		
 		http_response = RETRY(
 			'GET',
@@ -444,12 +444,13 @@ local({
 				col_types = 'cDdddddd'
 			) %>%
 			select(., contract, vdate, close) %>%
-			mutate(., vdate = vdate - days(1), date = as_date(x$date), value = close) %>%
+			mutate(., vdate = vdate - days(1), date = as_date(x$date), value = 100 - close) %>%
 			return(.)
 		}) %>%
 		compact(.) %>%
 		bind_rows(.) %>%
-		transmute(., varname = 'ffr', vdate, date, value)
+		transmute(., varname = 'ffr', vdate, date, value)	%>%	
+		filter(., date >= lubridate::floor_date(vdate, 'month')) # Get rid of forecasts for old observations
 	
 	
 	## Bloom forecasts
