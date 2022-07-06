@@ -376,27 +376,24 @@ local({
 	
 	## Barchart.com data (currently just FFR)
 	message('Starting Barchart data scrape...')
-	barchart_sources = tribble(
-		~ month, ~ code,
-		1, 'F',
-		2, 'G',
-		3, 'H',
-		4, 'J',
-		5, 'K',
-		6, 'M',
-		7, 'N',
-		8, 'Q',
-		9, 'U', 
-		10, 'V',
-		11, 'X',
-		12, 'Z'
-		) %>%
-		expand_grid(., tibble(year = 2020:(year(today()) + 5))) %>%
-		mutate(., code = paste0('ZQ', code, str_sub(year, -2))) %>%
-		transmute(., code, date = as_date(paste0(year, str_pad(month, 2, pad = '0'), '-01'))) %>%
+	
+	
+	barchart_sources =
+		# 5 year history + 7 year forecast
+		tibble(date = seq(floor_date(today() - years(5), 'month'), length.out = 12 * 12, by = '1 month')) %>%
+		mutate(., year = year(date), month = month(date)) %>%
+		left_join(
+			.,
+			tibble(month = 1:12, code = c('F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z')),
+			by = 'month'
+			) %>%
+		expand_grid(., tibble(varname = c('sofr', 'ffr'), ticker = c('SQ', 'ZQ'))) %>%
+		mutate(., code = paste0(ticker, code, str_sub(year, -2))) %>%
+		transmute(., varname, code, date) %>%
 		arrange(., date) %>%
 		purrr::transpose(.)
 	
+
 	cookies =
 		GET(
 		'https://www.barchart.com/futures/quotes/ZQV22',
@@ -406,7 +403,7 @@ local({
 	
 	barchart_data = lapply(barchart_sources, function(x) {
 		
-		print(as_date(x$date))
+		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
 		Sys.sleep(1)
 		
 		http_response = RETRY(
