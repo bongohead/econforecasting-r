@@ -1,3 +1,5 @@
+#' Ad-hoc request to get vintage histories for FFR
+
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
