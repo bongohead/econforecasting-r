@@ -1,4 +1,4 @@
-#' This calculates quantile errors
+#' Ad-hoc request to get SOFR & FFR confidence intervals
 #' It requires forecast_values and forecast_hist_values are already built
 #' - Forecast values must first be run by their respective modules
 #' - Forecast_hist_values must be run by composite-model-get-hist
