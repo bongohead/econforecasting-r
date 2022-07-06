@@ -80,17 +80,114 @@ local({
 
 # Load Data ----------------------------------------------------------
 
-hist_values
+## Calculate Historical Errors ----------------------------------------------------------
+local({
+	
+	error_values =
+		forecast_values %>%
+		inner_join(., select(hist_values, -freq), by = c('date', 'varname')) %>%
+		mutate(., error = latest_hist_value - value, days_to_latest_release = as.numeric(vdate - latest_hist_vdate))
+		
+	error_values <<- error_values
+})
 
-## Tests ----------------------------------------------------------
+
+## Error 1: Structural ----------------------------------------------------------
+forecast_values %>% 
+	filter(., varname %in% c('ffr', 'sofr') & forecast == 'int' & freq == 'm') %>% 
+	filter(., vdate == max(vdate)) %>%
+	mutate(., days_to_latest_release = as.numeric(vdate - ceiling_date(date, 'months'))) %>%
+	purrr::transpose(.) %>%
+	lapply(., function(x)
+		error_xs %>%
+			filter(., days_to_latest_release == x$days_to_latest_release) %>%
+			.$error
+	)
+
+error_xs =
+	error_values %>%
+	filter(., varname %in% c('sofr', 'ffr') & forecast == 'int' & freq == 'm') %>%
+	filter(., days_to_latest_release <= 0) %>%
+	group_by(., varname, forecast, days_to_latest_release) %>%
+	summarize(
+		.,
+		q_10 = quantile(error, .1),
+		q_90 = quantile(error, .9),
+		n_vintages = n(),
+		var = var(error),
+		.groups = 'drop'
+		) %>%
+	filter(., n_vintages >= 3)
+# 
+# forecast_values %>%
+# 	filter(., varname %in% c('ffr', 'sofr') & forecast == 'int' & freq == 'm') %>%
+# 	filter(., vdate == max(vdate)) %>%
+# 	mutate(., days_to_latest_release = as.numeric(vdate - ceiling_date(date, 'months'))) %>%
+# 	left_join(., error_xs, by = c('varname', 'forecast', 'days_to_latest_release')) %>%
+# 	mutate(., c_10 = value + qnorm(.1, 0, .5), c_90 = value + qnorm(.9, 0, .5)) %>%
+# 	filter(., varname %in% c('sofr', 'ffr')) %>%
+# 	select(., forecast, vdate, date, value, c_10, c_90) %>%
+# 	arrange(., date) %>%
+# 	ggplot(.) + geom_line(aes(x = date, y = value))  + geom_line(aes(x = date, y = c_10))
+	
+
+# forecast_values %>%
+# 	filter(., varname %in% c('ffr', 'sofr') & forecast == 'int' & freq == 'm') %>%
+# 	filter(., vdate == max(vdate)) %>%
+# 	mutate(., days_to_latest_release = as.numeric(vdate - ceiling_date(date, 'months'))) %>%
+# 	left_join(., error_xs, by = c('varname', 'forecast', 'days_to_latest_release')) %>% rowwise() %>% mutate(., q_10 = qnorm(.05, value, sqrt(var)), q_90 = qnorm(.9, value, sqrt(var))) %>% View(.)
+
+
+forecast_values %>%
+	filter(., varname %in% c('ffr', 'sofr') & forecast == 'int' & freq == 'm') %>%
+	filter(., vdate == max(vdate)) %>%
+	mutate(., days_to_latest_release = as.numeric(vdate - ceiling_date(date, 'months'))) %>%
+	left_join(., error_xs, by = c('varname', 'forecast', 'days_to_latest_release')) %>%
+	mutate(., var = zoo::na.locf(var)) %>%
+	rowwise() %>% 
+	mutate(., ci_10 = qnorm(.1, value, sqrt(var)*.9), ci_90 = qnorm(.9, value, sqrt(var))) %>% 
+	mutate(., ci_05 = qnorm(.05, value, sqrt(var)*.9), ci_95 = qnorm(.95, value, sqrt(var))) %>% 
+	transmute(., vdate, varname, freq, date, mean = value, ci_10, ci_90, ci_05, ci_95) %>%
+	pivot_wider(., id_cols = 'date', names_from = c('varname'), values_from = c('mean', 'ci_10', 'ci_05', 'ci_90', 'ci_95')) %>%
+	write_csv(., 'benchmark_forecast_distributions_20220706.csv')
+
+# 
+# error_xs %>%
+# 	ggplot(.) + geom_point(aes(x = days_to_latest_release, y = error))
+## Error 2 ----------------------------------------------------------
+
+# calculate_price = function(S, K, r, T, sig, type) {
+# 	
+# 	if(type=="C"){
+# 		d1 <- (log(S/K) + (r + sig^2/2)*T) / (sig*sqrt(T))
+# 		d2 <- d1 - sig*sqrt(T)
+# 		
+# 		value <- S*pnorm(d1) - K*exp(-r*T)*pnorm(d2)
+# 		return(value)}
+# 	
+# 	if(type=="P"){
+# 		d1 <- (log(S/K) + (r + sig^2/2)*T) / (sig*sqrt(T))
+# 		d2 <- d1 - sig*sqrt(T)
+# 		
+# 		value <-  (K*exp(-r*T)*pnorm(-d2) - S*pnorm(-d1))
+# 		return(value)}
+# }
+
+
+error_values %>%
+	filter(., forecast == 'int' & varname == 'ffr') %>%
+	filter(., date %in% sample(unique(.$date), size = 5)) %>%
+	ggplot(.) +
+	geom_line(aes(x = vdate, y = error, color = as.factor(date)))
+
+# Randomly sample 10 ffr plots
+
+## Visualizations & Checks ----------------------------------------------------------
 local({
 	
 	# Drop freq on join
 	error_ttr_plots =
-		forecast_values %>%
-		# filter(., forecast == 'int') %>%
-		inner_join(., hist_values, by = c('date', 'varname')) %>%
-		mutate(., error = latest_hist_value - value, days_to_latest_release = as.numeric(vdate - latest_hist_vdate)) %>%
+		error_values
 		filter(., days_to_latest_release <= 0) %>%
 		group_by(., varname, forecast, days_to_latest_release) %>%
 		summarize(., mae = mean(abs(error)), n_vintages = n(), .groups = 'drop') %>%
@@ -100,12 +197,29 @@ local({
 		lapply(., function(x)
 			x %>%
 				ggplot(.) +
-			geom_point(aes(x = days_to_latest_release, y = mae, color = forecast))
+				geom_point(aes(x = days_to_latest_release, y = mae, color = forecast))
 		)
 	
+	error_1y_plots =
+		forecast_values %>%
+		inner_join(., select(hist_values, -freq), by = c('date', 'varname')) %>%
+		mutate(., error = latest_hist_value - value, days_to_latest_release = as.numeric(vdate - latest_hist_vdate)) %>%
+		filter(., days_to_latest_release >= -390 & days_to_latest_release <= -360) %>%
+		# group_by(., varname, forecast, date) %>%
+		group_split(., varname) %>%
+		set_names(., map_chr(., ~ .$varname[[1]])) %>%
+		lapply(., function(x)
+			x %>%
+				ggplot(.) +
+				geom_point(aes(x = date, y = error, color = forecast), alpha = .5) + 
+				labs(title = 'Forecast error by obs date, for approx. 1 year old forecasts')
+		)
+	
+
 	print(error_ttr_plots$ffr)
 	print(error_ttr_plots$sofr)
 	print(error_ttr_plots$t10y)
+	print(error_ttr_plots$gdp)
 	
 })
 

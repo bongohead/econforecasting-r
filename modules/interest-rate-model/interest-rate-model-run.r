@@ -379,8 +379,8 @@ local({
 	
 	
 	barchart_sources =
-		# 5 year history + 7 year forecast
-		tibble(date = seq(floor_date(today() - years(5), 'month'), length.out = 12 * 12, by = '1 month')) %>%
+		# 3 year history + 5 year forecast
+		tibble(date = seq(floor_date(today() - years(3), 'month'), length.out = 8 * 12, by = '1 month')) %>%
 		mutate(., year = year(date), month = month(date)) %>%
 		left_join(
 			.,
@@ -404,7 +404,7 @@ local({
 	barchart_data = lapply(barchart_sources, function(x) {
 		
 		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
-		Sys.sleep(1)
+		Sys.sleep(.5)
 		
 		http_response = RETRY(
 			'GET',
@@ -437,16 +437,17 @@ local({
 			content(.) %>%
 			read_csv(
 				.,
+				# Verified columns are correct - compare CME official chart to barchart
 				col_names = c('contract', 'vdate', 'open', 'high', 'low', 'close', 'volume', 'oi'),
 				col_types = 'cDdddddd'
 			) %>%
 			select(., contract, vdate, close) %>%
-			mutate(., vdate = vdate - days(1), date = as_date(x$date), value = 100 - close) %>%
+			mutate(., varname = x$varname, vdate = vdate, date = as_date(x$date), value = 100 - close) %>%
 			return(.)
 		}) %>%
 		compact(.) %>%
 		bind_rows(.) %>%
-		transmute(., varname = 'ffr', vdate, date, value)	%>%	
+		transmute(., varname, vdate, date, value)	%>%	
 		filter(., date >= lubridate::floor_date(vdate, 'month')) # Get rid of forecasts for old observations
 	
 	
