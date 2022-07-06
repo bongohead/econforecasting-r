@@ -49,4 +49,4 @@ data = as_tibble(dbGetQuery(db, paste0(
 	pivot_wider(., id_cols = c('vdate', 'date'), names_from = 'varname', values_from = 'value') %>%
 	transmute(., date_updated = vdate, date_forecasted = date, t01m, t03m, t06m, t01y, t02y, t05y, t10y, t20y, t30y)
 
-data %>% fwrite(., '/var/www/econforecasting.com/public/static/data/treasury_forecasts_all.csv')
+data %>% data.table::fwrite(., '/var/www/econforecasting.com/public/static/data/treasury_forecasts_all.csv')
