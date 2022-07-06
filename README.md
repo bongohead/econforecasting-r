@@ -21,12 +21,17 @@ gantt
 ```
 ## [v1.03] 
 - Add Conference Board
+- Added websocket test scraper for futures rates
+- Added barchart scraper for backfilling missing futures data
+- Fixed bug related to ALFRED 2000 vintage date limit
 - TBD: Add TD Forecasts
 - TBD: Consider replacing 14d default w/28d default
 
 ## [v1.02] (Sentiment Index Improvements)
 - Added initial detailed labor market modeling
 - Added labor market subindex integration with main index
+- Added websocket test scraper for futures rates
+- Added barchart scraper for backfilling missing futures data
 - Fixed critical bug with sentiment aggregation TZ casting
 
 ## [v1.01] (Model Improvements & Sentiment Index) (2022-05-16)
