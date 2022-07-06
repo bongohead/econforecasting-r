@@ -374,7 +374,7 @@ local({
 	# 		View(.)
 
 	
-	## Barchart.com data
+	## Barchart.com data (currently just FFR)
 	message('Starting Barchart data scrape...')
 	barchart_sources = tribble(
 		~ month, ~ code,
@@ -404,14 +404,14 @@ local({
 		cookies(.) %>%
 		as_tibble(.)
 	
-	res = lapply(barchart_sources, function(x) {
+	barchart_data = lapply(barchart_sources, function(x) {
 		
 		print(as_date(x$date))
-		Sys.sleep(.1)
+		Sys.sleep(.5)
 		
 		http_response = RETRY(
 			'GET',
-			times = 5,
+			times = 10,
 			paste0(
 				'https://www.barchart.com/proxies/timeseries/queryeod.ashx?',
 				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
@@ -444,11 +444,12 @@ local({
 				col_types = 'cDdddddd'
 			) %>%
 			select(., contract, vdate, close) %>%
-			mutate(., vdate = vdate - days(1), date = as_date(x$date)) %>%
+			mutate(., vdate = vdate - days(1), date = as_date(x$date), value = close) %>%
 			return(.)
 		}) %>%
 		compact(.) %>%
-		bind_rows(.)
+		bind_rows(.) %>%
+		transmute(., varname = 'ffr', vdate, date, value)
 	
 	
 	## Bloom forecasts
@@ -463,6 +464,11 @@ local({
 	message('Adding monthly interpolation ...')
 	final_df =
 		cme_data %>%
+		# Anti join in FFR
+		bind_rows(
+			.,
+			anti_join(barchart_data, ., by = c('varname', 'vdate', 'date'))
+		) %>%
 		# Replace Bloom futures with data
 		full_join(
 			.,

@@ -21,7 +21,7 @@ virtualenv_create(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasti
 # Note: if Happytransformer fails on Windows, run  D:\OneDrive\__Projects\econforecasting\.virtualenvs\econforecasting\Scripts\python.exe -m pip install --upgrade pip' command
 # Socket.io
 # Removed svglib 7/5/22 - needed?
-lapply(c('camelot-py', 'opencv-python', 'requests', 'matplotlib', 'happytransformer', 'python-socketio[client]'), function(x) 
+lapply(c('camelot-py', 'opencv-python', 'requests', 'matplotlib', 'happytransformer'), function(x) 
 	virtualenv_install(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'), x)
 )
 
