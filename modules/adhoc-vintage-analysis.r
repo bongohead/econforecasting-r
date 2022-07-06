@@ -37,15 +37,16 @@ data_new = as_tibble(dbGetQuery(db, str_glue(
 		AND form = 'd1'"
 	)))
 
-data_old = as_tibble(dbGetQuery(db, str_glue(
-	"SELECT
-		vdate, date, value
-	FROM rates_model_quandl
-	WHERE varname = 'ffr'"
-)))
+# data_old = as_tibble(dbGetQuery(db, str_glue(
+# 	"SELECT
+# 		vdate, date, value
+# 	FROM rates_model_quandl
+# 	WHERE varname = 'ffr'"
+# )))
 
-data_flat = 
-	bind_rows(data_new, data_old) %>%
+data_flat =
+	# bind_rows(data_new, data_old) %>%
+	data_new %>%
 	filter(
 		.,
 		vdate >= as_date('2020-01-01'),
@@ -67,12 +68,9 @@ data_flat %>%
 	pivot_wider(., id_cols = 'vdate', names_from = 'date', values_from = 'value') %>%
 	View(.)
 
-## Model Deprecated ----------------------------------------------------------
-data_flat = as_tibble(dbGetQuery(db, str_glue(
-	"SELECT
-		varname, vdate, date, value
-	FROM rates_model_quandl
-	WHERE varname = 'ffr'"
-)))
-
-	
+data_flat %>%
+	pivot_wider(., id_cols = 'vdate', names_from = 'date', values_from = 'value') %>%
+	arrange(., vdate) %>%
+	select(., c('vdate', sort(colnames(.)) %>% .[. != 'vdate'])) %>%
+	rename(., vintage_date = vdate) %>%
+	write_csv(., file = 'ffr_vintages_20220706.csv')
