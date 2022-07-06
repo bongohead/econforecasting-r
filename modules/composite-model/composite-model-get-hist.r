@@ -5,7 +5,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'composite-model-get-hist'
 EF_DIR = Sys.getenv('EF_DIR')
-IMPORT_DATE_START = '2007-01-01'
+IMPORT_DATE_START = '2016-01-01' #'2007-01-01' Reduced 7/6/22 due to vintage date limit on ALFRED
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -126,7 +126,7 @@ local({
 					.freq = x$hist_source_freq,
 					.return_vintages = T,
 					.obs_start = IMPORT_DATE_START,
-					.verbose = F
+					.verbose = T
 				) %>%
 				transmute(., varname = x$varname, freq = x$hist_source_freq, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))

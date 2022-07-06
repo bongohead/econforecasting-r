@@ -373,6 +373,86 @@ local({
 	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 	# 		View(.)
 
+	
+	## Barchart.com data (currently just FFR)
+	message('Starting Barchart data scrape...')
+	barchart_sources = tribble(
+		~ month, ~ code,
+		1, 'F',
+		2, 'G',
+		3, 'H',
+		4, 'J',
+		5, 'K',
+		6, 'M',
+		7, 'N',
+		8, 'Q',
+		9, 'U', 
+		10, 'V',
+		11, 'X',
+		12, 'Z'
+		) %>%
+		expand_grid(., tibble(year = 2020:(year(today()) + 5))) %>%
+		mutate(., code = paste0('ZQ', code, str_sub(year, -2))) %>%
+		transmute(., code, date = as_date(paste0(year, str_pad(month, 2, pad = '0'), '-01'))) %>%
+		arrange(., date) %>%
+		purrr::transpose(.)
+	
+	cookies =
+		GET(
+		'https://www.barchart.com/futures/quotes/ZQV22',
+		) %>%
+		cookies(.) %>%
+		as_tibble(.)
+	
+	barchart_data = lapply(barchart_sources, function(x) {
+		
+		print(as_date(x$date))
+		Sys.sleep(1)
+		
+		http_response = RETRY(
+			'GET',
+			times = 10,
+			paste0(
+				'https://www.barchart.com/proxies/timeseries/queryeod.ashx?',
+				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
+				'&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration'
+			),
+			add_headers(c(
+				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:102.0) Gecko/20100101 Firefox/102.0',
+				'X-XSRF-TOKEN' = URLdecode(filter(cookies, name == 'XSRF-TOKEN')$value),
+				'DNT' = '1',
+				'Referer' = 'https://www.barchart.com/futures/quotes/ZQZ20',
+				'Cookie' = URLdecode(paste0(
+					'bcFreeUserPageView=0; webinar113WebinarClosed=true; ',
+					paste0(paste0(cookies$name, '=', cookies$value), collapse = '; ')
+					)),
+				'Pragma' = 'no-cache',
+				'Cache-Control' = 'no-cache'
+				))
+			)
+
+		if (http_response$status_code != 200) {
+			print('No response, skipping')
+			return(NULL)
+		}
+		
+		http_response %>%
+			content(.) %>%
+			read_csv(
+				.,
+				col_names = c('contract', 'vdate', 'open', 'high', 'low', 'close', 'volume', 'oi'),
+				col_types = 'cDdddddd'
+			) %>%
+			select(., contract, vdate, close) %>%
+			mutate(., vdate = vdate - days(1), date = as_date(x$date), value = 100 - close) %>%
+			return(.)
+		}) %>%
+		compact(.) %>%
+		bind_rows(.) %>%
+		transmute(., varname = 'ffr', vdate, date, value)	%>%	
+		filter(., date >= lubridate::floor_date(vdate, 'month')) # Get rid of forecasts for old observations
+	
+	
 	## Bloom forecasts
 	# These are necessary to fill in missing BSBY forecasts for first 3 months before
 	# date of first CME future
@@ -385,6 +465,11 @@ local({
 	message('Adding monthly interpolation ...')
 	final_df =
 		cme_data %>%
+		# Anti join in FFR
+		bind_rows(
+			.,
+			anti_join(barchart_data, ., by = c('varname', 'vdate', 'date'))
+		) %>%
 		# Replace Bloom futures with data
 		full_join(
 			.,
