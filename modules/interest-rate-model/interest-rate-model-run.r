@@ -442,7 +442,7 @@ local({
 				col_types = 'cDdddddd'
 			) %>%
 			select(., contract, vdate, close) %>%
-			mutate(., varname = x$varname, vdate = vdate, date = as_date(x$date), value = 100 - close) %>%
+			mutate(., varname = x$varname, vdate = vdate - days(1), date = as_date(x$date), value = 100 - close) %>%
 			return(.)
 		}) %>%
 		compact(.) %>%
