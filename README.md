@@ -20,13 +20,12 @@ gantt
       Sentiment Model Release       :5/15/22, 5/15/22
 ```
 ## [v1.03] 
-- Add Conference Board
+- Added Conference Board forecasts
 - Added websocket test scraper for futures rates
 - Added barchart scraper for backfilling missing futures data
 - Added various ad-hoc request fulfillments as well as initial confidence interval generation script
 - Fixed bug related to ALFRED 2000 vintage date limit
 - TBD: Add TD Forecasts
-- TBD: Consider replacing 14d default w/28d default
 
 ## [v1.02] (Sentiment Index Improvements)
 - Added initial detailed labor market modeling
