@@ -1,17 +1,16 @@
 # %% Imports
 import logging
 import torch
-import os
 import pandas as pd
-from torch.utils.data import Dataset
-from transformers import RobertaTokenizer, RobertaModel, AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
+from transformers import AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
 
 logging.basicConfig(format = '\n[%(asctime)s]\n %(message)s\n---', level = logging.INFO)
 
 # %% Load Pretrained
-tokenizer = AutoTokenizer.from_pretrained('siebert/sentiment-roberta-large-english')
-model = AutoModelForSequenceClassification.from_pretrained('siebert/sentiment-roberta-large-english')
-config = AutoConfig.from_pretrained('siebert/sentiment-roberta-large-english')
+pretrained_model = 'siebert/sentiment-roberta-large-english'
+tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+model = AutoModelForSequenceClassification.from_pretrained(pretrained_model)
+config = AutoConfig.from_pretrained(pretrained_model)
 
 # %% Tokenize & Predict
 encoded_tokens = tokenizer(
@@ -22,7 +21,7 @@ encoded_tokens = tokenizer(
     return_tensors = "pt"
 )
 predictions = model(**encoded_tokens).logits
-predictions_normalized = torch.nn.Softmax(dim=0)(predictions).cpu().detach().numpy()
+predictions_normalized = torch.nn.Softmax(dim=-1)(predictions).cpu().detach().numpy()
 pd.concat([pd.DataFrame({'labels': config.id2label.values(), 'score': x, 'idx': i}) for i, x in enumerate(predictions_normalized)])
 
 
