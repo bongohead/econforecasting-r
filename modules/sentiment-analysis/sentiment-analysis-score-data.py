@@ -1,10 +1,28 @@
 # %% Imports
+# Set os.environ['EF_DIR'] = ''
+sys.path.append(os.getenv('EF_DIR') + '/model-inputs')
+from constants import CONST
 import logging
 import torch
 import pandas as pd
+import os
+import sys
+from sqlalchemy import create_engine
+from siuba import group_by, summarize, count, filter, _
 from transformers import AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
 
 logging.basicConfig(format = '\n[%(asctime)s]\n %(message)s\n---', level = logging.INFO)
+
+# %% Connections
+db = create_engine(f"postgresql://{CONST['DB_USERNAME']}:{CONST['DB_PASSWORD']}@{CONST['DB_SERVER']}:5432/{CONST['DB_DATABASE']}")
+df = pd.DataFrame(db.execute("SELECT * FROM sentiment_analysis_reddit_score LIMIT 10").fetchall())
+
+# %% Siuba Test
+(df >>
+    filter(_.score_model == 'ROBERTA') >>
+    group_by(_.score) >>
+    summarize(count = _.size)
+)
 
 # %% Load Pretrained
 pretrained_model = 'siebert/sentiment-roberta-large-english'

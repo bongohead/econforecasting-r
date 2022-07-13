@@ -4,5 +4,7 @@ renv/
 logs/
 rereddit-dump/
 constants.r
+constants.py
+model-inputs/__pycache__/
 Rplots.pdf
 uszips.csv
