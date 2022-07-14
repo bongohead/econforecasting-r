@@ -22,7 +22,13 @@ pd_df = pd.DataFrame(db.execute(
 
 # %% Polars Test
 df = pl.from_dicts(pd_df.to_dict('records'))
-
+(df
+    .filter(pl.col('score_model') == 'ROBERTA')
+    .groupby('score')
+    .agg([
+        pl.count().alias('count')
+    ])
+)
 
 # %% Siuba Test
 (df >>
