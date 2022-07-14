@@ -1,10 +1,11 @@
 # %% Imports
-# Set os.environ['EF_DIR'] = ''
+os.environ['EF_DIR'] = 'D:/OneDrive/__Projects/econforecasting'
 sys.path.append(os.getenv('EF_DIR') + '/model-inputs')
 from constants import CONST
 import logging
 import torch
 import pandas as pd
+import polars as pl
 import os
 import sys
 from sqlalchemy import create_engine
@@ -15,7 +16,13 @@ logging.basicConfig(format = '\n[%(asctime)s]\n %(message)s\n---', level = loggi
 
 # %% Connections
 db = create_engine(f"postgresql://{CONST['DB_USERNAME']}:{CONST['DB_PASSWORD']}@{CONST['DB_SERVER']}:5432/{CONST['DB_DATABASE']}")
-df = pd.DataFrame(db.execute("SELECT * FROM sentiment_analysis_reddit_score LIMIT 10").fetchall())
+pd_df = pd.DataFrame(db.execute(
+    "SELECT scrape_id, text_part, score_model, score, score_conf FROM sentiment_analysis_reddit_score LIMIT 10"
+    ).fetchall())
+
+# %% Polars Test
+df = pl.from_dicts(pd_df.to_dict('records'))
+
 
 # %% Siuba Test
 (df >>
