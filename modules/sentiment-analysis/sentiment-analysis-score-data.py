@@ -53,8 +53,14 @@ encoded_tokens = tokenizer(
 )
 predictions = model(**encoded_tokens).logits
 predictions_normalized = torch.nn.Softmax(dim=-1)(predictions).cpu().detach().numpy()
-pd.concat([pd.DataFrame({'labels': config.id2label.values(), 'score': x, 'idx': i}) for i, x in enumerate(predictions_normalized)])
+pl.concat(
+    [
+        pl.from_dict({'labels': list(config.id2label.values()), 'score': x.tolist(), 'idx': [i] * 2})
+        for i, x in enumerate(predictions_normalized)
+    ]
+)
 
+# pd.concat([pd.DataFrame({'labels': config.id2label.values(), 'score': x, 'idx': i}) for i, x in enumerate(predictions_normalized)])
 
 # %% Import Data
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
