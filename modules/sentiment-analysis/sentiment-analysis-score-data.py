@@ -7,6 +7,7 @@ import yaml
 import torch
 import pandas as pd
 import polars as pl
+import siuba
 from sqlalchemy import create_engine
 from transformers import AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
 
