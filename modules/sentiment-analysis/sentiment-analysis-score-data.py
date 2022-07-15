@@ -1,21 +1,31 @@
+# Initialize
+
 # %% Imports
-os.environ['EF_DIR'] = 'D:/OneDrive/__Projects/econforecasting'
-sys.path.append(os.getenv('EF_DIR') + '/model-inputs')
-from constants import CONST
+import os
 import logging
+import yaml
 import torch
 import pandas as pd
 import polars as pl
-import os
-import sys
 from sqlalchemy import create_engine
-from siuba import group_by, summarize, count, filter, _
 from transformers import AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
 
+# %% Constants
+JOB_NAME = 'sentiment-analysis-pull-data'
+EF_DIR = os.environ['EF_DIR']
+RESET_SQL = False
+
+# %% Logger
 logging.basicConfig(format = '\n[%(asctime)s]\n %(message)s\n---', level = logging.INFO)
 
 # %% Connections
-db = create_engine(f"postgresql://{CONST['DB_USERNAME']}:{CONST['DB_PASSWORD']}@{CONST['DB_SERVER']}:5432/{CONST['DB_DATABASE']}")
+with open(EF_DIR + "/model-inputs/constants.yml","r") as f:
+    CONST = (yaml.full_load(f.read()))
+db = create_engine(
+    f"postgresql://{CONST['DB_USERNAME']}:{CONST['DB_PASSWORD']}@{CONST['DB_SERVER']}:5432/{CONST['DB_DATABASE']}"
+    )
+
+
 pd_df = pd.DataFrame(db.execute(
     "SELECT scrape_id, text_part, score_model, score, score_conf FROM sentiment_analysis_reddit_score LIMIT 10"
     ).fetchall())
