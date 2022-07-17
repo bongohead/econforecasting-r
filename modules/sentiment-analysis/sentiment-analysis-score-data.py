@@ -1,17 +1,58 @@
-# %% Imports
-import logging
-import torch
-import os
-import pandas as pd
-from torch.utils.data import Dataset
-from transformers import RobertaTokenizer, RobertaModel, AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
+# Initialize
 
+# %% Imports
+import os
+import logging
+import yaml
+import torch
+import pandas as pd
+import polars as pl
+import siuba
+from sqlalchemy import create_engine
+from transformers import AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
+
+# %% Constants
+JOB_NAME = 'sentiment-analysis-pull-data'
+EF_DIR = os.environ['EF_DIR']
+RESET_SQL = False
+
+# %% Logger
 logging.basicConfig(format = '\n[%(asctime)s]\n %(message)s\n---', level = logging.INFO)
 
+# %% Connections
+with open(EF_DIR + "/model-inputs/constants.yml","r") as f:
+    CONST = (yaml.full_load(f.read()))
+db = create_engine(
+    f"postgresql://{CONST['DB_USERNAME']}:{CONST['DB_PASSWORD']}@{CONST['DB_SERVER']}:5432/{CONST['DB_DATABASE']}"
+    )
+
+
+pd_df = pd.DataFrame(db.execute(
+    "SELECT scrape_id, text_part, score_model, score, score_conf FROM sentiment_analysis_reddit_score LIMIT 10"
+    ).fetchall())
+
+# %% Polars Test
+df = pl.from_dicts(pd_df.to_dict('records'))
+(df
+    .filter(pl.col('score_model') == 'ROBERTA')
+    .groupby('score')
+    .agg([
+        pl.count().alias('count')
+    ])
+)
+
+# %% Siuba Test
+(df >>
+    filter(_.score_model == 'ROBERTA') >>
+    group_by(_.score) >>
+    summarize(count = _.size)
+)
+
 # %% Load Pretrained
-tokenizer = AutoTokenizer.from_pretrained('siebert/sentiment-roberta-large-english')
-model = AutoModelForSequenceClassification.from_pretrained('siebert/sentiment-roberta-large-english')
-config = AutoConfig.from_pretrained('siebert/sentiment-roberta-large-english')
+pretrained_model = 'siebert/sentiment-roberta-large-english'
+tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+model = AutoModelForSequenceClassification.from_pretrained(pretrained_model)
+config = AutoConfig.from_pretrained(pretrained_model)
 
 # %% Tokenize & Predict
 encoded_tokens = tokenizer(
@@ -22,9 +63,15 @@ encoded_tokens = tokenizer(
     return_tensors = "pt"
 )
 predictions = model(**encoded_tokens).logits
-predictions_normalized = torch.nn.Softmax(dim=0)(predictions).cpu().detach().numpy()
-pd.concat([pd.DataFrame({'labels': config.id2label.values(), 'score': x, 'idx': i}) for i, x in enumerate(predictions_normalized)])
+predictions_normalized = torch.nn.Softmax(dim=-1)(predictions).cpu().detach().numpy()
+pl.concat(
+    [
+        pl.from_dict({'labels': list(config.id2label.values()), 'score': x.tolist(), 'idx': [i] * 2})
+        for i, x in enumerate(predictions_normalized)
+    ]
+)
 
+# pd.concat([pd.DataFrame({'labels': config.id2label.values(), 'score': x, 'idx': i}) for i, x in enumerate(predictions_normalized)])
 
 # %% Import Data
 tokenizer = RobertaTokenizer.from_pretrained('roberta-base')
