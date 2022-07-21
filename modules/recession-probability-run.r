@@ -1,4 +1,10 @@
 #' Recession Probability Test
+#'
+#' The idea here is to first create some standalone recession probability indicators (& import some);
+#' then weight them according to OFC (optimal forecast weighting)
+#' 
+#' 
+#'
 
 # Initialize ----------------------------------------------------------
 
