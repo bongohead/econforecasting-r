@@ -1,6 +1,4 @@
-# Initialize
-
-
+# Initialize ----------------------------------------------------------
 # %% Imports
 import os
 import logging
@@ -33,7 +31,7 @@ db = create_engine(
     )
 
 
-## Data Import
+# Data Import ----------------------------------------------------------
 
 # %% Create Tables
 # if RESET_SQL:
@@ -42,25 +40,28 @@ db = create_engine(
 
 # %% Boards
 def get_boards():
-    score_boards = pl.from_dicts(pd.DataFrame(db.execute(
+    score_boards = pl.from_pandas(pd.read_sql(
         """
         SELECT subreddit, scrape_ups_floor FROM sentiment_analysis_reddit_boards
         WHERE score_active = TRUE
-        """
-    ).fetchall()).to_dict('records'))
+        """,
+        db
+    ))
     return (score_boards)
 
 reddit = {}
 (reddit['scrape_boards']) = get_boards()
 
 
+# %%
+
 # %% Pull Unscored Data 
-def pull_unscored_data():
+def get_unscored_text():
 
     score_models = ['DICT', 'DISTILBERT', 'ROBERTA']
 
-    def get_res(x):
-        raw_df = pd.DataFrame(db.execute(
+    def get_raw_df(x):
+        raw_df = pl.from_pandas(pd.read_sql(
             f"""
 			(
 				SELECT
@@ -80,7 +81,8 @@ def pull_unscored_data():
 					ON r1.subreddit = b.subreddit AND b.scrape_active = TRUE AND r1.ups >= b.score_ups_floor 
 				WHERE r2.scrape_id IS NULL 
 					-- Rescore comments scored before 5/10/22
-					--OR DATE(r2.scrape_date) <= '2022-05-01'
+                    -- Uncomment  below for testing
+                    -- OR DATE(r1.scraped_dttm) <= '2022-05-01'
 			)
 			UNION ALL
 			(
@@ -100,18 +102,44 @@ def pull_unscored_data():
 					-- Rescore comments scored before 5/10/22
 					-- OR DATE(r2.scrape_date) <= '2022-05-01'
 			)
-            """
-        ).fetchall())
+            """,
+            db
+        ))
 
         return raw_df
 
-    return [get_res(x) for x in score_models]
+    return {k: v for k, v in zip(score_models, [get_raw_df(x) for x in score_models])}
 
-unscored_data = pull_unscored_data()
-
-
+unscored_text = get_unscored_text()
 
 
+
+
+# Analysis ----------------------------------------------------------
+
+# %% Dictionary Analysis
+def run_dict_analysis():
+    BATCH_SIZE = 10000
+
+# %% DISTILBERT
+def run_distilbert():
+    BATCH_SIZE = 1000
+    print(f'UNSCORED DISTILBERT: {len(unscored_text["DISTILBERT"])}')
+
+    # Load pretrained
+    pretrained_model = 'distilbert-base-uncased-finetuned-sst-2-english'
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_model)
+    model = AutoModelForSequenceClassification.from_pretrained(pretrained_model)
+    config = AutoConfig.from_pretrained(pretrained_model)
+
+    batches =\
+        unscored_text["DISTILBERT"]\
+        .head(BATCH_SIZE)\
+        .sort(['source', 'created_dt'], reverse = [True, True])\
+        .with_row_index()\
+        .select([pl.all(), ])
+
+run_distilbert()
 
 
 # %% Pull Unscored Data
