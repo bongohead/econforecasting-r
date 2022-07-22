@@ -141,8 +141,21 @@ def run_distilbert():
         .partition_by(['source', 'split'])
 
     def get_scores(batch):
-        pull_counts  =
-        
+        encoded_tokens = tokenizer(
+            batch['text_part_all_text'].to_list(),
+            padding = True,
+            truncation = True,
+            max_length = 512,
+            return_tensors = "pt"
+        )
+        predictions = model(**encoded_tokens).logits
+        predictions_normalized = torch.nn.Softmax(dim=-1)(predictions).cpu().detach().numpy()
+        pl.concat(
+            [
+                pl.from_dict({'labels': list(config.id2label.values()), 'score': x.tolist(), 'idx': [i] * 2})
+                for i, x in enumerate(predictions_normalized)
+            ]
+        )            
 
     [get_scores(batch) for batch in batches]
 
