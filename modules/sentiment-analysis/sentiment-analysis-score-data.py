@@ -6,6 +6,9 @@ import yaml
 import torch
 import pandas as pd
 import polars as pl
+import numpy as np
+from datetime import datetime
+import pytz
 from sqlalchemy import create_engine
 from transformers import AutoTokenizer, AutoConfig, AutoModelForSequenceClassification
 
@@ -123,7 +126,7 @@ def run_dict_analysis():
 
 # %% DISTILBERT
 def run_distilbert():
-    BATCH_SIZE = 1000
+    BATCH_SIZE = 10 #1000
     print(f'UNSCORED DISTILBERT: {len(unscored_text["DISTILBERT"])}')
 
     # Load pretrained
@@ -140,7 +143,7 @@ def run_distilbert():
         .with_column((pl.col('split')/BATCH_SIZE).ceil())\
         .partition_by(['source', 'split'])
 
-    def get_scores(batch):
+    def get_scores_and_send_to_sql(batch):
         encoded_tokens = tokenizer(
             batch['text_part_all_text'].to_list(),
             padding = True,
@@ -150,14 +153,23 @@ def run_distilbert():
         )
         predictions = model(**encoded_tokens).logits
         predictions_normalized = torch.nn.Softmax(dim=-1)(predictions).cpu().detach().numpy()
-        pl.concat(
-            [
-                pl.from_dict({'labels': list(config.id2label.values()), 'score': x.tolist(), 'idx': [i] * 2})
-                for i, x in enumerate(predictions_normalized)
-            ]
-        )            
+        return pl.concat([
+            pl.from_dict({'score': list(config.id2label.values()), 'score_conf': x.tolist(), 'idx': [i] * 2})
+            for i, x in enumerate(predictions_normalized)
+            ])\
+            .with_columns([
+                pl.when(pl.col('score') == 'POSITIVE').then('p').otherwise('n').alias('score'),
+                pl.Series(list(np.repeat(batch['id'].to_list(), 2))).alias('scrape_id'),
+                pl.lit('all_text').alias('text_part'),
+                pl.lit('DISTILBERT').alias('score_model'),
+                pl.lit(datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d %H:%M:%S %z')).alias('scored_dttm'),
+                ])\
+            [['scrape_id', 'text_part', 'score_model', 'score', 'score_conf', 'scored_dttm']]
+            
+            
 
-    [get_scores(batch) for batch in batches]
+    get_scores_and_send_to_sql(batches[1])
+    [get_scores_and_send_to_sql(batch) for batch in batches]
 
 run_distilbert()
 
