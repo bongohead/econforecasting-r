@@ -134,10 +134,17 @@ def run_distilbert():
 
     batches =\
         unscored_text["DISTILBERT"]\
-        .head(BATCH_SIZE)\
+        .head(MAX_ROWS)\
         .sort(['source', 'created_dt'], reverse = [True, True])\
-        .with_row_index()\
-        .select([pl.all(), ])
+        .pipe(lambda x: x.with_column(pl.Series(list(range(1, len(x) + 1))).alias('split')))\
+        .with_column((pl.col('split')/BATCH_SIZE).ceil())\
+        .partition_by(['source', 'split'])
+
+    def get_scores(batch):
+        pull_counts  =
+        
+
+    [get_scores(batch) for batch in batches]
 
 run_distilbert()
 
