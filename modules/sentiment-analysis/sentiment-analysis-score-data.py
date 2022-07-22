@@ -153,9 +153,10 @@ def run_distilbert():
         )
         predictions = model(**encoded_tokens).logits
         predictions_normalized = torch.nn.Softmax(dim=-1)(predictions).cpu().detach().numpy()
-        return pl.concat([
-            pl.from_dict({'score': list(config.id2label.values()), 'score_conf': x.tolist(), 'idx': [i] * 2})
-            for i, x in enumerate(predictions_normalized)
+        sql_data =\
+            pl.concat([
+                pl.from_dict({'score': list(config.id2label.values()), 'score_conf': x.tolist(), 'idx': [i] * 2})
+                for i, x in enumerate(predictions_normalized)
             ])\
             .with_columns([
                 pl.when(pl.col('score') == 'POSITIVE').then('p').otherwise('n').alias('score'),
@@ -165,8 +166,8 @@ def run_distilbert():
                 pl.lit(datetime.now(pytz.timezone('US/Eastern')).strftime('%Y-%m-%d %H:%M:%S %z')).alias('scored_dttm'),
                 ])\
             [['scrape_id', 'text_part', 'score_model', 'score', 'score_conf', 'scored_dttm']]
-            
-            
+
+        ## Create insert_sql query            
 
     get_scores_and_send_to_sql(batches[1])
     [get_scores_and_send_to_sql(batch) for batch in batches]
