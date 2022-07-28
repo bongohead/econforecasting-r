@@ -3,9 +3,10 @@
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'composite-model-ffr-stacking'
+JOB_NAME = 'composite-model-monthly-dlog-stacking'
 EF_DIR = Sys.getenv('EF_DIR')
 TRAIN_VDATE_START = '2015-01-01'
+VARNAMES = c('unemp', 'ffr', 'lfpr')
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -50,12 +51,13 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'
 ## Import Historical Data ----------------------------------------------------------
 local({
 	
-	hist_data_monthly_d1 = tbl(db, sql(
+	hist_data_monthly_d1 = tbl(db, sql(str_glue(
 		"SELECT val.varname, val.vdate, val.date, val.value, val.freq
 		FROM forecast_hist_values val
 		INNER JOIN forecast_variables v ON v.varname = val.varname
-		WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'"
-		)) %>%
+		WHERE v.varname IN ({v}) AND freq IN ('m', 'q') AND form = 'd1'",
+		v = paste0(paste0('\'', VARNAMES, '\''), collapse = ',')
+		))) %>%
 		collect(.) %>%
 		# Only keep initial release for each historical value
 		# This results in date being the unique row identifier
@@ -109,8 +111,9 @@ local({
 		"SELECT val.varname, val.forecast, val.vdate, val.date, val.value, val.freq
 		FROM forecast_values val
 		INNER JOIN forecast_variables v ON v.varname = val.varname
-		WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'
-		AND vdate >= '{TRAIN_VDATE_START}'"
+		WHERE v.varname IN ({v}) AND freq IN ('m', 'q') AND form = 'd1'
+		AND vdate >= '{TRAIN_VDATE_START}'",
+		v = paste0(paste0('\'', VARNAMES, '\''), collapse = ',')
 		))) %>%
 		collect(.)
 	
@@ -142,6 +145,11 @@ local({
 				tail(., -1) %>%
 				return(.)
 		})
+	
+	#%>%
+
+		#		compact(.) %>%
+		#bind_rows(.)
 
 	forecast_data_d1 <<- forecast_data_d1
 	forecast_data <<- forecast_data
@@ -164,7 +172,8 @@ local({
 
 ## Prep Data (Monthly) ----------------------------------------------------------
 model_data =
-	hist_data_monthly %>%
+	hist_data %>%
+	filter(., freq == 'm') %>%
 	as.data.table(.) %>%
 	split(., by = c('varname')) %>%
 	lapply(., function(x)  {
@@ -363,7 +372,7 @@ trees = lapply(train_varnames, function(this_varname) {
 			transmute(
 				.,
 				days_before_release = ifelse(days_before_release >= 1000, 1000, days_before_release),
-				arima, cb, cbo, constant, fnma, ma, now, spf, wsj
+				arima, cb, cbo, fnma, ma, now, spf, wsj
 			) %>%
 			as.matrix(.),
 		label = input_data$hist_value,
@@ -393,7 +402,7 @@ test_results = lapply(train_varnames, function(this_varname) {
 		predict(
 			trees[[this_varname]],
 			test_data[varname == this_varname] %>%
-				.[, c('days_before_release', 'arima', 'cb', 'cbo', 'constant', 'fnma', 'ma', 'now', 'spf', 'wsj')] %>%
+				.[, c('days_before_release', 'arima', 'cb', 'cbo', 'fnma', 'ma', 'now', 'spf', 'wsj')] %>%
 				.[, days_before_release := fifelse(days_before_release >= 1000, 1000, days_before_release)] %>%
 				as.matrix(.)
 		)
@@ -414,13 +423,41 @@ test_results = lapply(train_varnames, function(this_varname) {
 }) %>%
 	bind_rows(.)
 
-# Show GDP values
 test_results %>%
 	filter(., varname == 'unemp') %>%
 	select(., vdate, date, predict) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
 	arrange(., desc(vdate)) %>%
 	print(., n = 100) 
+
+## Reverse-Transform ----------------------------------------------------------
+test_results_d1 =
+	test_results %>%
+	select(., vdate, date, predict, varname) %>%
+	# Below line for testing due to speed
+	filter(., vdate >= as_date('2022-01-01')) %>%
+	group_split(., vdate, varname) %>%
+	imap(., function(x, i) {
+		
+		hist_value = filter(hist_data_d1, varname == x$varname[[1]], freq == 'm' & date == min(x$date) - months(1))$value
+
+		if (length(hist_value) != 1) {
+			stop('Error on index ', i)
+		}
+		
+		x %>%
+			mutate(., predict = undlog(predict, hist_value)) %>%
+			return(.)
+	}) %>%
+	bind_rows(.)
+
+test_results_d1 %>%
+	filter(., varname == 'unemp') %>%
+	select(., vdate, date, predict) %>%
+	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
+	arrange(., desc(vdate)) %>%
+	print(., n = 100)  %>% 
+	View(.)
 
 # Finalize ----------------------------------------------------------
 
