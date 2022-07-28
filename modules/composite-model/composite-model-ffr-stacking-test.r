@@ -48,43 +48,117 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'
 # Import Test Backdates ----------------------------------------------------------
 
 ## Import Historical Data ----------------------------------------------------------
-hist_data_monthly = tbl(db, sql(
-	"SELECT val.varname, val.vdate, val.date, val.value, val.freq
-	FROM forecast_hist_values val
-	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'"
-)) %>%
-	collect(.) %>%
-	# Only keep initial release for each historical value
-	# This results in date being the unique row identifier
-	group_by(., varname, date) %>%
-	filter(., vdate == min(vdate)) %>%
-	ungroup(.) %>%
-	arrange(., varname, date)
-
-hist_data_quarterly = 
-	hist_data_monthly %>%
-	group_by(., varname, date = quarter(date, type = 'date_first')) %>%
-	summarize(., vdate = max(vdate), value = mean(value), n = n(), .groups = 'drop') %>%
-	filter(., n == 3) %>%
-	select(., -n) %>%
-	mutate(., freq = 'q') 
-
-hist_data = bind_rows(hist_data_monthly, hist_data_quarterly)
+local({
+	
+	hist_data_monthly_d1 = tbl(db, sql(
+		"SELECT val.varname, val.vdate, val.date, val.value, val.freq
+		FROM forecast_hist_values val
+		INNER JOIN forecast_variables v ON v.varname = val.varname
+		WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'"
+		)) %>%
+		collect(.) %>%
+		# Only keep initial release for each historical value
+		# This results in date being the unique row identifier
+		group_by(., varname, date) %>%
+		filter(., vdate == min(vdate)) %>%
+		ungroup(.) %>%
+		arrange(., varname, date)
+	
+	hist_data_quarterly_d1 = 
+		hist_data_monthly_d1 %>%
+		mutate(., date = quarter(date, type = 'date_first')) %>%
+		group_by(., varname, date) %>%
+		summarize(., vdate = max(vdate), value = mean(value), n = n(), .groups = 'drop') %>%
+		filter(., n == 3) %>%
+		select(., -n) %>%
+		mutate(., freq = 'q') 
+	
+	# Apply stationary transformations
+	# TBD: see composite-model-get--hist for significantly faster & more memory-efficient stationary transforms
+	hist_data_monthly = 
+		hist_data_monthly_d1 %>%
+		group_split(., freq, varname) %>%
+		map_dfr(., function(x)
+			x %>%
+				arrange(., date) %>%
+				mutate(., value = dlog(value)) %>%
+				tail(., -1) 
+		)
+	
+	hist_data_quarterly = 
+		hist_data_quarterly_d1 %>%
+		group_split(., freq, varname) %>%
+		map_dfr(., function(x)
+			x %>%
+				arrange(., date) %>%
+				mutate(., value = dlog(value)) %>%
+				tail(., -1) 
+		)
+	
+	hist_data_d1 = bind_rows(hist_data_quarterly_d1, hist_data_monthly_d1)
+	hist_data = bind_rows(hist_data_quarterly, hist_data_monthly)
+	
+	hist_data_d1 <<- hist_data_d1
+	hist_data <<- hist_data
+})
 
 ## Import Forecasts ----------------------------------------------------------
-forecast_data = tbl(db, sql(
-	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value, val.freq
-	FROM forecast_values val
-	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'"
-	)) %>%
-	collect(.)
+local({
+		
+	forecast_data_d1 = tbl(db, sql(str_glue(
+		"SELECT val.varname, val.forecast, val.vdate, val.date, val.value, val.freq
+		FROM forecast_values val
+		INNER JOIN forecast_variables v ON v.varname = val.varname
+		WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'
+		AND vdate >= '{TRAIN_VDATE_START}'"
+		))) %>%
+		collect(.)
+	
+	## Stationary Transformers
+	forecast_data =
+		forecast_data_d1 %>%
+		group_split(., varname, vdate, freq) %>%
+		imap(., function(x, i) {
+			
+			x_freq = x$freq[[1]]
+			x_varname = x$varname[[1]]
+			
+			hist_bind =
+				hist_data_d1 %>%
+				filter(
+					.,
+					date == min(x$date) - {if (x_freq == 'q') months(3) else months(1)},
+					freq == x_freq,
+					varname == x_varname
+					)
+			
+			if (nrow(hist_bind) != 1) {
+				message('Error on iteration ', i)
+				return(NULL)
+			}
+			
+			bind_rows(hist_bind, x) %>%
+				mutate(., value = dlog(value)) %>%
+				tail(., -1) %>%
+				return(.)
+		})
 
-## Import Forecasts ----------------------------------------------------------
-release_data =
-	tibble(date = seq(from = as_date('2015-01-01'), to = ceiling_date(today(), 'month') + years(10), by = '1 month')) %>%
-	mutate(., release_date = date)
+	forecast_data_d1 <<- forecast_data_d1
+	forecast_data <<- forecast_data
+})
+
+## Import Release Schedule ----------------------------------------------------------
+local({
+	
+	# We can guess release times that are upcoming
+	# This will be later used to determine which releases are upcoming but not yet released
+	
+	release_data =
+		tibble(date = seq(from = as_date('2015-01-01'), to = ceiling_date(today(), 'month') + years(10), by = '1 month')) %>%
+		mutate(., release_date = date)
+	
+	release_data <<- release_data
+})
 
 # Additional Models ----------------------------------------------------------
 
