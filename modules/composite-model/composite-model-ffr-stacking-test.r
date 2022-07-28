@@ -83,7 +83,7 @@ local({
 		map_dfr(., function(x)
 			x %>%
 				arrange(., date) %>%
-				mutate(., value = dlog(value)) %>%
+				mutate(., value = diff1(value)) %>%
 				tail(., -1) 
 		)
 	
@@ -93,7 +93,7 @@ local({
 		map_dfr(., function(x)
 			x %>%
 				arrange(., date) %>%
-				mutate(., value = dlog(value)) %>%
+				mutate(., value = diff1(value)) %>%
 				tail(., -1) 
 		)
 	
@@ -112,7 +112,8 @@ local({
 		FROM forecast_values val
 		INNER JOIN forecast_variables v ON v.varname = val.varname
 		WHERE v.varname IN ({v}) AND freq IN ('m', 'q') AND form = 'd1'
-		AND vdate >= '{TRAIN_VDATE_START}'",
+			AND vdate >= '{TRAIN_VDATE_START}'
+		ORDER BY val.varname, val.vdate, val.date",
 		v = paste0(paste0('\'', VARNAMES, '\''), collapse = ',')
 		))) %>%
 		collect(.)
@@ -137,19 +138,18 @@ local({
 			
 			if (nrow(hist_bind) != 1) {
 				message('Error on iteration ', i)
+				print(x)
 				return(NULL)
 			}
 			
 			bind_rows(hist_bind, x) %>%
-				mutate(., value = dlog(value)) %>%
+				arrange(., date) %>%
+				mutate(., value = diff1(value)) %>%
 				tail(., -1) %>%
 				return(.)
-		})
-	
-	#%>%
-
-		#		compact(.) %>%
-		#bind_rows(.)
+		}) %>%
+		compact(.) %>%
+		bind_rows(.)
 
 	forecast_data_d1 <<- forecast_data_d1
 	forecast_data <<- forecast_data
@@ -356,7 +356,7 @@ test_data =
 ## Train Model ----------------------------------------------------------
 train_varnames =
 	# unique(hist_data$varname)
-	c('unemp', 'lfpr')
+	VARNAMES
 
 trees = lapply(train_varnames, function(this_varname) {
 	
@@ -435,7 +435,7 @@ test_results_d1 =
 	test_results %>%
 	select(., vdate, date, predict, varname) %>%
 	# Below line for testing due to speed
-	filter(., vdate >= as_date('2022-01-01')) %>%
+	filter(., vdate >= today()) %>%
 	group_split(., vdate, varname) %>%
 	imap(., function(x, i) {
 		
@@ -446,13 +446,13 @@ test_results_d1 =
 		}
 		
 		x %>%
-			mutate(., predict = undlog(predict, hist_value)) %>%
+			mutate(., predict = undiff(predict, 1, hist_value)) %>%
 			return(.)
 	}) %>%
 	bind_rows(.)
 
 test_results_d1 %>%
-	filter(., varname == 'unemp') %>%
+	filter(., varname == 'ffr') %>%
 	select(., vdate, date, predict) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
 	arrange(., desc(vdate)) %>%
