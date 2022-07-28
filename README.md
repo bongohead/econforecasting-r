@@ -26,6 +26,7 @@ gantt
 - Added various ad-hoc request fulfillments as well as initial confidence interval generation script
 - Added initial scaffolding for recession probability index
 - Added Pytorch migration of data scorer
+- Added labor force (unemp, lfpr) test stacking composite model
 - Fixed bug related to ALFRED 2000 vintage date limit
 - TBD: Add TD Forecasts
 
