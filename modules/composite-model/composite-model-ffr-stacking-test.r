@@ -48,11 +48,11 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'
 # Import Test Backdates ----------------------------------------------------------
 
 ## Import Historical Data ----------------------------------------------------------
-hist_data = tbl(db, sql(
-	"SELECT val.varname, val.vdate, val.date, val.value
+hist_data_monthly = tbl(db, sql(
+	"SELECT val.varname, val.vdate, val.date, val.value, val.freq
 	FROM forecast_hist_values val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE v.varname IN ('ffr', 'sofr') AND freq IN 'm' AND form = 'd1'"
+	WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'"
 )) %>%
 	collect(.) %>%
 	# Only keep initial release for each historical value
@@ -62,13 +62,23 @@ hist_data = tbl(db, sql(
 	ungroup(.) %>%
 	arrange(., varname, date)
 
+hist_data_quarterly = 
+	hist_data_monthly %>%
+	group_by(., varname, date = quarter(date, type = 'date_first')) %>%
+	summarize(., vdate = max(vdate), value = mean(value), n = n(), .groups = 'drop') %>%
+	filter(., n == 3) %>%
+	select(., -n) %>%
+	mutate(., freq = 'q') 
+
+hist_data = bind_rows(hist_data_monthly, hist_data_quarterly)
+
 ## Import Forecasts ----------------------------------------------------------
 forecast_data = tbl(db, sql(
-	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value
+	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value, val.freq
 	FROM forecast_values val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE v.varname IN ('ffr', 'sofr') AND freq IN ('m', 'q') AND form = 'd1'"
-)) %>%
+	WHERE v.varname IN ('unemp', 'lfpr') AND freq IN ('m', 'q') AND form = 'd1'"
+	)) %>%
 	collect(.)
 
 ## Import Forecasts ----------------------------------------------------------
@@ -78,9 +88,9 @@ release_data =
 
 # Additional Models ----------------------------------------------------------
 
-## Prep Data ----------------------------------------------------------
+## Prep Data (Monthly) ----------------------------------------------------------
 model_data =
-	hist_data %>%
+	hist_data_monthly %>%
 	as.data.table(.) %>%
 	split(., by = c('varname')) %>%
 	lapply(., function(x)  {
@@ -131,7 +141,8 @@ arima_forecasts =
 		)
 	}) %>%
 	rbindlist(.) %>%
-	.[, forecast := 'arima']
+	.[, forecast := 'arima'] %>%
+	.[, freq := 'm']
 
 ## Constant Forecasts (Monthly) ----------------------------------------------------------
 constant_forecasts =
@@ -150,7 +161,8 @@ constant_forecasts =
 		)
 	}) %>%
 	rbindlist(.) %>%
-	.[, forecast := 'constant']
+	.[, forecast := 'constant'] %>%
+	.[, freq := 'm']
 
 ## MA Forecasts (Monthly) ----------------------------------------------------------
 ma_forecasts =
@@ -169,7 +181,8 @@ ma_forecasts =
 		)
 	}) %>%
 	rbindlist(.) %>%
-	.[, forecast := 'ma']
+	.[, forecast := 'ma'] %>%
+	.[, freq := 'm']
 
 
 forecast_data_final = bind_rows(forecast_data, arima_forecasts, constant_forecasts, ma_forecasts)
@@ -188,7 +201,7 @@ train_data =
 	merge(
 		as.data.table(forecast_data_final),
 		rename(as.data.table(hist_data), hist_vdate = vdate, hist_value = value),
-		by = c('varname', 'date'),
+		by = c('varname', 'date', 'freq'),
 		all = FALSE,
 		allow.cartesian = TRUE
 	) %>%
@@ -229,7 +242,7 @@ test_data =
 	anti_join(
 		inner_join(forecast_data_final, release_data, by = 'date'),
 		rename(hist_data, hist_vdate = vdate, hist_value = value),
-		by = c('varname', 'date')
+		by = c('varname', 'date', 'freq')
 	) %>%
 	filter(., date >= '2015-01-01') %>%
 	mutate(., days_before_release = as.numeric(release_date - vdate)) %>%
@@ -260,7 +273,7 @@ test_data =
 ## Train Model ----------------------------------------------------------
 train_varnames =
 	# unique(hist_data$varname)
-	c('ffr', 'sofr')
+	c('unemp', 'lfpr')
 
 trees = lapply(train_varnames, function(this_varname) {
 	
@@ -276,15 +289,15 @@ trees = lapply(train_varnames, function(this_varname) {
 			transmute(
 				.,
 				days_before_release = ifelse(days_before_release >= 1000, 1000, days_before_release),
-				arima, cb, cbo, constant, fnma, int, ma, now, wsj
+				arima, cb, cbo, constant, fnma, ma, now, spf, wsj
 			) %>%
 			as.matrix(.),
 		label = input_data$hist_value,
 		verbose = 2,
-		max_depth = 5,
+		max_depth = 10,
 		print_every_n = 50,
 		nthread = 4,
-		nrounds = 200,
+		nrounds = 500,
 		objective = 'reg:squarederror',
 		booster = 'gblinear'
 		#,
@@ -306,7 +319,7 @@ test_results = lapply(train_varnames, function(this_varname) {
 		predict(
 			trees[[this_varname]],
 			test_data[varname == this_varname] %>%
-				.[, c('days_before_release', 'arima', 'cb', 'cbo', 'constant', 'fnma', 'int', 'ma', 'now', 'wsj')] %>%
+				.[, c('days_before_release', 'arima', 'cb', 'cbo', 'constant', 'fnma', 'ma', 'now', 'spf', 'wsj')] %>%
 				.[, days_before_release := fifelse(days_before_release >= 1000, 1000, days_before_release)] %>%
 				as.matrix(.)
 		)
@@ -329,11 +342,11 @@ test_results = lapply(train_varnames, function(this_varname) {
 
 # Show GDP values
 test_results %>%
-	filter(., varname == 'ffr') %>%
+	filter(., varname == 'unemp') %>%
 	select(., vdate, date, predict) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
 	arrange(., desc(vdate)) %>%
-	print(., n = 100)
+	print(., n = 100) 
 
 # Finalize ----------------------------------------------------------
 
