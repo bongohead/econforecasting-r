@@ -6,6 +6,7 @@
 JOB_NAME = 'composite-model-stacking'
 EF_DIR = Sys.getenv('EF_DIR')
 TRAIN_VDATE_START = '2010-01-01'
+VARNAMES = c('gdp', 'pce', 'pdi')
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -276,17 +277,15 @@ test_data =
 
 
 ## Train Model ----------------------------------------------------------
-train_varnames =
-	# unique(hist_data$varname)
-	c('gdp', 'pce')
+train_varnames = VARNAMES
 
 trees = lapply(train_varnames, function(this_varname) {
 
 	input_data =
 		train_data %>%
 		.[varname == this_varname] %>%
-		# .[!year(date) %in% c(2020)]
-		.[!date %in% as_date(c('2020-04-01', '2020-07-01'))]
+		.[!year(date) %in% c(2020)]
+		# .[!date %in% as_date(c('2020-04-01', '2020-07-01'))]
 
 	tree = xgboost::xgboost(
 		data =
@@ -294,19 +293,21 @@ trees = lapply(train_varnames, function(this_varname) {
 			transmute(
 				.,
 				days_before_release = ifelse(days_before_release >= 500, 500, days_before_release),
-				arima, cbo, constant, fnma, ma, now, spf, wsj
+				arima, cbo,
+				constant,
+				fnma, ma, now, spf, wsj
 			) %>%
 			as.matrix(.),
 		label = input_data$hist_value,
 		verbose = 2,
-		max_depth = 10,
+		max_depth = 6,
+		learning_rate = .5,
 		print_every_n = 50,
-		nthread = 4,
-		nrounds = 200,
+		nthread = 6,
+		nrounds = 500,
 		objective = 'reg:squarederror',
-		booster = 'gblinear'
-		#,
-		# monotone_constraints = '(0,1,1,1,1,1,1)'
+		booster = 'gbtree',
+		monotone_constraints = c(0, 1, 1, 0, 1, 1, 1)
 		)
 
 	return(tree)
@@ -324,7 +325,12 @@ test_results = lapply(train_varnames, function(this_varname) {
 		predict(
 			trees[[this_varname]],
 			test_data[varname == this_varname] %>%
-				.[, c('days_before_release', 'arima', 'cbo', 'constant', 'fnma', 'ma', 'now', 'spf', 'wsj')] %>%
+				.[, c(
+						'days_before_release',
+						'arima', 'cbo',
+						'constant',
+						'fnma', 'ma', 'now', 'spf', 'wsj'
+						)] %>%
 				.[, days_before_release := fifelse(days_before_release >= 500, 500, days_before_release)] %>%
 				as.matrix(.)
 			)
@@ -351,7 +357,7 @@ test_results %>%
 	select(., vdate, date, predict) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
 	arrange(., desc(vdate)) %>%
-	print(., n = 100)
+	print(., n = 200)
 
 # Finalize ----------------------------------------------------------
 
