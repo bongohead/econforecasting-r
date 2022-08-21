@@ -27,10 +27,12 @@ gantt
 - Added initial scaffolding for recession probability index
 - Added Pytorch migration of data scorer
 - Added labor force (unemp, lfpr) test stacking composite model
+- Added import of GDPNow, St. Louis Fed nowcast, NY Fed nowcast
 - Fixed bug related to ALFRED 2000 vintage date limit
 - TBD: Add TD Forecasts
+- TBD: Add nowcasts to composite model calculation
 
-## [v1.02] (Sentiment Index Improvements)
+## [v1.02] (Sentiment Index Improvements) (2022-06-01)
 - Added initial detailed labor market modeling
 - Added labor market subindex integration with main index
 - Added websocket test scraper for futures rates
