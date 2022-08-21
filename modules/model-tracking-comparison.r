@@ -62,6 +62,15 @@ hist_data = tbl(db, sql(
 	arrange(., varname, date)
 
 # Only get forecasts data for when date is < ahead of vdate
+forecast_data = tbl(db, sql(
+	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value
+	FROM forecast_values val
+	INNER JOIN forecast_variables v ON v.varname = val.varname
+	WHERE form = 'd1'
+		AND date <= vdate + INTERVAL '12 MONTHS' AND date >= vdate + INTERVAL '6 MONTHS'"
+	)) %>%
+	collect(.)
+
 forecast_data_1m_3m = tbl(db, sql(
 	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value
 	FROM forecast_values val
@@ -108,4 +117,20 @@ performance_data =
 		x %>%
 			pivot_wider(., id_cols = forecast, names_from = year_vdate, values_from = mae)
 	)
-			
+
+
+
+joined_data %>%
+	group_by(varname, forecast, date) %>%
+	na.omit(.) %>%
+	summarize(., mae = mean(error), n = n(), .groups = 'drop') %>%
+	filter(., n >= 4) %>%
+	group_split(., varname) %>%
+	set_names(., map_chr(., ~ .$varname[[1]])) %>%
+	lapply(., function(x) 
+		x %>%
+			pivot_wider(., id_cols = forecast, names_from = date, values_from = mae)
+	) %>% 
+	.$gdp
+
+
