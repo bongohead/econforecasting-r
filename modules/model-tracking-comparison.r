@@ -1,5 +1,5 @@
 #' This gets historical data for website
-	
+
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
@@ -113,7 +113,7 @@ performance_data =
 	filter(., n >= 4) %>%
 	group_split(., varname) %>%
 	set_names(., map_chr(., ~ .$varname[[1]])) %>%
-	lapply(., function(x) 
+	lapply(., function(x)
 		x %>%
 			pivot_wider(., id_cols = forecast, names_from = year_vdate, values_from = mae)
 	)
@@ -127,10 +127,10 @@ joined_data %>%
 	filter(., n >= 4) %>%
 	group_split(., varname) %>%
 	set_names(., map_chr(., ~ .$varname[[1]])) %>%
-	lapply(., function(x) 
+	lapply(., function(x)
 		x %>%
 			pivot_wider(., id_cols = forecast, names_from = date, values_from = mae)
-	) %>% 
+	) %>%
 	.$gdp
 
 
