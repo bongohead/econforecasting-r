@@ -2,6 +2,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'model-tracking-comparison-gdp'
 EF_DIR = Sys.getenv('EF_DIR')
+VARIABLES = c('gdp', 'pce')
 
 ## Log Job ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -37,14 +38,16 @@ db = dbConnect(
 # Analysis ------------------------------------------------------------------
 
 ## Get GDP Release Dates ---------------------------------------------------
-hist_data = collect(tbl(db, sql(
+variables_str = paste0(paste0('\'', VARIABLES, '\''), collapse = ',')
+
+hist_data = collect(tbl(db, sql(str_glue(
 		"SELECT val.varname, val.vdate, val.date, val.value
 		FROM forecast_hist_values val
 		INNER JOIN forecast_variables v ON v.varname = val.varname
 		WHERE
 			form = 'd1'
-			AND v.varname = 'gdp'"
-	))) %>%
+			AND v.varname IN ({variables_str})"
+	)))) %>%
 	group_by(., date) %>%
 	{inner_join(
 		filter(., vdate == min(vdate)) %>% transmute(., date, varname, first_hist_vdate = vdate, first_hist_value = value),
@@ -55,16 +58,18 @@ hist_data = collect(tbl(db, sql(
 	arrange(., date)
 
 # Only get forecasts data for when date is < ahead of vdate
-forecast_data = collect(tbl(db, sql(
+forecast_data = collect(tbl(db, sql(str_glue(
 	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value
 	FROM forecast_values val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
 	WHERE
 		form = 'd1'
 		AND date <= vdate + INTERVAL '24 MONTHS' --AND date >= vdate + INTERVAL '1 MONTHS'
-		AND v.varname = 'gdp'
+		AND v.varname IN ({variables_str})
 		AND vdate > '2018-01-01'"
-	)))
+	))))
+
+forecasts = collect(tbl(db, sql('SELECT * FROM forecasts')))
 
 
 ## Compare ---------------------------------------------------
@@ -74,10 +79,19 @@ joined_data =
 	filter(., vdate <= first_hist_vdate) %>%
 	mutate(
 		.,
+		days_before_release = as.numeric(interval(vdate, first_hist_vdate), 'days'),
+		time_before_release = case_when(
+			days_before_release <= 3 * 30 ~ '0_to_90_days',
+			days_before_release <= 12 * 30 ~ '91_to_360_days',
+			days_before_release <= 36 * 30 ~ '360_to_1080_days',
+			TRUE ~ '1081_days_plus'
+		),
 		year_vdate = year(vdate),
 		error = abs(first_hist_value - value),
 		percentage_error = abs(error/first_hist_value)
-	)
+	) %>%
+	inner_join(., forecasts[, c('id', 'fullname')], by = c('forecast' = 'id')) %>%
+	mutate(., forecastname = fullname)
 
 
 # performance_data =
@@ -93,22 +107,61 @@ joined_data =
 # 			pivot_wider(., id_cols = forecast, names_from = vdate, values_from = mae)
 # 	)
 
-selected_varname = 'gdp'
+# selected_varname = 'gdp'
+
+
+
+temp_dir = tempdir()
+metrics_dir = fs::dir_create(file.path(temp_dir, 'metrics'))
 
 joined_data %>%
-	filter(., varname == selected_varname) %>%
-	group_by( forecast, date) %>%
-	na.omit(.) %>%
-	summarize(
+	transmute(
 		.,
-		mae = mean(error),
-		mape = mean(percentage_error),
-		n_forecasts = n(),
-		.groups = 'drop'
+		varname,
+		forecastname,
+		forecast_id = forecast,
+		obs_date = date,
+		forecast_release_date = vdate,
+		forecast_value = value,
+		realized_value = first_hist_vdate,
+		realized_release_date = first_hist_vdate,
+		error,
+		percentage_error
 		) %>%
-	filter(., n_forecasts >= 1) %>%
-	pivot_wider(., id_cols = date, names_from = forecast, values_from = mae) %>%
-	arrange(., date)
+	arrange(., varname, obs_date) %>%
+	write_csv(., file.path(metrics_dir, 'all_forecasts_flat.csv'))
+
+
+joined_data %>%
+	# filter(., varname == selected_varname) %>%
+	group_by(., varname, time_before_release) %>%
+	group_split(.) %>%
+	lapply(., function(x) {
+
+		print(x$time_before_release[[1]])
+
+		df =
+			x %>%
+			group_by( forecastname, date, first_hist_vdate) %>%
+			na.omit(.) %>%
+			summarize(
+				.,
+				MAE = mean(error),
+				MAPE = mean(percentage_error),
+				n_forecasts = n(),
+				.groups = 'drop'
+				) %>%
+			filter(., n_forecasts >= 1) %>%
+			pivot_wider(., id_cols = c(date, first_hist_vdate), names_from = forecastname, values_from = c(MAE, MAPE), names_sep = ' - ') %>%
+			arrange(., date) %>%
+			rename(., 'Obs Date' = date, 'Release Date' = first_hist_vdate)
+
+		write_csv(df, file.path(metrics_dir, paste0('error_by_obs_quarter_for_', x$varname[[1]], '_forecasts_', x$time_before_release[[1]], '_before_release_date.csv')))
+
+		})
+
+
+
 
 joined_data %>%
 	filter(., date <= vdate)
