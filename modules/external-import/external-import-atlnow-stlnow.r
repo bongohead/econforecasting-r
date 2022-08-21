@@ -1,6 +1,6 @@
 # Initialize ----------------------------------------------------------
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'external-import-atl-nyf'
+JOB_NAME = 'external-import-atlnow-stlnow'
 EF_DIR = Sys.getenv('EF_DIR')
 
 ## Log Job ----------------------------------------------------------
@@ -86,40 +86,40 @@ local({
 	fred_data <<- fred_data
 })
 
-## Get NYF Forecasts ---------------------------------------------------
-local({
-
-	nyf_url = 'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx?la=en'
-	download.file(nyf_url, file.path(tempdir(), 'nyfnow.xlsx'), mode = 'wb', quiet = TRUE)
-
-	nyf_data =
-		readxl::read_excel(file.path(tempdir(), 'nyfnow.xlsx'), sheet = 2, skip = 13) %>%
-		rename(., vdate = 1) %>%
-		mutate(., vdate = as_date(vdate)) %>%
-		pivot_longer(., -vdate, names_to = 'date', values_to = 'value', values_drop_na = T) %>%
-		mutate(., date = from_pretty_date(date, 'q')) %>%
-		filter(., date >= as_date('2020-01-01')) %>%
-		transmute(
-			.,
-			forecast = 'nyfnow',
-			form = 'd1',
-			freq = 'q',
-			varname = 'gdp',
-			vdate,
-			date,
-			value
-			)
-
-	nyf_data <<- nyf_data
-})
+# ## Get NYF Forecasts ---------------------------------------------------
+# local({
+#
+# 	nyf_url = 'https://www.newyorkfed.org/medialibrary/media/research/policy/nowcast/new-york-fed-staff-nowcast_data_2002-present.xlsx?la=en'
+# 	download.file(nyf_url, file.path(tempdir(), 'nyfnow.xlsx'), mode = 'wb', quiet = TRUE)
+#
+# 	nyf_data =
+# 		readxl::read_excel(file.path(tempdir(), 'nyfnow.xlsx'), sheet = 2, skip = 13) %>%
+# 		rename(., vdate = 1) %>%
+# 		mutate(., vdate = as_date(vdate)) %>%
+# 		pivot_longer(., -vdate, names_to = 'date', values_to = 'value', values_drop_na = T) %>%
+# 		mutate(., date = from_pretty_date(date, 'q')) %>%
+# 		filter(., date >= as_date('2020-01-01')) %>%
+# 		transmute(
+# 			.,
+# 			forecast = 'nyfnow',
+# 			form = 'd1',
+# 			freq = 'q',
+# 			varname = 'gdp',
+# 			vdate,
+# 			date,
+# 			value
+# 			)
+#
+# 	nyf_data <<- nyf_data
+# })
 
 
 ## Join and Validate ---------------------------------------------------
 local({
 
 	raw_data = bind_rows(
-		fred_data,
-		nyf_data
+		fred_data
+		# nyf_data
 	)
 
 	raw_data %>%
