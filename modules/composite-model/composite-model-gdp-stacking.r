@@ -306,7 +306,7 @@ trees = lapply(train_varnames, function(this_varname) {
 		nthread = 6,
 		nrounds = 500,
 		objective = 'reg:squarederror',
-		booster = 'gbtree',
+		booster = 'gblinear',
 		monotone_constraints = c(0, 1, 1, 0, 1, 1, 1)
 		)
 

@@ -53,7 +53,9 @@ local({
 		'ffr', 'Fed Funds (%, Mid-point, Period End)'
 		) %>%
 		mutate(., fullname = str_to_lower(fullname))
-		
+	
+	httr::set_config(config(ssl_verifypeer = FALSE))
+	
 	html_content =
 		GET('https://www.conference-board.org/research/us-forecast/us-forecast') %>%
 		content(.)
