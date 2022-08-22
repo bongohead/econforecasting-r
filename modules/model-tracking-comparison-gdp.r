@@ -64,7 +64,7 @@ forecast_data = collect(tbl(db, sql(str_glue(
 	INNER JOIN forecast_variables v ON v.varname = val.varname
 	WHERE
 		form = 'd1'
-		AND date <= vdate + INTERVAL '24 MONTHS' --AND date >= vdate + INTERVAL '1 MONTHS'
+		AND date <= vdate + INTERVAL '60 MONTHS' --AND date >= vdate + INTERVAL '1 MONTHS'
 		AND v.varname IN ({variables_str})
 		AND vdate > '2018-01-01'"
 	))))
@@ -113,7 +113,7 @@ joined_data =
 
 temp_dir = tempdir()
 metrics_dir = fs::dir_create(file.path(temp_dir, 'metrics'))
-
+print(metrics_dir)
 joined_data %>%
 	transmute(
 		.,
@@ -129,6 +129,7 @@ joined_data %>%
 		percentage_error
 		) %>%
 	arrange(., varname, obs_date) %>%
+	mutate(., obs_date = to_pretty_date(obs_date, 'q')) %>%
 	write_csv(., file.path(metrics_dir, 'all_forecasts_flat.csv'))
 
 
@@ -154,6 +155,7 @@ joined_data %>%
 			filter(., n_forecasts >= 1) %>%
 			pivot_wider(., id_cols = c(date, first_hist_vdate), names_from = forecastname, values_from = c(MAE, MAPE), names_sep = ' - ') %>%
 			arrange(., date) %>%
+			mutate(., date = to_pretty_date(date, 'q')) %>%
 			rename(., 'Obs Date' = date, 'Release Date' = first_hist_vdate)
 
 		write_csv(df, file.path(metrics_dir, paste0('error_by_obs_quarter_for_', x$varname[[1]], '_forecasts_', x$time_before_release[[1]], '_before_release_date.csv')))
@@ -162,35 +164,35 @@ joined_data %>%
 
 
 
-
-joined_data %>%
-	filter(., date <= vdate)
-	group_by(varname, forecast, date) %>%
-	na.omit(.) %>%
-	summarize(
-		.,
-		mae = mean(error),
-		mape = mean(percentage_error),
-		n_forecasts = n(),
-		.groups = 'drop'
-	) %>%
-	filter(., n_forecasts >= 1) %>%
-	group_split(., varname) %>%
-	set_names(., map_chr(., ~ .$varname[[1]]))
-
-
-pf_data = performance_data$gdp
-
-
-# All dates
-pf_data %>%
-	pivot_wider(., id_cols = date, names_from = forecast, values_from = mae) %>%
-	arrange(., date)
-
-
-pf_data %>%
-	filter(., date <= vdate + months(1)) %>%
-	pivot_wider(., id_cols = date, names_from = forecast, values_from = mae) %>%
-	arrange(., date)
+#
+# joined_data %>%
+# 	filter(., date <= vdate)
+# 	group_by(varname, forecast, date) %>%
+# 	na.omit(.) %>%
+# 	summarize(
+# 		.,
+# 		mae = mean(error),
+# 		mape = mean(percentage_error),
+# 		n_forecasts = n(),
+# 		.groups = 'drop'
+# 	) %>%
+# 	filter(., n_forecasts >= 1) %>%
+# 	group_split(., varname) %>%
+# 	set_names(., map_chr(., ~ .$varname[[1]]))
+#
+#
+# pf_data = performance_data$gdp
+#
+#
+# # All dates
+# pf_data %>%
+# 	pivot_wider(., id_cols = date, names_from = forecast, values_from = mae) %>%
+# 	arrange(., date)
+#
+#
+# pf_data %>%
+# 	filter(., date <= vdate + months(1)) %>%
+# 	pivot_wider(., id_cols = date, names_from = forecast, values_from = mae) %>%
+# 	arrange(., date)
 
 
