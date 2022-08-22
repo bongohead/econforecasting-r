@@ -284,30 +284,40 @@ trees = lapply(train_varnames, function(this_varname) {
 	input_data =
 		train_data %>%
 		.[varname == this_varname] %>%
-		.[!year(date) %in% c(2020)]
-		# .[!date %in% as_date(c('2020-04-01', '2020-07-01'))]
+		# .[!year(date) %in% c(2020)]
+		.[!date %in% as_date(c('2020-04-01', '2020-07-01', '2020-10-01'))]
+
+	input_matrix =
+		input_data %>%
+		transmute(
+			.,
+			days_before_release = ifelse(days_before_release >= 360, 360, days_before_release),
+			arima,
+			atlnow,
+			# cb,
+			cbo,
+			constant,
+			fnma,
+			ma,
+			now,
+			spf,
+			stlnow,
+			wsj
+		) %>%
+		as.matrix(.)
 
 	tree = xgboost::xgboost(
-		data =
-			input_data %>%
-			transmute(
-				.,
-				days_before_release = ifelse(days_before_release >= 500, 500, days_before_release),
-				arima, cbo,
-				constant,
-				fnma, ma, now, spf, wsj
-			) %>%
-			as.matrix(.),
+		data = input_matrix,
 		label = input_data$hist_value,
 		verbose = 2,
-		max_depth = 6,
+		max_depth = 4,
 		learning_rate = .5,
 		print_every_n = 50,
 		nthread = 6,
-		nrounds = 500,
+		nrounds = 200,
 		objective = 'reg:squarederror',
-		booster = 'gbtree',
-		monotone_constraints = c(0, 1, 1, 0, 1, 1, 1)
+		booster = 'gblinear'#'gblinear', #'gbtree', #'gblinear', 'gbtree',
+		# monotone_constraints = c(0, rep(1, ncol(input_matrix) - 1))
 		)
 
 	return(tree)
@@ -325,13 +335,21 @@ test_results = lapply(train_varnames, function(this_varname) {
 		predict(
 			trees[[this_varname]],
 			test_data[varname == this_varname] %>%
-				.[, c(
+				select(
 						'days_before_release',
-						'arima', 'cbo',
+						'arima',
+						'atlnow',
+						# 'cb',
+						'cbo',
 						'constant',
-						'fnma', 'ma', 'now', 'spf', 'wsj'
-						)] %>%
-				.[, days_before_release := fifelse(days_before_release >= 500, 500, days_before_release)] %>%
+						'fnma',
+						'ma',
+						'now',
+						'spf',
+						'stlnow',
+						'wsj'
+						) %>%
+				.[, days_before_release := fifelse(days_before_release >= 360, 360, days_before_release)] %>%
 				as.matrix(.)
 			)
 
@@ -351,13 +369,31 @@ test_results = lapply(train_varnames, function(this_varname) {
 	}) %>%
 	bind_rows(.)
 
+# Simply average across existing data
+test_results =
+	test_data %>%
+	filter(., varname %in% train_varnames) %>%
+	filter(., !is.na(constant)) %>%
+	# mutate(., across(-c(varname, date, release_date, days_before_release), function(x) ifelse(is.na(x), constant, x))) %>%
+	melt(
+		.,
+		id.vars = c('varname', 'date', 'release_date', 'days_before_release'),
+		variable.name = 'forecast',
+		value.name = 'value',
+		na.rm = TRUE
+		) %>%
+	.[, list(predict = mean(value)), by = list(varname, date, release_date, days_before_release)] %>%
+	.[, vdate := release_date - days_before_release] %>%
+	.[vdate <= today()]
+
 # Show GDP values
 test_results %>%
 	filter(., varname == 'gdp') %>%
 	select(., vdate, date, predict) %>%
+	arrange(., date, vdate) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
 	arrange(., desc(vdate)) %>%
-	print(., n = 200)
+	print(., n = 500)
 
 # Finalize ----------------------------------------------------------
 
