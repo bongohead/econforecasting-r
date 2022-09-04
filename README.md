@@ -19,7 +19,10 @@ gantt
       Sentiment Model Web Page Setup      :5/8/22, 5/15/22
       Sentiment Model Release       :5/15/22, 5/15/22
 ```
-## [v1.03] 
+## [v1.04] 
+- Fixed bug related to einf forecasts missing latest vintage
+
+## [v1.03] (Misc Forecast Additions) (2022-08-28)
 - Added Conference Board forecasts
 - Added websocket test scraper for futures rates
 - Added barchart scraper for backfilling missing futures data
@@ -29,8 +32,6 @@ gantt
 - Added labor force (unemp, lfpr) test stacking composite model
 - Added import of GDPNow, St. Louis Fed nowcast, NY Fed nowcast
 - Fixed bug related to ALFRED 2000 vintage date limit
-- TBD: Add TD Forecasts
-- TBD: Add nowcasts to composite model calculation
 
 ## [v1.02] (Sentiment Index Improvements) (2022-06-01)
 - Added initial detailed labor market modeling
