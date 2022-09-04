@@ -10,9 +10,6 @@ This code is developed locally on a Windows machine and deployed locally to an U
 
 # CHANGELOG
 
-
-
-
 ## [v1.04] 
 - Fixed bug related to einf forecasts missing latest vintage
 
