@@ -4,21 +4,15 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # RUN
 This code is developed locally on a Windows machine and deployed locally to an Ubuntu VPS. The modeling code is primarily run in R (>=4.1.2) but some scraping scripts make calls to Python (=3.8.7). Modules are imported wholesale using the `reticulate` package. Data and model features are stored in a Postgres/TimescaleDB server hosted on the VPS.
 
----
+# DB Structure 
+![PostgreSQL SQL Structure](https://raw.githubusercontent.com/cmefi/econforecasting-r/master/docs/sql-structure.png?raw=true)
+
+
 # CHANGELOG
 
-```mermaid
-gantt
-    title Recent Changes
-    dateFormat  M/D/Y
-    axisFormat  %m/%d
-    section 16. Sentiment Indices Release (v1.01)
-      Sentiment Model Exploration      :3/3/22, 4/24/22
-      Sentiment Model Scraping - FT, Reuters, Reddit/PushShift      :4/3/22, 5/8/22
-      Sentiment Model DB Setup      :5/1/22, 5/8/22
-      Sentiment Model Web Page Setup      :5/8/22, 5/15/22
-      Sentiment Model Release       :5/15/22, 5/15/22
-```
+
+
+
 ## [v1.04] 
 - Fixed bug related to einf forecasts missing latest vintage
 
@@ -256,4 +250,18 @@ This is a full model rewrite. The rewrite for the full-scale model is delayed, b
 
 ## [v0.00] (2021-01-07)
 - Added initial package setup
-- Added initial web scraping frameworks etup
+- Added initial web scraping framework setup
+
+
+```mermaid
+gantt
+    title Recent Changes
+    dateFormat  M/D/Y
+    axisFormat  %m/%d
+    section 16. Sentiment Indices Release (v1.01)
+      Sentiment Model Exploration      :3/3/22, 4/24/22
+      Sentiment Model Scraping - FT, Reuters, Reddit/PushShift      :4/3/22, 5/8/22
+      Sentiment Model DB Setup      :5/1/22, 5/8/22
+      Sentiment Model Web Page Setup      :5/8/22, 5/15/22
+      Sentiment Model Release       :5/15/22, 5/15/22
+```
