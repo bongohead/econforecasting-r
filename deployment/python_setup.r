@@ -12,8 +12,8 @@ if (!dir.exists(file.path(Sys.getenv('EF_DIR'), '.virtualenvs'))) {
 
 # On Linux, will need to install libsqlite3
 library(reticulate)
-install_python(version = "3.8.7") # Get the path and store as EF_PY set_deploy_vars_nopy.sh
-use_python_version('3.8.7')
+install_python(version = "3.9.13") # Get the path and store as EF_PY set_deploy_vars_nopy.sh
+use_python_version('3.9.13')
 virtualenv_create(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'))
 # Camelot-py and opencv for PDF parsing
 # Img2pdf for SVG parsing to PDF
@@ -28,7 +28,7 @@ lapply(c('camelot-py', 'opencv-python', 'requests', 'matplotlib', 'happytransfor
 
 # Reset
 library(reticulate)
-use_python_version('3.8.7')
+use_python_version('3.9.13')
 virtualenv_remove(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'))
 # Look for dir in py_config
 system('rm -rf /home/charles/.pyenv')

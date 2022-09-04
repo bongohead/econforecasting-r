@@ -1,3 +1,4 @@
+# Deprecated - use set_deploy_vars_nopy instead
 # --- On Windows, run this in Git Bash ---
 # Deployment
 HOSTNAME=`hostname`
