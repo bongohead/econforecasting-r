@@ -51,6 +51,21 @@ local({
 	)
 
 	# Get vintage dates for each release
+	
+	## Latest vintage date - sometime the archives page doesn't have the latest data (Aug 2022)
+	vintage_dates_0 = 
+		httr::GET(paste0(
+			'https://www.clevelandfed.org/en/our-research/',
+			'indicators-and-data/inflation-expectations.aspx'
+		)) %>%
+		httr::content(.) %>%
+		rvest::html_nodes('#RightAsideSPL > div > p') %>%
+		keep(., ~ str_detect(html_text(.), 'Last updated')) %>%
+		.[[1]] %>%
+		html_text(.) %>% 
+		str_replace(., 'Last updated', '') %>%
+		mdy(.)
+		
 	vintage_dates_1 =
 		httr::GET(paste0(
 			'https://www.clevelandfed.org/en/our-research/',
@@ -73,7 +88,8 @@ local({
 		mdy(.)
 
 	vdate_map =
-		c(vintage_dates_1, vintage_dates_2) %>%
+		c(vintage_dates_0, vintage_dates_1, vintage_dates_2) %>%
+		unique(.) %>%
 		tibble(vdate = .) %>%
 		mutate(., vdate0 = floor_date(vdate, 'months')) %>%
 		group_by(., vdate0) %>% summarize(., vdate = max(vdate)) %>%
@@ -138,7 +154,7 @@ local({
 		group_split(., vdate) %>%
 		imap_dfr(., function(x, i) {
 
-			message(str_glue('Calculating expected inflation for vintage {i}'))
+			message(str_glue('Calculating expected inflation for vintage {as_date(x$vdate[[1]])}'))
 
 			# Get last 12 historical values
 			hist_values =
@@ -206,7 +222,7 @@ local({
 })
 
 
-## Export SQL Server ------------------------------------------------------------------
+## Export to SQL ------------------------------------------------------------------
 local({
 
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
