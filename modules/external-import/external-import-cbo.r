@@ -58,7 +58,7 @@ local({
 		summarize(., release_date = min(release_date), .groups = 'drop') %>%
 		select(., release_date) %>%
 		arrange(., release_date)
-	
+
 	url_params =
 		httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
 		httr::content(., type = 'parsed') %>%
@@ -70,8 +70,8 @@ local({
 		transmute(., date = mdy(paste0(str_sub(date, 1, 3), ' 1 ' , str_sub(date, -4))), url) %>%
 		mutate(., date = as_date(date)) %>%
 		inner_join(., cbo_vintages %>% mutate(., date = floor_date(release_date, 'months')), by = 'date') %>%
-		transmute(., vdate = release_date, url)
-	
+		transmute(., vdate = release_date, url = paste0('https://www.cbo.gov', url))
+
 	cbo_params = tribble(
 		~ varname, ~ cbo_category, ~ cbo_name, ~ cbo_units,
 		'ngdp', 'Output', 'Gross Domestic Product (GDP)', 'Percentage change, annual rate',
@@ -98,15 +98,15 @@ local({
 		'unemp', 'Labor', 'Unemployment Rate, Civilian, 16 Years or Older', 'Percent',
 		'lfpr', 'Labor', 'Labor Force Participation Rate, 16 Years or Older', 'Percent'
 		)
-	
-	
+
+
 	cbo_data =
 		url_params %>%
 		purrr::transpose(.) %>%
 		imap_dfr(., function(x, i) {
-			
+
 			download.file(x$url, file.path(tempdir(), 'cbo.xlsx'), mode = 'wb', quiet = TRUE)
-			
+
 			# Not all spreadsheets start at the same row
 			skip_rows =
 				suppressMessages(readxl::read_excel(
@@ -117,7 +117,7 @@ local({
 				mutate(., idx = 1:nrow(.)) %>%
 				filter(., .[[1]] == 'Output') %>%
 				{.$idx - 1}
-			
+
 			xl =
 				suppressMessages(readxl::read_excel(
 					file.path(tempdir(), 'cbo.xlsx'),
@@ -130,7 +130,7 @@ local({
 				tidyr::fill(., cbo_category, .direction = 'down') %>%
 				tidyr::fill(., cbo_name, .direction = 'down') %>%
 				na.omit(.)
-			
+
 			xl %>%
 				inner_join(., cbo_params, by = c('cbo_category', 'cbo_name', 'cbo_units')) %>%
 				select(., -cbo_category, -cbo_name, -cbo_units) %>%
@@ -138,7 +138,7 @@ local({
 				mutate(., date = from_pretty_date(date, 'q')) %>%
 				filter(., date >= as_date(x$vdate)) %>%
 				mutate(., vdate = as_date(x$vdate))
-			
+
 		}) %>%
 		transmute(
 			.,
@@ -150,20 +150,20 @@ local({
 			date,
 			value
 		)
-	
+
 	message('Missing variables...')
 	message(cbo_params$varname %>% set_names(., .) %>% keep(., function(x) !x %in% cbo_data$varname))
-	
+
 	raw_data <<- cbo_data
 })
 
 
 ## Export SQL Server ------------------------------------------------------------------
 local({
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		raw_data %>%
 		transmute(., forecast, form, vdate, freq, varname, date, value) %>%
@@ -178,7 +178,7 @@ local({
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Rows Added: ', final_count - initial_count)
 

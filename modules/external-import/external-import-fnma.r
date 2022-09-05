@@ -55,7 +55,7 @@ local({
 		rvest::html_nodes('div.fm-accordion ul li a') %>%
 		purrr::keep(., ~ str_detect(rvest::html_text(.), 'News Release| Forecast')) %>%
 		map_dfr(., ~ tibble(
-			url = rvest::html_attr(., 'href'),
+			url = str_trim(rvest::html_attr(., 'href')),
 			type = case_when(
 				str_detect(rvest::html_text(.), 'News Release') ~ 'article',
 				str_detect(rvest::html_text(.), 'Economic Forecast') ~ 'econ_forecast',
@@ -115,7 +115,7 @@ local({
 				pages = '1',
 				flavor = 'stream',
 				# Below needed to prevent split wrapping columns correctly https://www.fanniemae.com/media/42376/display
-				column_tol = -1
+				column_tol = -2
 				#table_areas = list('100, 490, 700, 250')
 			)[0]$df %>%
 				as_tibble(.)

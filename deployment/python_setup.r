@@ -1,5 +1,5 @@
 #' Install Python, Create Virtual Environment, and Install Modules
-#' 
+#'
 #' Deployment:
 #' (1) Install and update R
 #' (2) Install package reticulate
@@ -12,7 +12,7 @@ if (!dir.exists(file.path(Sys.getenv('EF_DIR'), '.virtualenvs'))) {
 
 # On Linux, will need to install libsqlite3
 library(reticulate)
-install_python(version = "3.9.13") # Get the path and store as EF_PY set_deploy_vars_nopy.sh
+install_python(version = "3.9.13", force = T) # Get the path and store as EF_PY set_deploy_vars_nopy.sh
 use_python_version('3.9.13')
 virtualenv_create(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'))
 # Camelot-py and opencv for PDF parsing
@@ -21,7 +21,7 @@ virtualenv_create(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasti
 # Note: if Happytransformer fails on Windows, run  D:\OneDrive\__Projects\econforecasting\.virtualenvs\econforecasting\Scripts\python.exe -m pip install --upgrade pip' command
 # Socket.io
 # Removed svglib 7/5/22 - needed?
-lapply(c('camelot-py', 'opencv-python', 'requests', 'matplotlib', 'happytransformer'), function(x) 
+lapply(c('camelot-py', 'opencv-python', 'requests', 'matplotlib', 'happytransformer'), function(x)
 	virtualenv_install(file.path(Sys.getenv('EF_DIR'), '.virtualenvs', 'econforecasting'), x)
 )
 
