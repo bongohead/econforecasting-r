@@ -12,6 +12,7 @@ This code is developed locally on a Windows machine and deployed locally to an U
 
 ## [v1.04] 
 - Fixed bug related to einf forecasts missing latest vintage
+- Fixed bug caused by einf source XLS -> XLSX migration
 
 ## [v1.03] (Misc Forecast Additions) (2022-08-28)
 - Added Conference Board forecasts

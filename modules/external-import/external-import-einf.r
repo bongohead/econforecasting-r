@@ -44,9 +44,9 @@ local({
 	download.file(
 		paste0(
 			'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/',
-			'indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xls'
+			'indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xlsx'
 		),
-		file.path(tempdir(), 'inf.xls'),
+		file.path(tempdir(), 'inf.xlsx'),
 		mode = 'wb'
 	)
 
@@ -97,7 +97,7 @@ local({
 
 	# Now parse data and get inflation expectations
 	einf_final =
-		readxl::read_excel(file.path(tempdir(), 'inf.xls'), sheet = 'Expected Inflation') %>%
+		readxl::read_excel(file.path(tempdir(), 'inf.xlsx'), sheet = 'Expected Inflation') %>%
 		rename(., vdate0 = 'Model Output Date') %>%
 		pivot_longer(., -vdate0, names_to = 'ttm', values_to = 'yield') %>%
 		mutate(
