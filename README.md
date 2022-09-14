@@ -5,7 +5,7 @@ This project contains the code for data scraping, data cleaning, and modeling us
 This code is developed locally on a Windows machine and deployed locally to an Ubuntu VPS. The modeling code is primarily run in R (>=4.1.2) but some scraping scripts make calls to Python (=3.8.7). Modules are imported wholesale using the `reticulate` package. Data and model features are stored in a Postgres/TimescaleDB server hosted on the VPS.
 
 # DB Structure 
-![PostgreSQL SQL Structure](https://raw.githubusercontent.com/cmefi/econforecasting-r/master/docs/sql-structure.png?raw=true)
+![PostgreSQL SQL Structure](https://raw.githubusercontent.com/cmefi/econforecasting-r/master/docs/sql-structure.png)
 
 
 # CHANGELOG
