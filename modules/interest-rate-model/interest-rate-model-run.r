@@ -141,7 +141,7 @@ local({
 		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
 	)
 	
-	boe_data_raw = lapply(purrr::transpose(boe_keys), function(x)
+	boe_data = lapply(purrr::transpose(boe_keys), function(x)
 		httr::GET(x$url) %>%
 			httr::content(., 'parsed', encoding = 'UTF-8') %>%
 			html_node(., '#stats-table') %>%
@@ -156,7 +156,7 @@ local({
 			transmute(., varname = x$varname, freq = 'd', date, value)
 	)
 
-	 hist$afx <<- afx_data
+	 hist$boe <<- boe_data
 })
 
 
@@ -597,13 +597,31 @@ local({
 	fred_data =
 		hist$fred %>%
 		filter(., str_detect(varname, 't\\d{2}[m|y]') | varname == 'ffr')
-
+	
+	today = today('US/Eastern')
+	
 	# Monthly aggregation & append EOM with current val
 	fred_data_cat =
 		fred_data %>%
-		mutate(., date = floor_date(date, 'months')) %>%
-		group_by(., varname, date) %>%
-		summarize(., value = mean(value), .groups = 'drop')
+		mutate(., is_current_month = year(today) == year(date) & month(today) == month(date)) %>%
+		group_split(., is_current_month) %>%
+		lapply(., function(df) 
+			if (df$is_current_month[[1]] == TRUE) {
+				# If current month, use last available date
+				df %>%
+					group_by(., varname) %>%
+					filter(., date == max(date)) %>%
+					ungroup(.) %>%
+					select(., varname, date, value)
+			} else {
+				# Otherwise use monthly average for history
+				df %>%
+					mutate(., date = floor_date(date, 'months')) %>%
+					group_by(., varname, date) %>%
+					summarize(., value = mean(value), .groups = 'drop')
+			}
+		) %>%
+		bind_rows(.)
 
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yield_curve_names_map =
@@ -615,13 +633,13 @@ local({
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	hist_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		filter(., date >= add_with_rollback(today(), months(-120))) %>%
+		filter(., date >= add_with_rollback(today(), months(-60))) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
 
-	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
+	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-2)))
 
 	#' Calculate DNS fit
 	#'
