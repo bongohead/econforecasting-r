@@ -154,7 +154,12 @@ local({
 			left_join(tibble(date = seq(min(.$date), to = max(.$date), by = '1 day')), ., by = 'date') %>%
 			mutate(., value = zoo::na.locf(value)) %>%
 			transmute(., varname = x$varname, freq = 'd', date, value)
-	)
+	) %>%
+		bind_rows(.)
+	
+	
+	## Yield Curve
+	# https://www.bankofengland.co.uk/statistics/yield-curves
 
 	 hist$boe <<- boe_data
 })
