@@ -133,36 +133,36 @@ local({
 
 
 ## BOE  ----------------------------------------------------------
-local({
-
-	boe_keys = tribble(
-		~ varname, ~ url,
-		'sonia', 'https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?Travel=NIxAZxSUx&FromSeries=1&ToSeries=50&DAT=RNG&FD=1&FM=Jan&FY=2017&TD=25&TM=Sep&TY=2022&FNY=Y&CSVF=TT&html.x=66&html.y=26&SeriesCodes=IUDSOIA&UsingCodes=Y&Filter=N&title=IUDSOIA&VPD=Y',
-		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
-	)
-	
-	boe_data = lapply(purrr::transpose(boe_keys), function(x)
-		httr::GET(x$url) %>%
-			httr::content(., 'parsed', encoding = 'UTF-8') %>%
-			html_node(., '#stats-table') %>%
-			html_table(.) %>%
-			set_names(., c('date', 'value')) %>%
-			mutate(., date = dmy(date)) %>%
-			arrange(., date) %>%
-			filter(., date >= as_date('2010-01-01')) %>%
-			# Fill in missing dates
-			left_join(tibble(date = seq(min(.$date), to = max(.$date), by = '1 day')), ., by = 'date') %>%
-			mutate(., value = zoo::na.locf(value)) %>%
-			transmute(., varname = x$varname, freq = 'd', date, value)
-	) %>%
-		bind_rows(.)
-	
-	
-	## Yield Curve
-	# https://www.bankofengland.co.uk/statistics/yield-curves
-
-	 hist$boe <<- boe_data
-})
+# local({
+# 
+# 	boe_keys = tribble(
+# 		~ varname, ~ url,
+# 		'sonia', 'https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?Travel=NIxAZxSUx&FromSeries=1&ToSeries=50&DAT=RNG&FD=1&FM=Jan&FY=2017&TD=25&TM=Sep&TY=2022&FNY=Y&CSVF=TT&html.x=66&html.y=26&SeriesCodes=IUDSOIA&UsingCodes=Y&Filter=N&title=IUDSOIA&VPD=Y',
+# 		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
+# 	)
+# 	
+# 	boe_data = lapply(purrr::transpose(boe_keys), function(x)
+# 		httr::GET(x$url) %>%
+# 			httr::content(., 'parsed', encoding = 'UTF-8') %>%
+# 			html_node(., '#stats-table') %>%
+# 			html_table(.) %>%
+# 			set_names(., c('date', 'value')) %>%
+# 			mutate(., date = dmy(date)) %>%
+# 			arrange(., date) %>%
+# 			filter(., date >= as_date('2010-01-01')) %>%
+# 			# Fill in missing dates
+# 			left_join(tibble(date = seq(min(.$date), to = max(.$date), by = '1 day')), ., by = 'date') %>%
+# 			mutate(., value = zoo::na.locf(value)) %>%
+# 			transmute(., varname = x$varname, freq = 'd', date, value)
+# 	) %>%
+# 		bind_rows(.)
+# 	
+# 	
+# 	## Yield Curve
+# 	# https://www.bankofengland.co.uk/statistics/yield-curves
+# 
+# 	 hist$boe <<- boe_data
+# })
 
 
 ## Store in SQL ----------------------------------------------------------
@@ -617,7 +617,8 @@ local({
 					group_by(., varname) %>%
 					filter(., date == max(date)) %>%
 					ungroup(.) %>%
-					select(., varname, date, value)
+					select(., varname, date, value) %>%
+					mutate(., date = floor_date(date, 'months'))
 			} else {
 				# Otherwise use monthly average for history
 				df %>%
@@ -638,13 +639,13 @@ local({
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	hist_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		filter(., date >= add_with_rollback(today(), months(-60))) %>%
+		filter(., date >= add_with_rollback(today(), months(-90))) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
 
-	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-2)))
+	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
 
 	#' Calculate DNS fit
 	#'
