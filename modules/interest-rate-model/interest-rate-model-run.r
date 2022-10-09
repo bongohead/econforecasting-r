@@ -913,7 +913,7 @@ local({
 })
 
 
-## ENG: BoE Bank Rate ----------------------------------------------------------
+## ENG: BoE Bank Rate (DAILY) ----------------------------------------------------------
 local({
 	
 	spread_df =
@@ -933,7 +933,8 @@ local({
 	# 	ggplot(.) +
 	# 	geom_line(aes(x = date, y = value))
 	
-	boe_df =
+	# Extract monthly forecasts
+	monthly_df =
 		submodels$ice %>%
 		filter(., varname == 'sonia') %>%
 		expand_grid(., tibble(lag = 0:10)) %>%
@@ -951,7 +952,45 @@ local({
 			value = value - trailing_lag_mean
 			) %>%
 		select(., varname, freq, vdate, date, value)
-
+	
+	
+	# Now extract calendar dates of meetings
+	old_dates = as_date(c(
+		'2021-02-04', '2021-03-18', '2021-05-06', '2021-06-24', '2021-09-23', '2021-11-04', '2021-12-16'
+		))
+	
+	new_dates =
+		GET('https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates') %>%
+		content(.) %>%
+		html_nodes(., 'div.page-content') %>%
+		lapply(., function(x) {
+			
+			div_year = str_sub(html_text(html_node(x, 'h2')), 0, 4)
+			
+			month_dates =
+				html_text(html_nodes(x, 'table tbody tr td:nth-child(1)')) %>%
+				str_replace(., paste0(wday(now() + days(0:6), label = T, abbr = F), collapse = '|'), '') %>%
+				str_squish(.)
+			
+			paste0(month_dates, ' ', div_year) %>%
+				dmy(.)
+			}) %>%
+		unlist(.) %>%
+		as_date(.)
+	
+	# Join except for anything in new_dates already in old_dates
+	meeting_dates = 
+		tibble(dates = old_dates, year = year(old_dates), month = month(old_dates)) %>%
+		bind_rows(
+			.,
+			anti_join(
+				tibble(dates = new_dates, year = year(new_dates), month = month(new_dates)),
+				.,
+				by = c('year', 'month')
+			)
+		) %>%
+		.$dates 
+	
 
 })
 
