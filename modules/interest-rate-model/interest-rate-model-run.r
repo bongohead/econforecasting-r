@@ -73,14 +73,14 @@ local({
 		purrr::transpose(.) %>%
 		keep(., ~ .$hist_source == 'bloom') %>%
 		map_dfr(., function(x) {
-
-			httr::GET(
+			
+			res = httr::GET(
 				paste0(
 					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
 					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
 					),
 				add_headers(c(
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0',
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0',
 					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
 					'Accept-Encoding' = 'gzip, deflate, br',
 					'Accept-Language' ='en-US,en;q=0.5',
@@ -88,6 +88,7 @@ local({
 					'Connection'='keep-alive',
 					'DNT' = '1',
 					'Host' = 'www.bloomberg.com',
+					'Pragma'='no-cache',
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
 					))
 				) %>%
@@ -101,6 +102,11 @@ local({
 					value
 					) %>%
 				na.omit(.)
+			
+			# Add sleep due to bot detection
+			Sys.sleep(runif(1, 3, 5))
+			
+			return(res)
 		})
 
 	hist$bloom <<- bloom_data
@@ -133,43 +139,43 @@ local({
 
 
 ## BOE  ----------------------------------------------------------
-# local({
-# 
-# 	boe_keys = tribble(
-# 		~ varname, ~ url,
-# 		'sonia',
-# 		str_glue(
-# 			'https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?',
-# 			'Travel=NIxAZxSUx&FromSeries=1&ToSeries=50&DAT=RNG',
-# 			'&FD=1&FM=Jan&FY=2017',
-# 			'&TD=31&TM=Dec&TY={year(today("GMT"))}',
-# 			'&FNY=Y&CSVF=TT&html.x=66&html.y=26&SeriesCodes=IUDSOIA&UsingCodes=Y&Filter=N&title=IUDSOIA&VPD=Y'
-# 			),
-# 		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
-# 	)
-# 
-# 	boe_data = lapply(purrr::transpose(boe_keys), function(x)
-# 		httr::GET(x$url) %>%
-# 			httr::content(., 'parsed', encoding = 'UTF-8') %>%
-# 			html_node(., '#stats-table') %>%
-# 			html_table(.) %>%
-# 			set_names(., c('date', 'value')) %>%
-# 			mutate(., date = dmy(date)) %>%
-# 			arrange(., date) %>%
-# 			filter(., date >= as_date('2010-01-01')) %>%
-# 			# Fill in missing dates - to the latter of yesterday or max available date in dataset
-# 			left_join(tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')), ., by = 'date') %>%
-# 			mutate(., value = zoo::na.locf(value)) %>%
-# 			transmute(., varname = x$varname, freq = 'd', date, value)
-# 	) %>%
-# 		bind_rows(.)
-# 
-# 
-# 	## Yield Curve
-# 	# https://www.bankofengland.co.uk/statistics/yield-curves
-# 	
-# 	 hist$boe <<- boe_data
-# })
+local({
+
+	boe_keys = tribble(
+		~ varname, ~ url,
+		'sonia',
+		str_glue(
+			'https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?',
+			'Travel=NIxAZxSUx&FromSeries=1&ToSeries=50&DAT=RNG',
+			'&FD=1&FM=Jan&FY=2017',
+			'&TD=31&TM=Dec&TY={year(today("GMT"))}',
+			'&FNY=Y&CSVF=TT&html.x=66&html.y=26&SeriesCodes=IUDSOIA&UsingCodes=Y&Filter=N&title=IUDSOIA&VPD=Y'
+			),
+		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
+	)
+
+	boe_data = lapply(purrr::transpose(boe_keys), function(x)
+		httr::GET(x$url) %>%
+			httr::content(., 'parsed', encoding = 'UTF-8') %>%
+			html_node(., '#stats-table') %>%
+			html_table(.) %>%
+			set_names(., c('date', 'value')) %>%
+			mutate(., date = dmy(date)) %>%
+			arrange(., date) %>%
+			filter(., date >= as_date('2010-01-01')) %>%
+			# Fill in missing dates - to the latter of yesterday or max available date in dataset
+			left_join(tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')), ., by = 'date') %>%
+			mutate(., value = zoo::na.locf(value)) %>%
+			transmute(., varname = x$varname, freq = 'd', date, value)
+	) %>%
+		bind_rows(.)
+
+
+	## Yield Curve
+	# https://www.bankofengland.co.uk/statistics/yield-curves
+
+	 hist$boe <<- boe_data
+})
 
 
 ## Store in SQL ----------------------------------------------------------
@@ -310,8 +316,44 @@ local({
 	# 	filter(., vdate == max(vdate)) %>%
 	# 	ggplot(.) +
 	# 	geom_line(aes(x = date, y = value, color = varname))
-
-	submodels$ice <<- ice_data
+	
+	## Now calculate BOE Bank Rate
+	spread_df =
+		hist$boe %>%
+		filter(freq == 'd') %>%
+		pivot_wider(., id_cols = date, names_from = varname, values_from = value) %>%
+		mutate(., spread = sonia - ukbaserate)
+	
+	spread_df %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = spread))
+	
+	# Monthly baserate forecasts (daily forecasts can be calculated later; see ENG section)
+	ukbaserate_data =
+		ice_data %>%
+		filter(., varname == 'sonia') %>%
+		expand_grid(., tibble(lag = 0:10)) %>%
+		mutate(., lagged_vdate = vdate - days(lag)) %>%
+		left_join(
+			.,
+			spread_df %>% transmute(., lagged_vdate = date, spread),
+			by = 'lagged_vdate'
+		) %>%
+		group_by(., varname, freq, vdate, date, value)  %>%
+		summarize(., trailing_lag_mean = mean(spread, na.rm = T), .groups = 'drop') %>%
+		mutate(
+			.,
+			varname = 'ukbankrate',
+			value = value - trailing_lag_mean
+		) %>%
+		select(., varname, freq, vdate, date, value)
+	
+	final_df = bind_rows(
+		ice_data,
+		ukbaserate_data
+	)
+	
+	submodels$ice <<- final_df
 })
 
 ## CME: Futures  ----------------------------------------------------------
@@ -620,6 +662,7 @@ local({
 		lapply(., function(df) 
 			if (df$is_current_month[[1]] == TRUE) {
 				# If current month, use last available date
+				df %>%
  					group_by(., varname) %>%
 					filter(., date == max(date)) %>%
 					ungroup(.) %>%
@@ -914,85 +957,75 @@ local({
 
 
 ## ENG: BoE Bank Rate (DAILY) ----------------------------------------------------------
-local({
-	
-	spread_df =
-		hist$boe %>%
-		filter(freq == 'd') %>%
-		pivot_wider(., id_cols = date, names_from = varname, values_from = value) %>%
-		mutate(., spread = sonia - ukbaserate)
-
-	spread_df %>%
-			ggplot(.) +
-			geom_line(aes(x = date, y = spread))
-
-	# submodels$ice %>%
-	# 	filter(., varname == 'sonia') %>%
-	# 	mutate(., value = value - spread) %>%
-	# 	mutate(., varname = 'ukbaserate') %>%
-	# 	ggplot(.) +
-	# 	geom_line(aes(x = date, y = value))
-	
-	# Extract monthly forecasts
-	monthly_df =
-		submodels$ice %>%
-		filter(., varname == 'sonia') %>%
-		expand_grid(., tibble(lag = 0:10)) %>%
-		mutate(., lagged_vdate = vdate - days(lag)) %>%
-		left_join(
-			.,
-			spread_df %>% transmute(., lagged_vdate = date, spread),
-			by = 'lagged_vdate'
-		) %>%
-		group_by(., varname, freq, vdate, date, value)  %>%
-		summarize(., trailing_lag_mean = mean(spread, na.rm = T), .groups = 'drop') %>%
-		mutate(
-			.,
-			varname = 'ukbankrate',
-			value = value - trailing_lag_mean
-			) %>%
-		select(., varname, freq, vdate, date, value)
-	
-	
-	# Now extract calendar dates of meetings
-	old_dates = as_date(c(
-		'2021-02-04', '2021-03-18', '2021-05-06', '2021-06-24', '2021-09-23', '2021-11-04', '2021-12-16'
-		))
-	
-	new_dates =
-		GET('https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates') %>%
-		content(.) %>%
-		html_nodes(., 'div.page-content') %>%
-		lapply(., function(x) {
-			
-			div_year = str_sub(html_text(html_node(x, 'h2')), 0, 4)
-			
-			month_dates =
-				html_text(html_nodes(x, 'table tbody tr td:nth-child(1)')) %>%
-				str_replace(., paste0(wday(now() + days(0:6), label = T, abbr = F), collapse = '|'), '') %>%
-				str_squish(.)
-			
-			paste0(month_dates, ' ', div_year) %>%
-				dmy(.)
-			}) %>%
-		unlist(.) %>%
-		as_date(.)
-	
-	# Join except for anything in new_dates already in old_dates
-	meeting_dates = 
-		tibble(dates = old_dates, year = year(old_dates), month = month(old_dates)) %>%
-		bind_rows(
-			.,
-			anti_join(
-				tibble(dates = new_dates, year = year(new_dates), month = month(new_dates)),
-				.,
-				by = c('year', 'month')
-			)
-		) %>%
-		.$dates 
-	
-
-})
+# local({
+# 	
+# 	# Use monthly data from ICE
+# 	
+# 	# Now extract calendar dates of meetings
+# 	old_dates = as_date(c(
+# 		'2021-02-04', '2021-03-18', '2021-05-06', '2021-06-24', '2021-09-23', '2021-11-04', '2021-12-16'
+# 		))
+# 
+# 	new_dates =
+# 		GET('https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates') %>%
+# 		content(.) %>%
+# 		html_nodes(., 'div.page-content') %>%
+# 		lapply(., function(x) {
+# 
+# 			div_year = str_sub(html_text(html_node(x, 'h2')), 0, 4)
+# 
+# 			month_dates =
+# 				html_text(html_nodes(x, 'table tbody tr td:nth-child(1)')) %>%
+# 				str_replace(., paste0(wday(now() + days(0:6), label = T, abbr = F), collapse = '|'), '') %>%
+# 				str_squish(.)
+# 
+# 			paste0(month_dates, ' ', div_year) %>%
+# 				dmy(.)
+# 			}) %>%
+# 		unlist(.) %>%
+# 		as_date(.)
+# 
+# 	# Join except for anything in new_dates already in old_dates
+# 	meeting_dates =
+# 		tibble(dates = old_dates, year = year(old_dates), month = month(old_dates)) %>%
+# 		bind_rows(
+# 			.,
+# 			anti_join(
+# 				tibble(dates = new_dates, year = year(new_dates), month = month(new_dates)),
+# 				.,
+# 				by = c('year', 'month')
+# 			)
+# 		) %>%
+# 		.$dates
+# 
+# 
+# 
+# 	## Daily calculations
+# 	this_vdate = max(monthly_df$vdate)
+# 	this_monthly_df = monthly_df %>% filter(., vdate == this_vdate) %>% select(., -vdate, -freq)
+# 
+# 	# Designate each period as a constant-rate time between meetings
+# 	periods_df =
+# 		meeting_dates %>%
+# 		tibble(period_start = ., period_end = lead(period_start, 1)) %>%
+# 		filter(., period_start >= min(this_monthly_df$date) & period_end <= max(this_monthly_df$date))
+# 
+# 
+# 	# For each period, see which months fall fully within them; if multiple, take the average;
+# 	# most periods will by none
+# 	periods_df %>%
+# 		purrr::transpose(.) %>%
+# 		map_dfr(., function(x)
+# 			this_monthly_df %>%
+# 				filter(., date >= x$period_start & ceiling_date(date, 'months') - days(1) <= x$period_end) %>%
+# 				summarize(., filled_value = mean(value, na.rm = T)) %>%
+# 				bind_cols(x, .) %>%
+# 				mutate(., filled_value = ifelse(is.nan(filled_value), NA, filled_value))
+# 			) %>%
+# 		mutate(., period_start = as_date(period_start), period_end = as_date(period_end))
+# 	
+# 	submodels$eng <<- 
+# })
 
 
 # Finalize ----------------------------------------------------------
