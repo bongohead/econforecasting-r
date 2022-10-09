@@ -183,14 +183,14 @@ local({
 		purrr::transpose(.) %>%
 		keep(., ~ .$hist_source == 'bloom') %>%
 		map_dfr(., function(x) {
-
-			httr::GET(
+			
+			res = httr::GET(
 				paste0(
 					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
 					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
 				),
 				add_headers(c(
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:95.0) Gecko/20100101 Firefox/95.0',
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0',
 					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
 					'Accept-Encoding' = 'gzip, deflate, br',
 					'Accept-Language' ='en-US,en;q=0.5',
@@ -198,6 +198,7 @@ local({
 					'Connection'='keep-alive',
 					'DNT' = '1',
 					'Host' = 'www.bloomberg.com',
+					'Pragma'='no-cache',
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
 				))
 			) %>%
@@ -214,6 +215,11 @@ local({
 					value
 				) %>%
 				na.omit(.)
+			
+			# Add sleep due to bot detection
+			Sys.sleep(runif(1, 3, 5))
+			
+			return(res)
 		})
 
 	hist$raw$bloom <<- bloom_data
@@ -261,8 +267,42 @@ local({
 	hist$raw$ecb <<- estr_data
 })
 
+## 6. BOE ---------------------------------------------------------------------
+local({
+	
+	# Bank rate
+	boe_keys = tribble(
+		~ varname, ~ url,
+		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
+	)
+	
+	boe_data = map_dfr(purrr::transpose(boe_keys), function(x)
+		httr::GET(x$url) %>%
+			httr::content(., 'parsed', encoding = 'UTF-8') %>%
+			html_node(., '#stats-table') %>%
+			html_table(.) %>%
+			set_names(., c('date', 'value')) %>%
+			mutate(., date = dmy(date)) %>%
+			arrange(., date) %>%
+			filter(., date >= as_date('2010-01-01')) %>%
+			# Fill in missing dates - to the latter of yesterday or max available date in dataset
+			left_join(tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')), ., by = 'date') %>%
+			mutate(., value = zoo::na.locf(value)) %>%
+			transmute(., varname = x$varname, freq = 'd', date, value)
+		) %>%
+		transmute(
+			.,
+			varname = 'ukbaserate',
+			freq = 'd',
+			date,
+			vdate = date,
+			value
+		)
 
-## 6. Calculated Variables ----------------------------------------------------------
+	hist$raw$boe <<- boe_data
+})
+
+## 7. Calculated Variables ----------------------------------------------------------
 local({
 
 	message('*** Adding Calculated Variables')
@@ -330,7 +370,7 @@ local({
 	hist$raw$calc <<- hist_calc
 })
 
-## 7. Verify ----------------------------------------------------------
+## 8. Verify ----------------------------------------------------------
 local({
 
 	missing_varnames = variable_params$varname %>% .[!. %in% unique(bind_rows(hist$raw)$varname)]
@@ -340,7 +380,7 @@ local({
 })
 
 
-## 8. Aggregate Frequencies ----------------------------------------------------------
+## 9. Aggregate Frequencies ----------------------------------------------------------
 local({
 
 	message(str_glue('*** Aggregating Monthly & Quarterly Data | {format(now(), "%H:%M")}'))
@@ -353,7 +393,8 @@ local({
 			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
 			filter(hist$raw$bloom, !varname %in% unique(.$varname)),
 			filter(hist$raw$afx, !varname %in% unique(.$varname)),
-			filter(hist$raw$ecb, !varname %in% unique(.$varname))
+			filter(hist$raw$ecb, !varname %in% unique(.$varname)),
+			filter(hist$raw$boe, !varname %in% unique(.$varname))
 		)
 
 	monthly_agg =
