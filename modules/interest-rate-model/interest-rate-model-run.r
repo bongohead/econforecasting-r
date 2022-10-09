@@ -133,45 +133,43 @@ local({
 
 
 ## BOE  ----------------------------------------------------------
-local({
-
-	boe_keys = tribble(
-		~ varname, ~ url,
-		'sonia',
-		str_glue(
-			'https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?',
-			'Travel=NIxAZxSUx&FromSeries=1&ToSeries=50&DAT=RNG',
-			'&FD=1&FM=Jan&FY=2017',
-			'&TD=31&TM=Dec&TY={year(today("GMT"))}',
-			'&FNY=Y&CSVF=TT&html.x=66&html.y=26&SeriesCodes=IUDSOIA&UsingCodes=Y&Filter=N&title=IUDSOIA&VPD=Y'
-			),
-		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
-	)
-
-	boe_data = lapply(purrr::transpose(boe_keys), function(x)
-		httr::GET(x$url) %>%
-			httr::content(., 'parsed', encoding = 'UTF-8') %>%
-			html_node(., '#stats-table') %>%
-			html_table(.) %>%
-			set_names(., c('date', 'value')) %>%
-			mutate(., date = dmy(date)) %>%
-			arrange(., date) %>%
-			filter(., date >= as_date('2010-01-01')) %>%
-			# Fill in missing dates
-			left_join(tibble(date = seq(min(.$date), to = max(.$date), by = '1 day')), ., by = 'date') %>%
-			mutate(., value = zoo::na.locf(value)) %>%
-			transmute(., varname = x$varname, freq = 'd', date, value)
-	) %>%
-		bind_rows(.)
-
-
-	## Yield Curve
-	# https://www.bankofengland.co.uk/statistics/yield-curves
-	
-	
-	
-	 hist$boe <<- boe_data
-})
+# local({
+# 
+# 	boe_keys = tribble(
+# 		~ varname, ~ url,
+# 		'sonia',
+# 		str_glue(
+# 			'https://www.bankofengland.co.uk/boeapps/database/fromshowcolumns.asp?',
+# 			'Travel=NIxAZxSUx&FromSeries=1&ToSeries=50&DAT=RNG',
+# 			'&FD=1&FM=Jan&FY=2017',
+# 			'&TD=31&TM=Dec&TY={year(today("GMT"))}',
+# 			'&FNY=Y&CSVF=TT&html.x=66&html.y=26&SeriesCodes=IUDSOIA&UsingCodes=Y&Filter=N&title=IUDSOIA&VPD=Y'
+# 			),
+# 		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
+# 	)
+# 
+# 	boe_data = lapply(purrr::transpose(boe_keys), function(x)
+# 		httr::GET(x$url) %>%
+# 			httr::content(., 'parsed', encoding = 'UTF-8') %>%
+# 			html_node(., '#stats-table') %>%
+# 			html_table(.) %>%
+# 			set_names(., c('date', 'value')) %>%
+# 			mutate(., date = dmy(date)) %>%
+# 			arrange(., date) %>%
+# 			filter(., date >= as_date('2010-01-01')) %>%
+# 			# Fill in missing dates - to the latter of yesterday or max available date in dataset
+# 			left_join(tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')), ., by = 'date') %>%
+# 			mutate(., value = zoo::na.locf(value)) %>%
+# 			transmute(., varname = x$varname, freq = 'd', date, value)
+# 	) %>%
+# 		bind_rows(.)
+# 
+# 
+# 	## Yield Curve
+# 	# https://www.bankofengland.co.uk/statistics/yield-curves
+# 	
+# 	 hist$boe <<- boe_data
+# })
 
 
 ## Store in SQL ----------------------------------------------------------
@@ -915,7 +913,7 @@ local({
 })
 
 
-## ENG: Bank of England Bank Rate & Gilt Yield
+## ENG: BoE Bank Rate ----------------------------------------------------------
 local({
 	
 	spread_df =
@@ -928,16 +926,15 @@ local({
 			ggplot(.) +
 			geom_line(aes(x = date, y = spread))
 
-	last_spread = spread_df %>% arrange(., date) %>% tail(., 10) %>% .$spread %>% mean(., na.rm = T)		
-
-	submodels$ice %>%
-		filter(., varname == 'sonia') %>%
-		mutate(., value = value - spread) %>%
-		mutate(., varname = 'ukbaserate') %>%
-		ggplot(.) +
-		geom_line(aes(x = date, y = value))
+	# submodels$ice %>%
+	# 	filter(., varname == 'sonia') %>%
+	# 	mutate(., value = value - spread) %>%
+	# 	mutate(., varname = 'ukbaserate') %>%
+	# 	ggplot(.) +
+	# 	geom_line(aes(x = date, y = value))
 	
-	submodels$ice %>%
+	boe_df =
+		submodels$ice %>%
 		filter(., varname == 'sonia') %>%
 		expand_grid(., tibble(lag = 0:10)) %>%
 		mutate(., lagged_vdate = vdate - days(lag)) %>%
@@ -948,7 +945,12 @@ local({
 		) %>%
 		group_by(., varname, freq, vdate, date, value)  %>%
 		summarize(., trailing_lag_mean = mean(spread, na.rm = T), .groups = 'drop') %>%
-		View(.)
+		mutate(
+			.,
+			varname = 'ukbankrate',
+			value = value - trailing_lag_mean
+			) %>%
+		select(., varname, freq, vdate, date, value)
 
 
 })
