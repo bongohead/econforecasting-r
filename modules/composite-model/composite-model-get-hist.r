@@ -217,7 +217,7 @@ local({
 				na.omit(.)
 			
 			# Add sleep due to bot detection
-			Sys.sleep(runif(1, 3, 5))
+			Sys.sleep(runif(1, 5, 10))
 			
 			return(res)
 		})
@@ -273,7 +273,7 @@ local({
 	# Bank rate
 	boe_keys = tribble(
 		~ varname, ~ url,
-		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
+		'ukbankrate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
 	)
 	
 	boe_data = map_dfr(purrr::transpose(boe_keys), function(x)
@@ -292,7 +292,7 @@ local({
 		) %>%
 		transmute(
 			.,
-			varname = 'ukbaserate',
+			varname = 'ukbankrate',
 			freq = 'd',
 			date,
 			vdate = date,

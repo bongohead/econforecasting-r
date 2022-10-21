@@ -151,7 +151,7 @@ local({
 			'&TD=31&TM=Dec&TY={year(today("GMT"))}',
 			'&FNY=Y&CSVF=TT&html.x=66&html.y=26&SeriesCodes=IUDSOIA&UsingCodes=Y&Filter=N&title=IUDSOIA&VPD=Y'
 			),
-		'ukbaserate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
+		'ukbankrate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
 	)
 
 	boe_data = lapply(purrr::transpose(boe_keys), function(x)
@@ -167,12 +167,8 @@ local({
 			left_join(tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')), ., by = 'date') %>%
 			mutate(., value = zoo::na.locf(value)) %>%
 			transmute(., varname = x$varname, freq = 'd', date, value)
-	) %>%
+		) %>%
 		bind_rows(.)
-
-
-	## Yield Curve
-	# https://www.bankofengland.co.uk/statistics/yield-curves
 
 	 hist$boe <<- boe_data
 })
@@ -322,14 +318,14 @@ local({
 		hist$boe %>%
 		filter(freq == 'd') %>%
 		pivot_wider(., id_cols = date, names_from = varname, values_from = value) %>%
-		mutate(., spread = sonia - ukbaserate)
+		mutate(., spread = sonia - ukbankrate)
 	
 	spread_df %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = spread))
 	
 	# Monthly baserate forecasts (daily forecasts can be calculated later; see ENG section)
-	ukbaserate_data =
+	ukbankrate =
 		ice_data %>%
 		filter(., varname == 'sonia') %>%
 		expand_grid(., tibble(lag = 0:10)) %>%
@@ -350,7 +346,7 @@ local({
 	
 	final_df = bind_rows(
 		ice_data,
-		ukbaserate_data
+		ukbankrate
 	)
 	
 	submodels$ice <<- final_df
