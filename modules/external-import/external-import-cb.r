@@ -50,7 +50,7 @@ local({
 		'im', 'Imports',
 		'unemp', 'Unemployment rate (%)',
 		'cpi', 'Core PCE Inflation (%Y/Y)', # should be pcepi!
-		'ffr', 'Fed Funds (%, Mid-point, Period End)'
+		'ffr', 'Fed Funds (%, Midpoint, Period End)'
 		) %>%
 		mutate(., fullname = str_to_lower(fullname))
 	
@@ -68,80 +68,33 @@ local({
 		str_trim(.) %>%
 		readr::parse_date(., format = '%B %d, %Y')
 	
+	iframe_src = html_content %>% html_element(., '#chConferences iframe') %>% html_attr(., 'src')
+	table_content = paste0(iframe_src, 'dataset.csv') %>% read_tsv(., col_names = F)
 	
-	table_el =
-		html_content %>%
-		html_element(., 'table.data_grid_table')
+	# First two rows are headers
+	headers_fixed =
+		table_content %>%
+		.[1:2, ] %>%
+		t(.) %>%
+		as.data.frame(.) %>%
+		as_tibble(.) %>%
+		fill(., V1, .direction = 'down') %>%
+		mutate(., V2 = str_replace_all(V2, c('IV Q' = 'Q4', 'III Q' = 'Q3', 'II Q' = 'Q2', 'I Q' = 'Q1'))) %>%
+		mutate(., col_index = 1:nrow(.), quarter = ifelse(is.na(V1) | is.na(V2), NA, paste0(V1, V2))) %>%
+		mutate(., quarter = ifelse(col_index == 1, 'fullname', ifelse(is.na(quarter), paste0('drop_', 1:nrow(.)), quarter))) %>% 
+		.$quarter
 	
-	# Try to match up table header line 1 & 2
-	# table_el %>% rvest::html_table(., header = FALSE, trim = TRUE) 
-	# Table header line 1
-	th_1_raw =
-		table_el %>%
-		html_elements(., 'thead > tr:first-child > *') %>%
-		lapply(., function(x) {
-			# Return nothing if there's a rowspan
-			# Retrun 1 if no colspan
-			# Else return colspan counts
-			if (!is.na(html_attr(x, 'rowspan', NA))) NA
-			else if (is.na(html_attr(x, 'colspan', NA))) html_text(x)
-			else rep(html_text(x), times = as.numeric(html_attr(x, 'colspan')))
-		}) %>%
-		unlist(.) %>%
-		str_trim(.) %>%
-		.[2:length(.)]
-	
-	# Skip multirow (full-year-indicators) at the end
-	th_multirow_cells = length(keep(th_1_raw, is.na))
-	
-	th_1 = keep(th_1_raw, ~ !is.na(.))
-	
-	th_2 =
-		table_el %>%
-		html_elements(., 'thead > tr:nth-child(2) > *') %>%
-		html_text(.) %>%
-		str_trim(.) %>%
-		.[2:length(.)]
-	
-	
-	# Tbody scrape
-	tb_varnames =
-		table_el %>%
-		html_elements(., 'tbody > tr > *:first_child')  %>%
-		html_text(.) %>%
-		str_to_lower(.)
-	
-	# nth-child(n+2) - 2+ positions onward
-	# nth-child(-n+16) - all children up to position 16
-	tb_data =
-		table_el %>%
-		html_elements(., 'tbody > tr') %>%
-		lapply(., function(x) 
-			# Note: need to add 1 to account for initial column skip
-			html_elements(x, paste0('*:nth-child(n+2):nth-child(-n+', length(th_1) + 1,')')) %>%
-				html_text(.)
-			)
-	
-	# Now collapse back together
-	full_data_raw = imap_dfr(tb_data, function(x, i) 
-		tibble(
-			year_raw = th_1,
-			quarter_raw = th_2
-			) %>%
-			mutate(., is_hist = str_detect(quarter_raw, coll('*'))) %>%
-			bind_cols(
-				.,
-				fullname = tb_varnames[[i]],
-				value = x)
-		)
-	
-	print(full_data_raw, n = 100)
+	table_fixed =
+		table_content %>%
+		tail(., -2) %>%
+		set_names(., headers_fixed) %>%
+		select(., -contains(coll('*'))) %>%
+		select(., -contains('drop')) 
 	
 	final_data =
-		full_data_raw %>%
-		filter(., is_hist == FALSE) %>%
-		mutate(., date = paste0(year_raw, 'Q', as.integer(as.roman(str_replace_all(quarter_raw, 'Q', ''))))) %>%
-		mutate(., date = from_pretty_date(date, 'q')) %>%
+		table_fixed %>%
+		pivot_longer(., cols = -fullname, names_to = 'date', values_to = 'value') %>%
+		mutate(., date = from_pretty_date(date, 'q'), fullname = str_to_lower(fullname)) %>%
 		inner_join(., varnames_map, by = 'fullname') %>%
 		transmute(
 			.,

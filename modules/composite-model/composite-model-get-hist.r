@@ -27,6 +27,7 @@ library(RPostgres)
 library(lubridate)
 library(jsonlite)
 library(roll)
+library(rvest)
 
 ## Load Connection Info ----------------------------------------------------------
 source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
