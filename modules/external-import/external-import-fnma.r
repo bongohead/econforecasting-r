@@ -191,15 +191,15 @@ local({
 						str_detect(varname, 'Total Housing Starts') ~ 'houst',
 						# str_detect(varname, 'Total Home Sales') ~ 'hsold',
 						str_detect(varname, '30-Year') ~ 'mort30y',
-						str_detect(varname, '5-Year') ~ 'mort05y'
+						str_detect(varname, '5-Year') ~ 'mort05y' # Dropped 5 year forecast
 					),
 					date = from_pretty_date(date, 'q'),
 					value = as.numeric(str_replace_all(value, c(',' = '')))
 				) %>%
 				na.omit(.) %>%
 				transmute(., vdate = as_date(x$vdate), varname, date, value)
-
-			if (length(unique(clean_import$varname)) < 3) stop('Missing variable')
+			# As of Oct. 2022, 5 year mortgage forecast is dropped so only requires 2
+			if (length(unique(clean_import$varname)) < 2) stop('Missing variable')
 
 			return(clean_import)
 		})

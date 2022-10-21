@@ -24,6 +24,7 @@ This code is developed locally on a Windows machine and deployed locally to an U
 - Added labor force (unemp, lfpr) test stacking composite model
 - Added import of GDPNow, St. Louis Fed nowcast, NY Fed nowcast
 - Fixed bug related to ALFRED 2000 vintage date limit
+- Fixed CB, EINF, FNMA scrapes related to source changes
 
 ## [v1.02] (Sentiment Index Improvements) (2022-06-01)
 - Added initial detailed labor market modeling
