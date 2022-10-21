@@ -42,10 +42,7 @@ local({
 	# Note: Cleveland Fed gives one-year forward rates
 	# Combine these with historical data to calculate historical one-year trailing rates
 	download.file(
-		paste0(
-			'https://www.clevelandfed.org/en/our-research/indicators-and-data/~/media/content/our%20research/',
-			'indicators%20and%20data/inflation%20expectations/ie%20latest/ie%20xls.xlsx'
-		),
+		'https://www.clevelandfed.org/-/media/files/webcharts/inflationexpectations/inflation-expectations.xlsx',
 		file.path(tempdir(), 'inf.xlsx'),
 		mode = 'wb'
 	)
@@ -53,44 +50,56 @@ local({
 	# Get vintage dates for each release
 	
 	## Latest vintage date - sometime the archives page doesn't have the latest data (Aug 2022)
-	vintage_dates_0 = 
-		httr::GET(paste0(
-			'https://www.clevelandfed.org/en/our-research/',
-			'indicators-and-data/inflation-expectations.aspx'
-		)) %>%
-		httr::content(.) %>%
-		rvest::html_nodes('#RightAsideSPL > div > p') %>%
-		keep(., ~ str_detect(html_text(.), 'Last updated')) %>%
-		.[[1]] %>%
-		html_text(.) %>% 
-		str_replace(., 'Last updated', '') %>%
-		mdy(.)
-		
-	vintage_dates_1 =
-		httr::GET(paste0(
-			'https://www.clevelandfed.org/en/our-research/',
-			'indicators-and-data/inflation-expectations/archives.aspx'
-		)) %>%
-		httr::content(.) %>%
-		rvest::html_nodes('div[itemprop="text"] ul li') %>%
-		keep(., ~ length(rvest::html_nodes(., 'a.download')) == 1) %>%
-		map_chr(., ~ str_extract(rvest::html_text(.), '(?<=released ).*')) %>%
-		mdy(.)
-
-	vintage_dates_2 =
-		httr::GET(paste0(
-			'https://www.clevelandfed.org/en/our-research/',
-			'indicators-and-data/inflation-expectations/inflation-expectations-archives.aspx'
-		)) %>%
-		httr::content(.) %>%
-		rvest::html_nodes('ul.topic-list li time') %>%
-		map_chr(., ~ rvest::html_text(.)) %>%
-		mdy(.)
+	vintage_dates = paste0(
+		'https://api.stlouisfed.org/fred/release/dates?release_id=10',
+		'&api_key=', CONST$FRED_API_KEY,
+		'&file_type=json'
+		) %>%
+		GET(.) %>%
+		content(.) %>%
+		.$release_dates %>%
+		map(., ~ .$date) %>%
+		unlist(., recursive = F) %>%
+		as_date(.) %>%
+		keep(., ~ . > as_date('2010-01-01'))
+	
+	# Deprecated 10/20/2022 due to source site update
+	# vintage_dates_0 = 
+	# 	httr::GET(paste0(
+	# 		'https://www.clevelandfed.org/en/our-research/',
+	# 		'indicators-and-data/inflation-expectations.aspx'
+	# 	)) %>%
+	# 	httr::content(.) %>%
+	# 	rvest::html_nodes('#RightAsideSPL > div > p') %>%
+	# 	keep(., ~ str_detect(html_text(.), 'Last updated')) %>%
+	# 	.[[1]] %>%
+	# 	html_text(.) %>% 
+	# 	str_replace(., 'Last updated', '') %>%
+	# 	mdy(.)
+	# 	
+	# vintage_dates_1 =
+	# 	httr::GET(paste0(
+	# 		'https://www.clevelandfed.org/en/our-research/',
+	# 		'indicators-and-data/inflation-expectations/archives.aspx'
+	# 	)) %>%
+	# 	httr::content(.) %>%
+	# 	rvest::html_nodes('div[itemprop="text"] ul li') %>%
+	# 	keep(., ~ length(rvest::html_nodes(., 'a.download')) == 1) %>%
+	# 	map_chr(., ~ str_extract(rvest::html_text(.), '(?<=released ).*')) %>%
+	# 	mdy(.)
+	# 
+	# vintage_dates_2 =
+	# 	httr::GET(paste0(
+	# 		'https://www.clevelandfed.org/en/our-research/',
+	# 		'indicators-and-data/inflation-expectations/inflation-expectations-archives.aspx'
+	# 	)) %>%
+	# 	httr::content(.) %>%
+	# 	rvest::html_nodes('ul.topic-list li time') %>%
+	# 	map_chr(., ~ rvest::html_text(.)) %>%
+	# 	mdy(.)
 
 	vdate_map =
-		c(vintage_dates_0, vintage_dates_1, vintage_dates_2) %>%
-		unique(.) %>%
-		tibble(vdate = .) %>%
+		tibble(vdate = vintage_dates) %>%
 		mutate(., vdate0 = floor_date(vdate, 'months')) %>%
 		group_by(., vdate0) %>% summarize(., vdate = max(vdate)) %>%
 		arrange(., vdate0)
