@@ -844,16 +844,29 @@ local({
 		purrr::transpose(.) %>%
 		map_dfr(., function(x)
 			read_csv(x$url, col_names = c('product', 'symbol', 'exp_date', 'price'), col_types = 'ccDn', skip = 1) %>%
-				filter(., product == 'AMB1') %>%
+				filter(., product %in% c('AMB1', 'AMT1')) %>%
 				transmute(
 					.,
 					varname = 'ameribor',
+					product,
 					vdate = as_date(x$vdate),
 					date = floor_date(exp_date - months(1), 'months'),
 					value = 100 - price/100
 				)
-			)
-
+			) %>%
+		pivot_wider(., id_cols = c(varname, vdate, date), names_from = 'product', values_from = 'value') %>%
+		mutate(., value = ifelse(
+			is.na(AMB1) | is.na(AMT1),
+			coalesce(AMB1, 0) + coalesce(AMT1, 0),
+			(AMB1 + AMT1)/2
+			)) %>%
+		mutate(., value = smooth.spline(value)$y)
+	
+	cboe_data %>%
+		filter(., vdate == max(vdate)) %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value))
+		
 	# Plot comparison against TDNS
 	cboe_data %>%
 		filter(., vdate == max(vdate)) %>%
