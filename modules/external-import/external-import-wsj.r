@@ -40,7 +40,7 @@ db = dbConnect(
 local({
 
 	message('**** WSJ Survey')
-	message('***** Last Import Jan 22')
+	message('***** Last Import Oct 22')
 	
 	wsj_params = tribble(
 		~ submodel, ~ fullname,
