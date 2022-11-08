@@ -10,7 +10,10 @@ This code is developed locally on a Windows machine and deployed locally to an U
 
 # CHANGELOG
 
-## [v1.04] 
+## [v1.05]
+- Add bond forecasts for international markets (EU, see ticket chain)
+
+## [v1.04] (Misc Bugfixes) 
 - Fixed bug related to einf forecasts missing latest vintage
 - Fixed bug caused by einf source XLS -> XLSX migration
 
