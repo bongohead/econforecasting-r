@@ -642,6 +642,10 @@ local({
 ## TDNS: Nelson-Siegel Treasury Yield Forecast ----------------------------------------------------------
 local({
 
+	#' This relies heavily on expectations theory weighted to federal funds rate;
+	#' Consider taking a weighted average with Treasury futures directly
+	#' (see CME micro futures)
+	#' 
 	message('***** Adding Calculated Variables')
 
 	fred_data =
@@ -684,7 +688,7 @@ local({
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	hist_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		filter(., date >= add_with_rollback(today(), months(-90))) %>%
+		filter(., date >= add_with_rollback(today(), months(-30))) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
