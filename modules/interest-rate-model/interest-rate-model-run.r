@@ -17,14 +17,14 @@ if (interactive() == FALSE) {
 }
 
 ## Load Libs ----------------------------------------------------------
-library(dplyr)
-library(jsonlite)
+library(econforecasting)
+library(tidyverse)
+library(lubridate)
 library(httr)
 library(rvest)
-library(DBI)
-library(econforecasting)
-library(lubridate)
 library(highcharter)
+library(DBI)
+library(jsonlite, include.only = c('toJSON'))
 library(forecast, include.only = c('forecast', 'Arima'))
 
 ## Load Connection Info ----------------------------------------------------------
@@ -41,6 +41,7 @@ input_sources = as_tibble(dbGetQuery(db, 'SELECT * FROM interest_rate_model_vari
 local({
 
 	message('***** Importing FRED Data')
+	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 
 	fred_data =
 		input_sources %>%
@@ -48,7 +49,7 @@ local({
 		keep(., ~ .$hist_source == 'fred') %>%
 		imap_dfr(., function(x, i) {
 			message(str_glue('Pull {i}: {x$varname}'))
-			get_fred_data(x$hist_source_key, CONST$FRED_API_KEY, .freq = x$hist_source_freq, .return_vintages = F) %>%
+			get_fred_data(x$hist_source_key, api_key, .freq = x$hist_source_freq, .return_vintages = F) %>%
 				transmute(., varname = x$varname, freq = x$hist_source_freq, date, value) %>%
 				filter(., date >= as_date('2010-01-01'))
 			})
@@ -65,9 +66,9 @@ local({
 		keep(., ~ .$hist_source == 'bloom') %>%
 		map_dfr(., function(x) {
 
-			res = httr::GET(
-				paste0(
-					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
+			res = GET(
+				str_glue(
+					'https://www.bloomberg.com/markets2/api/history/{x$hist_source_key}%3AIND/PX_LAST?',
 					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
 					),
 				add_headers(c(
@@ -83,7 +84,7 @@ local({
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
 					))
 				) %>%
-				httr::content(., 'parsed') %>%
+				content(., 'parsed') %>%
 				.[[1]] %>%
 				.$price %>%
 				map_dfr(., ~ as_tibble(.)) %>%
@@ -107,8 +108,8 @@ local({
 local({
 
 	afx_data =
-		httr::GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
-		httr::content(., 'parsed') %>%
+		GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
+		content(., 'parsed') %>%
 		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
 		map_dfr(., function(x)
 			as_tibble(x) %>%
@@ -353,7 +354,7 @@ local({
 	# CME Group Data
 	message('Starting CME data scrape...')
 	cme_cookie =
-		httr::GET(
+		GET(
 			'https://www.cmegroup.com/',
 			add_headers(c(
 				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
@@ -365,14 +366,14 @@ local({
 				'DNT' = '1'
 				))
 			) %>%
-		httr::cookies(.) %>%
+		cookies(.) %>%
 		as_tibble(.) %>%
 		filter(., name == 'ak_bmsc') %>%
 		.$value
 
 	# Get CME Vintage Date
 	last_trade_date =
-		httr::GET(
+		GET(
 			paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/305/G?quoteCodes=null&_='),
 			add_headers(c(
 				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
@@ -450,10 +451,9 @@ local({
 	## Barchart.com data (currently just FFR)
 	message('Starting Barchart data scrape...')
 
-
 	barchart_sources =
-		# 3 year history + 5 year forecast
-		tibble(date = seq(floor_date(today() - years(3), 'month'), length.out = 8 * 12, by = '1 month')) %>%
+		# 5 year history + 5 year forecast
+		tibble(date = seq(floor_date(today() - years(5), 'month'), length.out = (5 + 5) * 12, by = '1 month')) %>%
 		mutate(., year = year(date), month = month(date)) %>%
 		left_join(
 			.,
