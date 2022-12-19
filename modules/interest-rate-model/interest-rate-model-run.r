@@ -17,27 +17,18 @@ if (interactive() == FALSE) {
 }
 
 ## Load Libs ----------------------------------------------------------
-library(tidyverse)
+library(dplyr)
 library(jsonlite)
 library(httr)
 library(rvest)
 library(DBI)
-library(RPostgres)
 library(econforecasting)
 library(lubridate)
 library(highcharter)
-library(forecast)
+library(forecast, include.only = c('forecast', 'Arima'))
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-	)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 hist = list()
 submodels = list()
 
@@ -73,7 +64,7 @@ local({
 		purrr::transpose(.) %>%
 		keep(., ~ .$hist_source == 'bloom') %>%
 		map_dfr(., function(x) {
-			
+
 			res = httr::GET(
 				paste0(
 					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
@@ -102,10 +93,10 @@ local({
 					value
 					) %>%
 				na.omit(.)
-			
+
 			# Add sleep due to bot detection
 			Sys.sleep(runif(1, 3, 5))
-			
+
 			return(res)
 		})
 
@@ -164,7 +155,11 @@ local({
 			arrange(., date) %>%
 			filter(., date >= as_date('2010-01-01')) %>%
 			# Fill in missing dates - to the latter of yesterday or max available date in dataset
-			left_join(tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')), ., by = 'date') %>%
+			left_join(
+				tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')),
+				.,
+				by = 'date'
+				) %>%
 			mutate(., value = zoo::na.locf(value)) %>%
 			transmute(., varname = x$varname, freq = 'd', date, value)
 		) %>%
@@ -219,13 +214,13 @@ local({
 
 ## ICE: Futures  ----------------------------------------------------------
 local({
-	
+
 	ice_codes = tribble(
 		~ varname, ~ product_id, ~ hub_id, ~ expiry,
 		'sonia', '20343', '23428', 1,
 		'sonia', '20484', '23565', 3,
 		# 'euribor', '15275', '17455', 3,
-		'estr', '15274', '17454', 1, 
+		'estr', '15274', '17454', 1,
 		)
 
 	# Last vintage date data not in charts history so get here
@@ -258,12 +253,12 @@ local({
 	# 				}
 	# 			))
 	# 	})
-	
+
 	ice_raw_data =
 		ice_codes %>%
 		purrr::transpose(.) %>%
 		map_dfr(., function(x) {
-			
+
 			# Get top-level expiration IDs
 			httr::GET(str_glue(
 				'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
@@ -278,7 +273,7 @@ local({
 				)) %>%
 				# Iterate through the expiration IDs
 				purrr::transpose(.) %>%
-				map_dfr(., function(z) 
+				map_dfr(., function(z)
 					httr::GET(str_glue(
 						'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
 						'getHistoricalChartDataAsJson=&marketId={z$market_id}&historicalSpan=2'
@@ -296,7 +291,7 @@ local({
 							)
 					)
 			})
-	
+
 	ice_data =
 		ice_raw_data %>%
 		# Now use only one-month futures if it's the only available data
@@ -307,23 +302,23 @@ local({
 		# Get rid of forecasts for old observations
 		filter(., date >= floor_date(vdate, 'month')) %>%
 		transmute(., varname, freq = 'm', vdate, date, value)
-	
+
 	# ice_data %>%
 	# 	filter(., vdate == max(vdate)) %>%
 	# 	ggplot(.) +
 	# 	geom_line(aes(x = date, y = value, color = varname))
-	
+
 	## Now calculate BOE Bank Rate
 	spread_df =
 		hist$boe %>%
 		filter(freq == 'd') %>%
 		pivot_wider(., id_cols = date, names_from = varname, values_from = value) %>%
 		mutate(., spread = sonia - ukbankrate)
-	
+
 	spread_df %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = spread))
-	
+
 	# Monthly baserate forecasts (daily forecasts can be calculated later; see ENG section)
 	ukbankrate =
 		ice_data %>%
@@ -343,12 +338,12 @@ local({
 			value = value - trailing_lag_mean
 		) %>%
 		select(., varname, freq, vdate, date, value)
-	
+
 	final_df = bind_rows(
 		ice_data,
 		ukbankrate
 	)
-	
+
 	submodels$ice <<- final_df
 })
 
@@ -451,11 +446,11 @@ local({
 	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 	# 		View(.)
 
-	
+
 	## Barchart.com data (currently just FFR)
 	message('Starting Barchart data scrape...')
-	
-	
+
+
 	barchart_sources =
 		# 3 year history + 5 year forecast
 		tibble(date = seq(floor_date(today() - years(3), 'month'), length.out = 8 * 12, by = '1 month')) %>%
@@ -470,7 +465,7 @@ local({
 		transmute(., varname, code, date) %>%
 		arrange(., date) %>%
 		purrr::transpose(.)
-	
+
 
 	cookies =
 		GET(
@@ -478,12 +473,12 @@ local({
 		) %>%
 		cookies(.) %>%
 		as_tibble(.)
-	
+
 	barchart_data = lapply(barchart_sources, function(x) {
-		
+
 		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
 		Sys.sleep(.5)
-		
+
 		http_response = RETRY(
 			'GET',
 			times = 10,
@@ -510,7 +505,7 @@ local({
 			print('No response, skipping')
 			return(NULL)
 		}
-		
+
 		http_response %>%
 			content(.) %>%
 			read_csv(
@@ -525,10 +520,10 @@ local({
 		}) %>%
 		compact(.) %>%
 		bind_rows(.) %>%
-		transmute(., varname, vdate, date, value)	%>%	
+		transmute(., varname, vdate, date, value)	%>%
 		filter(., date >= lubridate::floor_date(vdate, 'month')) # Get rid of forecasts for old observations
-	
-	
+
+
 	## Bloom forecasts
 	# These are necessary to fill in missing BSBY forecasts for first 3 months before
 	# date of first CME future
@@ -645,21 +640,21 @@ local({
 	#' This relies heavily on expectations theory weighted to federal funds rate;
 	#' Consider taking a weighted average with Treasury futures directly
 	#' (see CME micro futures)
-	#' 
+	#'
 	message('***** Adding Calculated Variables')
 
 	fred_data =
 		hist$fred %>%
 		filter(., str_detect(varname, 't\\d{2}[m|y]') | varname == 'ffr')
-	
+
 	today = today('US/Eastern')
-	
+
 	# Monthly aggregation & append EOM with current val
 	fred_data_cat =
 		fred_data %>%
 		mutate(., is_current_month = year(today) == year(date) & month(today) == month(date)) %>%
 		group_split(., is_current_month) %>%
-		lapply(., function(df) 
+		lapply(., function(df)
 			if (df$is_current_month[[1]] == TRUE) {
 				# If current month, use last available date
 				df %>%
@@ -865,12 +860,12 @@ local({
 			(AMB1 + AMT1)/2
 			)) %>%
 		mutate(., value = smooth.spline(value)$y)
-	
+
 	cboe_data %>%
 		filter(., vdate == max(vdate)) %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value))
-		
+
 	# Plot comparison against TDNS
 	cboe_data %>%
 		filter(., vdate == max(vdate)) %>%
@@ -971,33 +966,33 @@ local({
 
 ## ENG: BoE Bank Rate (DAILY) ----------------------------------------------------------
 # local({
-# 	
+#
 # 	# Use monthly data from ICE
-# 	
+#
 # 	# Now extract calendar dates of meetings
 # 	old_dates = as_date(c(
 # 		'2021-02-04', '2021-03-18', '2021-05-06', '2021-06-24', '2021-09-23', '2021-11-04', '2021-12-16'
 # 		))
-# 
+#
 # 	new_dates =
 # 		GET('https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates') %>%
 # 		content(.) %>%
 # 		html_nodes(., 'div.page-content') %>%
 # 		lapply(., function(x) {
-# 
+#
 # 			div_year = str_sub(html_text(html_node(x, 'h2')), 0, 4)
-# 
+#
 # 			month_dates =
 # 				html_text(html_nodes(x, 'table tbody tr td:nth-child(1)')) %>%
 # 				str_replace(., paste0(wday(now() + days(0:6), label = T, abbr = F), collapse = '|'), '') %>%
 # 				str_squish(.)
-# 
+#
 # 			paste0(month_dates, ' ', div_year) %>%
 # 				dmy(.)
 # 			}) %>%
 # 		unlist(.) %>%
 # 		as_date(.)
-# 
+#
 # 	# Join except for anything in new_dates already in old_dates
 # 	meeting_dates =
 # 		tibble(dates = old_dates, year = year(old_dates), month = month(old_dates)) %>%
@@ -1010,20 +1005,20 @@ local({
 # 			)
 # 		) %>%
 # 		.$dates
-# 
-# 
-# 
+#
+#
+#
 # 	## Daily calculations
 # 	this_vdate = max(monthly_df$vdate)
 # 	this_monthly_df = monthly_df %>% filter(., vdate == this_vdate) %>% select(., -vdate, -freq)
-# 
+#
 # 	# Designate each period as a constant-rate time between meetings
 # 	periods_df =
 # 		meeting_dates %>%
 # 		tibble(period_start = ., period_end = lead(period_start, 1)) %>%
 # 		filter(., period_start >= min(this_monthly_df$date) & period_end <= max(this_monthly_df$date))
-# 
-# 
+#
+#
 # 	# For each period, see which months fall fully within them; if multiple, take the average;
 # 	# most periods will by none
 # 	periods_df %>%
@@ -1036,8 +1031,8 @@ local({
 # 				mutate(., filled_value = ifelse(is.nan(filled_value), NA, filled_value))
 # 			) %>%
 # 		mutate(., period_start = as_date(period_start), period_end = as_date(period_end))
-# 	
-# 	submodels$eng <<- 
+#
+# 	submodels$eng <<-
 # })
 
 

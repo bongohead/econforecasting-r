@@ -10,8 +10,8 @@ This code is developed locally on a Windows machine and deployed locally to an U
 
 # CHANGELOG
 
-## [v1.05]
-- Add bond forecasts for international markets (EU, see ticket chain)
+## [v2.00] (Rebuild)
+- Added new db connector function
 
 ## [v1.04] (Misc Bugfixes) 
 - Fixed bug related to einf forecasts missing latest vintage
