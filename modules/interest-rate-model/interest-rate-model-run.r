@@ -29,6 +29,7 @@ library(forecast, include.only = c('forecast', 'Arima'))
 
 ## Load Connection Info ----------------------------------------------------------
 db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+log_job_in_db(db, JOB_NAME, 'interest-rate-model', 'job-start')
 hist = list()
 submodels = list()
 
@@ -71,18 +72,10 @@ local({
 					'https://www.bloomberg.com/markets2/api/history/{x$hist_source_key}%3AIND/PX_LAST?',
 					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
 					),
-				add_headers(c(
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0',
-					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-					'Accept-Encoding' = 'gzip, deflate, br',
-					'Accept-Language' ='en-US,en;q=0.5',
-					'Cache-Control'='no-cache',
-					'Connection'='keep-alive',
-					'DNT' = '1',
+				add_headers(get_standard_headers(c(
 					'Host' = 'www.bloomberg.com',
-					'Pragma'='no-cache',
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
-					))
+					)))
 				) %>%
 				content(., 'parsed') %>%
 				.[[1]] %>%
@@ -187,7 +180,7 @@ local({
 		# vdate is the same as date
 		mutate(., vdate = date, form = 'd1')
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_input_values')$count)
+	initial_count = get_rowcount(db, 'interest_rate_model_input_values')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -204,8 +197,7 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_input_values')$count)
-	message('***** Rows Added: ', final_count - initial_count)
+	message('***** Rows Added: ', get_rowcount(db, 'interest_rate_model_input_values') - initial_count)
 
 	hist_values <<- hist_values
 })
@@ -261,11 +253,11 @@ local({
 		map_dfr(., function(x) {
 
 			# Get top-level expiration IDs
-			httr::GET(str_glue(
+			GET(str_glue(
 				'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
 				'getContractsAsJson=&productId={x$product_id}&hubId={x$hub_id}'
 				)) %>%
-				httr::content(., as = 'parsed') %>%
+				content(., as = 'parsed') %>%
 				# Filter out packs & bundles
 				keep(., ~ str_detect(.$marketStrip, 'Pack|Bundle', negate = T)) %>%
 				map_dfr(., function(z) tibble(
@@ -275,11 +267,11 @@ local({
 				# Iterate through the expiration IDs
 				purrr::transpose(.) %>%
 				map_dfr(., function(z)
-					httr::GET(str_glue(
+					GET(str_glue(
 						'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
 						'getHistoricalChartDataAsJson=&marketId={z$market_id}&historicalSpan=2'
 						)) %>%
-						httr::content(., as = 'parsed') %>%
+						content(., as = 'parsed') %>%
 						.$bars %>%
 						{tibble(vdate = map_chr(., ~ .[[1]]), value = map_dbl(., ~ .[[2]]))} %>%
 						transmute(
@@ -354,18 +346,7 @@ local({
 	# CME Group Data
 	message('Starting CME data scrape...')
 	cme_cookie =
-		GET(
-			'https://www.cmegroup.com/',
-			add_headers(c(
-				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-				'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-				'Accept-Encoding' = 'gzip, deflate, br',
-				'Accept-Language' ='en-US,en;q=0.5',
-				'Cache-Control'='no-cache',
-				'Connection'='keep-alive',
-				'DNT' = '1'
-				))
-			) %>%
+		GET('https://www.cmegroup.com/', add_headers(get_standard_headers())) %>%
 		cookies(.) %>%
 		as_tibble(.) %>%
 		filter(., name == 'ak_bmsc') %>%
@@ -375,57 +356,58 @@ local({
 	last_trade_date =
 		GET(
 			paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/305/G?quoteCodes=null&_='),
-			add_headers(c(
-				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-				'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-				'Accept-Encoding' = 'gzip, deflate, br',
-				'Accept-Language' ='en-US,en;q=0.5',
-				'Cache-Control'='no-cache',
-				'Connection'='keep-alive',
+			add_headers(get_standard_headers(c(
 				'Cookie'= cme_cookie,
-				'DNT' = '1',
 				'Host' = 'www.cmegroup.com'
-			))
-		) %>% content(., 'parsed') %>% .$tradeDate %>% lubridate::parse_date_time(., 'd-b-Y') %>% as_date(.)
+			)))
+		) %>% content(., 'parsed') %>% .$tradeDate %>% parse_date_time(., 'd-b-Y') %>% as_date(.)
 
 	# See https://www.federalreserve.gov/econres/feds/files/2019014pap.pdf for CME futures model
+	# SOFR 3m tenor./
 	cme_raw_data =
 		tribble(
 			~ varname, ~ cme_id,
 			'ffr', '305',
 			'sofr', '8462',
 			'sofr', '8463',
-			'bsby', '10038'
+			'bsby', '10038',
+			't02y', '10048',
+			't05y', '10049',
+			't10y', '10050',
+			't30y', '10051'
 		) %>%
 		purrr::transpose(.) %>%
-		purrr::map_dfr(., function(var)
-			httr::GET(
+		map_dfr(., function(var)
+			GET(
 				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cme_id, '/G?quoteCodes=null&_='),
-				add_headers(c(
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-					'Accept-Encoding' = 'gzip, deflate, br',
-					'Accept-Language' ='en-US,en;q=0.5',
-					'Cache-Control'='no-cache',
-					'Connection'='keep-alive',
+				add_headers(get_standard_headers(c(
 					'Cookie'= cme_cookie,
-					'DNT' = '1',
 					'Host' = 'www.cmegroup.com'
-					))
+					)))
 				) %>%
 				httr::content(., as = 'parsed') %>%
 				.$quotes %>%
-				purrr::map_dfr(., function(x) {
-					if (x$priorSettle %in% c('0.00', '-')) return() # Whack bug in CME website
+				map_dfr(., function(x) {
+					if (x$priorSettle %in% c('0.000', '0.00', '-')) return() # Whack bug in CME website
 					tibble(
 						vdate = last_trade_date,
-						date = lubridate::ymd(x$expirationDate),
-						value = 100 - as.numeric(x$priorSettle),
+						date = ymd(x$expirationDate),
+						value = {
+							if (str_detect(var$varname, '^t\\d\\dy$')) as.numeric(x$priorSettle)
+							else 100 - as.numeric(x$priorSettle)
+							},
 						varname = var$varname,
 						cme_id = var$cme_id
 					)
 				})
 			)
+
+	log_job_in_db(db, JOB_NAME, 'interest-rate-model', 'data-dump', toJSON(cme_raw_data), 'cme-raw-data')
+
+	cme_raw_data %>%
+		arrange(., date) %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = cme_id))
 
 	cme_data =
 		cme_raw_data %>%
@@ -438,7 +420,7 @@ local({
 		}) %>%
 		arrange(., date) %>%
 		# Get rid of forecasts for old observations
-		filter(., date >= lubridate::floor_date(last_trade_date, 'month') & value != 100) %>%
+		filter(., date >= floor_date(last_trade_date, 'month') & value != 100) %>%
 		transmute(., varname, vdate = last_trade_date, date, value)
 
 	# Most data starts in 88-89, except j=12 which starts at 1994-01-04. Misc missing obs until 2006.
@@ -447,37 +429,46 @@ local({
 	#     	dplyr::arrange(., date) %>% na.omit(.) %>% dplyr::group_by(year(date)) %>% dplyr::summarize(., n = n()) %>%
 	# 		View(.)
 
-
-	## Barchart.com data (currently just FFR)
+	## Barchart.com data
 	message('Starting Barchart data scrape...')
 
 	barchart_sources =
-		# 5 year history + 5 year forecast
-		tibble(date = seq(floor_date(today() - years(5), 'month'), length.out = (5 + 5) * 12, by = '1 month')) %>%
+		# 3 year history + max of 5 year forecast
+		tibble(date = seq(floor_date(today() - years(3), 'month'), length.out = (3 + 5) * 12, by = '1 month')) %>%
 		mutate(., year = year(date), month = month(date)) %>%
 		left_join(
 			.,
 			tibble(month = 1:12, code = c('F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z')),
 			by = 'month'
 			) %>%
-		expand_grid(., tibble(varname = c('sofr', 'ffr'), ticker = c('SQ', 'ZQ'))) %>%
-		mutate(., code = paste0(ticker, code, str_sub(year, -2))) %>%
+		expand_grid(
+			.,
+			tibble(
+				varname = c('sofr', 'ffr', 't02y', 't05y', 't10y', 't30y'),
+				ticker = c('SQ', 'ZQ', 'TU', 'TF', 'TO', 'TZ'),
+				max_months_out = c(5, 5, 2, 2, 2, 2) * 12
+				)
+			) %>%
+		mutate(
+			.,
+			code = paste0(ticker, code, str_sub(year, -2)),
+			months_out = interval(floor_date(today(), 'month'), floor_date(date, 'month')) %/% months(1)
+		) %>%
+		filter(., months_out <= max_months_out) %>%
 		transmute(., varname, code, date) %>%
 		arrange(., date) %>%
 		purrr::transpose(.)
 
 
 	cookies =
-		GET(
-		'https://www.barchart.com/futures/quotes/ZQV22',
-		) %>%
+		GET('https://www.barchart.com/futures/quotes/ZQV22') %>%
 		cookies(.) %>%
 		as_tibble(.)
 
 	barchart_data = lapply(barchart_sources, function(x) {
 
 		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
-		Sys.sleep(.5)
+		Sys.sleep(runif(1, .4, .6))
 
 		http_response = RETRY(
 			'GET',
@@ -487,18 +478,14 @@ local({
 				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
 				'&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration'
 			),
-			add_headers(c(
-				'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:102.0) Gecko/20100101 Firefox/102.0',
+			add_headers(get_standard_headers(c(
 				'X-XSRF-TOKEN' = URLdecode(filter(cookies, name == 'XSRF-TOKEN')$value),
-				'DNT' = '1',
 				'Referer' = 'https://www.barchart.com/futures/quotes/ZQZ20',
 				'Cookie' = URLdecode(paste0(
 					'bcFreeUserPageView=0; webinar113WebinarClosed=true; ',
 					paste0(paste0(cookies$name, '=', cookies$value), collapse = '; ')
-					)),
-				'Pragma' = 'no-cache',
-				'Cache-Control' = 'no-cache'
-				))
+					))
+				)))
 			)
 
 		if (http_response$status_code != 200) {
@@ -515,14 +502,19 @@ local({
 				col_types = 'cDdddddd'
 			) %>%
 			select(., contract, vdate, close) %>%
-			mutate(., varname = x$varname, vdate = vdate - days(1), date = as_date(x$date), value = 100 - close) %>%
+			mutate(
+				.,
+				varname = x$varname,
+				vdate = vdate - days(1),
+				date = as_date(x$date),
+				value = ifelse(str_detect(varname, '^t\\d\\dy$'), close, 100 - close)
+				) %>%
 			return(.)
 		}) %>%
 		compact(.) %>%
 		bind_rows(.) %>%
-		transmute(., varname, vdate, date, value)	%>%
-		filter(., date >= lubridate::floor_date(vdate, 'month')) # Get rid of forecasts for old observations
-
+		transmute(., varname, vdate, date, value) %>%
+		filter(., date >= floor_date(vdate, 'month')) # Get rid of forecasts for old observations
 
 	## Bloom forecasts
 	# These are necessary to fill in missing BSBY forecasts for first 3 months before
@@ -536,17 +528,10 @@ local({
 	message('Adding monthly interpolation ...')
 	final_df =
 		cme_data %>%
-		# Anti join in FFR
-		bind_rows(
-			.,
-			anti_join(barchart_data, ., by = c('varname', 'vdate', 'date'))
-		) %>%
+		# Anti join in barchart data where CME data is missing
+		bind_rows(., anti_join(barchart_data, ., by = c('varname', 'vdate', 'date'))) %>%
 		# Replace Bloom futures with data
-		full_join(
-			.,
-			rename(bloom_data, bloom = value),
-			by = c('varname', 'vdate', 'date')
-		) %>%
+		full_join(., rename(bloom_data, bloom = value), by = c('varname', 'vdate', 'date')) %>%
 		mutate(., value = ifelse(is.na(value), bloom, value)) %>%
 		select(., -bloom) %>%
 		# If this months forecast misisng for BSBY, add it in for interpolation purposes
@@ -601,7 +586,7 @@ local({
 				arrange(., date) %>%
 				purrr::transpose(.) %>%
 				map(., ~ list(.$date, round(.$value, 2))),
-			color = rainbow(3)[i]
+			color = rainbow(10)[i]
 			))
 
 	series_chart =
@@ -617,19 +602,6 @@ local({
 		hc_legend(., enabled = TRUE)
 
 	print(series_chart)
-
-	bind_rows(
-		tibble(logname = 'cme-raw-import', log_info = jsonlite::toJSON(cme_raw_data)),
-		tibble(logname = 'cme-cleaned-import', log_info = jsonlite::toJSON(cme_data))
-		) %>%
-		mutate(., module = 'interest-rate-model', log_date = today(), log_group = 'data-store') %>%
-		create_insert_query(
-			.,
-			'job_logs',
-			'ON CONFLICT (logname, module, log_date, log_group)
-				DO UPDATE SET log_info=EXCLUDED.log_info, log_dttm=CURRENT_TIMESTAMP'
-			) %>%
-		dbExecute(db, .)
 
 	submodels$cme <<- final_df
 })
@@ -683,7 +655,7 @@ local({
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	hist_df =
 		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		filter(., date >= add_with_rollback(today(), months(-30))) %>%
+		filter(., date >= add_with_rollback(today(), months(-36))) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
 		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
 		mutate(., value = value - ffr) %>%
@@ -709,7 +681,7 @@ local({
 					mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
 					mutate(., resid = value - fitted)
 				}) %>%
-			{if (return_all == FALSE) summarise(., mse = mean(abs(resid))) %>% .$mse else .}
+			{if (return_all == FALSE) summarise(., mae = mean(abs(resid))) %>% .$mae else .}
 	}
 
 	# Find MSE-minimizing lambda value
@@ -747,20 +719,41 @@ local({
 	# Calculated TDNS2: -1 * (t10y - t03m)
 	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 
-	# Monthly forecast up to 10 years (minus ffr)
-	# Get cumulative return starting from cur_date
+	# Monthly returns (annualized & compounded) up to 10 years (minus ffr) using TDNS
+	# decomposition to enforce smoothness, reweighted with historical values (via spline)
 	fitted_curve =
-		tibble(ttm = seq(1: 480)) %>%
+		tibble(ttm = seq(1:480)) %>%
 		mutate(., cur_date = floor_date(today(), 'months')) %>%
 		mutate(
 			.,
-			annualized_yield =
+			annualized_yield_dns =
 				dns_coefs_now$tdns1 +
-				dns_coefs_now$tdns2 * (1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) +
-				dns_coefs_now$tdns3 * ((1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) - exp(-1 * optim_lambda * ttm)),
+				dns_coefs_now$tdns2 *
+					(1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) +
+				dns_coefs_now$tdns3 *
+					((1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) - exp(-1 * optim_lambda * ttm)),
+			) %>%
+		# Join on last historical date
+		left_join(
+			.,
+			transmute(filter(dns_fit_hist, date == max(date)), ttm, yield_hist = value),
+			by = 'ttm'
+			) %>%
+		mutate(
+			.,
+			spline_fit = zoo::na.spline(
+				c(.$yield_hist[1:360], rep(tail(keep(.$yield_hist, \(x) !is.na(x)), 1), 120)),
+				  method = 'natural',
+				),
+			annualized_yield = .6 * annualized_yield_dns + .4 * spline_fit,
 			# Get dns_coefs yield
 			cum_return = (1 + annualized_yield/100)^(ttm/12)
 			)
+
+	ggplot(fitted_curve) +
+		geom_line(aes(x = ttm, y = annualized_yield_dns), color = 'red') +
+		geom_line(aes(x = ttm, y = spline_fit), color = 'green') +
+		geom_line(aes(x = ttm, y = annualized_yield), color = 'blue')
 
 	# Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
 	# and for each, iterate over the original "ttms" 1, 2, 3,
@@ -824,8 +817,99 @@ local({
 		optim_lambda = optim_lambda,
 		dns_coefs_forecast = dns_coefs_forecast
 		)
+
+
 	submodels$tdns <<- treasury_forecasts
 })
+
+
+## TCME: Nelson-Siegel Treasury Yield Forecast ----------------------------------------------------------
+local({
+
+	## Barchart.com data
+	message('Starting Barchart data scrape...')
+
+	barchart_sources =
+		# 3 year history + max of 5 year forecast
+		tibble(date = seq(floor_date(today() - years(3), 'month'), length.out = (3 + 5) * 12, by = '1 month')) %>%
+		mutate(., year = year(date), month = month(date)) %>%
+		left_join(
+			.,
+			tibble(month = 1:12, code = c('F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z')),
+			by = 'month'
+		) %>%
+		expand_grid(
+			.,
+			tibble(
+				varname = c('sofr', 'ffr', 't02y', 't05y', 't10y', 't30y'),
+				ticker = c('SQ', 'ZQ', 'TU', 'TF', 'TO', 'TZ'),
+				max_months_out = c(5, 5, 2, 2, 2, 2) * 12
+			)
+		) %>%
+		mutate(
+			.,
+			code = paste0(ticker, code, str_sub(year, -2)),
+			months_out = interval(floor_date(today(), 'month'), floor_date(date, 'month')) %/% months(1)
+		) %>%
+		filter(., months_out <= max_months_out) %>%
+		transmute(., varname, code, date) %>%
+		arrange(., date) %>%
+		purrr::transpose(.)
+
+
+	cookies =
+		GET('https://www.barchart.com/futures/quotes/ZQV22') %>%
+		cookies(.) %>%
+		as_tibble(.)
+
+	barchart_data = lapply(barchart_sources, function(x) {
+
+		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
+		Sys.sleep(runif(1, .4, .6))
+
+		http_response = RETRY(
+			'GET',
+			times = 10,
+			paste0(
+				'https://www.barchart.com/proxies/timeseries/queryeod.ashx?',
+				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
+				'&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration'
+			),
+			add_headers(get_standard_headers(c(
+				'X-XSRF-TOKEN' = URLdecode(filter(cookies, name == 'XSRF-TOKEN')$value),
+				'Referer' = 'https://www.barchart.com/futures/quotes/ZQZ20',
+				'Cookie' = URLdecode(paste0(
+					'bcFreeUserPageView=0; webinar113WebinarClosed=true; ',
+					paste0(paste0(cookies$name, '=', cookies$value), collapse = '; ')
+				))
+			)))
+		)
+
+		if (http_response$status_code != 200) {
+			print('No response, skipping')
+			return(NULL)
+		}
+
+		http_response %>%
+			content(.) %>%
+			read_csv(
+				.,
+				# Verified columns are correct - compare CME official chart to barchart
+				col_names = c('contract', 'vdate', 'open', 'high', 'low', 'close', 'volume', 'oi'),
+				col_types = 'cDdddddd'
+			) %>%
+			select(., contract, vdate, close) %>%
+			mutate(., varname = x$varname, vdate = vdate - days(1), date = as_date(x$date), value = 100 - close) %>%
+			return(.)
+	}) %>%
+		compact(.) %>%
+		bind_rows(.) %>%
+		transmute(., varname, vdate, date, value) %>%
+		filter(., date >= floor_date(vdate, 'month')) # Get rid of forecasts for old observations
+
+
+})
+
 
 ## CBOE: Futures ---------------------------------------------------------------------
 local({

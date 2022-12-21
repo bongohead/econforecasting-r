@@ -9,6 +9,7 @@ This code is developed locally on a Windows machine and deployed locally to an U
 
 
 # CHANGELOG
+- Test: DL model ensembling (subject to random variation)
 
 ## [v2.00] (API Integration & Design Overhaul)
 - Add bond forecasts for international markets (EU, see ticket chain)

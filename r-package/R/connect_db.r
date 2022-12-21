@@ -51,39 +51,65 @@ connect_db = function(secrets_list = NULL, secrets_path = NULL, ...) {
 }
 
 
-#' Log an entry in the job_logs Postgres table
+#' Log an entry in the model_logs Postgres table
 #'
 #' @description
-#' Log an enry with columns corresponding to the passed parameters in the job_logs Postgres table
+#' Log an enry with columns corresponding to the passed parameters in the model_logs Postgres table
 #'
-#' @param db The database connection object
-#' @param job The name of the job to be logged
-#' @param module The module the job belongs to
-#' @param type The type of the log message
-#' @param details Details of the log message as a JSON string
+#' @param db The database connection object.
+#' @param jobname The name of the job to be logged.
+#' @param module The module the job belongs to.
+#' @param log_type The type of the log message. Valid options are 'job-success', 'job-start', 'job-failed', 'data-dump'.
+#' @param log_dump Details of the log message as a JSON string.
+#' @param log_subtype The subtype. Optional, usually only used for log_type = 'data-dump'
 #'
 #' @importFrom DBI dbExecute
 #' @importFrom tibble tribble
 #' @export
-log_job_in_db = function(db, job, module, type = 'job-success', details) {
+log_job_in_db = function(db, jobname, module, log_type, log_dump = NA_character_, log_subtype = NA_character_) {
 
-	if (class(db) == 'PqConnection') stop('Parameter db must be a PqConnection object!')
-	if (!is.character(job)) stop('Parameter job must be a character!')
+	if (class(db) != 'PqConnection') stop('Parameter db must be a PqConnection object!')
+	if (!is.character(jobname)) stop('Parameter jobname must be a character!')
 	if (!is.character(module)) stop('Parameter module must be a character!')
-	if (!is.character(type)) stop('Parameter class must be a character!')
-	if (!is.character(details)) stop('Parameter details must be a character vector!')
+	if (!log_type %in% c('job-success', 'job-start', 'job-failed', 'data-dump')) {
+		stop('Parameter log_type must be one of job-success, job-start, job-failed, data-dump. Check DDL!')
+	}
+
+	if (!is.character(log_type)) stop('Parameter log_type must be a character!')
+	if (!is.na(log_subtype) && !is.character(log_subtype)) stop('Parameter log_subtype must be a character!')
+	if (!is.character(log_dump)) stop('Parameter log_dump must be a character vector!')
 
 	log_entry = tribble(
-		~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-		job, module, today(), type, details
+		~ jobname, ~ module, ~ log_type, ~ log_subtype, ~ log_dump,
+		jobname, module, log_type, log_subtype, log_dump
 		)
 
-	dbExecute(create_insert_query(
+	dbExecute(db, create_insert_query(
 		log_entry,
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
+		'model_logs',
+		'ON CONFLICT ON CONSTRAINT model_logs_pk DO UPDATE
+		SET log_dump=EXCLUDED.log_dump,log_subtype=EXCLUDED.log_subtype,created_at=CURRENT_TIMESTAMP'
 		))
 
 	return(TRUE)
 }
 
+
+#' Helper function to check row count of a table in Postgres
+#'
+#' @description
+#' Returns the number of rows in a table
+#'
+#' @param db The database connection object.
+#' @param tablename The name of the table.
+#'
+#' @importFrom DBI dbGetQuery
+get_rowcount = function(db, tablename) {
+
+	if (class(db) != 'PqConnection') stop('Parameter db must be a PqConnection object!')
+	if (!is.character(tablename)) stop('Parameter tablename must be a character!')
+
+	count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_input_values')$count)
+
+	return(count)
+}
