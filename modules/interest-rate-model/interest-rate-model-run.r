@@ -629,7 +629,8 @@ local({
 		filter(., str_detect(varname, '^t\\d{2}[m|y]$') | varname == 'ffr')
 
 
-	backtest_vdate_groups =
+	# Get all vintage dates that need to be backtested
+	backtest_vdates =
 		submodels$cme %>%
 		filter(., varname == 'ffr') %>%
 		transmute(., ffr = value, vdate, date) %>%
@@ -637,16 +638,16 @@ local({
 		group_by(., vdate) %>%
 		mutate(., vdate_forecasts = n()) %>%
 		filter(., vdate_forecasts >= 36) %>%
+		# Limit to backtest vdates
 		filter(., vdate >= today() - months(backtest_months)) %>%
-		group_split(.) %>%
-		lapply(., \(x) list(vdate = x$vdate[[1]], ffr_forecasts = x))
+		group_by(., vdate) %>%
+		summarize(.) %>%
+		.$vdate
 
-	# today = today('US/Eastern')
-	x$vdate = today
 
 	# Get available historical data at each vintage date (36 months of history)
 	hist_df_0 =
-		tibble(vdate = map_vec(backtest_vdate_groups, ~.$vdate)) %>%
+		tibble(vdate = backtest_vdates) %>%
 		mutate(., floor_vdate = floor_date(vdate, 'month')) %>%
 		left_join(
 			.,
@@ -696,7 +697,7 @@ local({
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
 
-	# 3 months training dataset
+	# Filter to only last 3 months
 	train_df = hist_df %>% filter(., date >= add_with_rollback(vdate, months(-3)))
 
 	#' Calculate DNS fit
@@ -734,7 +735,8 @@ local({
 				x %>%
 					.[, fitted := fitted(reg)] %>%
 					.[, c('b1', 'b2', 'b3') := list(coef(reg)[['f1']], coef(reg)[['f2']], coef(reg)[['f3']])] %>%
-					.[, resid := value - fitted]
+					.[, resid := value - fitted] %>%
+					.[, lambda := lambda]
 				}) %>%
 			rbindlist(.) %>%
 			{if (return_all == FALSE) mean(abs(.$resid)) else as_tibble(.)}
@@ -742,7 +744,7 @@ local({
 
 
 
-	# Find MSE-minimizing lambda value
+	# Find MSE-minimizing lambda value by vintage date
 	# Can use furrr if too slow
 	# library(furrr)
 	# plan(multisession, workers = 2)
@@ -750,73 +752,123 @@ local({
 	optim_lambdas =
 		train_df %>%
 		group_split(., vdate) %>%
-		map_dbl(., function(x)
-			optimize(get_dns_fit, df = x, return_all = F, interval = c(-1, 1), maximum = F)$minimum
-			)
+		map(., function(x) {
+			list(
+				vdate = x$vdate[[1]],
+				train_df = x,
+				lambda = optimize(
+					get_dns_fit,
+					df = x,
+					return_all = F,
+					interval = c(-1, 1),
+					maximum = F
+					)$minimum
+				)
+			})
 
-	# Get historical DNS coefficients
-	dns_fit_hist = get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE)
+	# Get historical DNS fits by vintage date
+	dns_fit_hist = map_dfr(optim_lambdas, \(x) get_dns_fit(df = x$train_df, x$lambda, return_all = TRUE))
 
+	# Get historical DNS hists by vintage date
 	dns_coefs_hist =
 		dns_fit_hist %>%
-		group_by(., date) %>%
-		summarize(., tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3))
+		group_by(., vdate, date) %>%
+		summarize(
+			.,
+			lambda = unique(lambda),
+			tdns1 = unique(b1),
+			tdns2 = unique(b2),
+			tdns3 = unique(b3),
+			.groups = 'drop'
+			)
 
-	# Get last DNS coefs
-	dns_coefs_now = as.list(select(filter(dns_coefs_hist, date == max(date)), tdns1, tdns2, tdns3))
+	# # Get last DNS coefs
+	# dns_coefs_now =
+	# 	dns_coefs_hist %>%
+	# 	filter(., date == max_date) %>%
+	# 	select(., tdns1, tdns2, tdns3)
+	#
+	#
+	# 	as.list(select(filter(dns_coefs_hist, date == max(date)), tdns1, tdns2, tdns3))
 
-	# Check fit on current data
-	dns_fit =
+	# Check fits for last 12 vintage date (last historical fit for each vintage)
+	dns_fit_plots =
 		dns_fit_hist %>%
+		filter(., vdate %in% tail(unique(dns_coefs_hist$vdate, 12))) %>%
+		group_by(., vdate) %>%
 		filter(., date == max(date)) %>%
-		arrange(., ttm) %>%
+		ungroup(.) %>%
+		arrange(., vdate, ttm) %>%
 		ggplot(.) +
 		geom_point(aes(x = ttm, y = value)) +
-		geom_line(aes(x = ttm, y = fitted))
+		geom_line(aes(x = ttm, y = fitted)) +
+		facet_wrap(vars(vdate))
 
-	print(dns_fit)
+	print(dns_fit_plots)
 
 	# Calculated TDNS1: TYield_10y
 	# Calculated TDNS2: -1 * (t10y - t03m)
 	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 
-	# Monthly returns (annualized & compounded) up to 10 years (minus ffr) using TDNS
-	# decomposition to enforce smoothness, reweighted with historical values (via spline)
+
+	# For each vintage date, gets:
+	#  monthly returns (annualized & compounded) up to 10 years (minus ffr) using TDNS
+	#  decomposition to enforce smoothness, reweighted with historical values (via spline)
+	# For each vdate, use the last possible historical date (b1, b2, b3) for TDNS.
 	fitted_curve =
-		tibble(ttm = seq(1:480)) %>%
-		mutate(., cur_date = floor_date(today(), 'months')) %>%
+		dns_coefs_hist %>%
+		group_by(., vdate) %>%
+		slice_max(., date) %>%
+		ungroup(.) %>%
+		transmute(., vdate, tdns1, tdns2, tdns3, lambda) %>%
+		expand_grid(., ttm = 1:480) %>%
 		mutate(
 			.,
 			annualized_yield_dns =
-				dns_coefs_now$tdns1 +
-				dns_coefs_now$tdns2 *
-					(1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) +
-				dns_coefs_now$tdns3 *
-					((1-exp(-1 * optim_lambda * ttm))/(optim_lambda * ttm) - exp(-1 * optim_lambda * ttm)),
+				tdns1 +
+				tdns2 * (1-exp(-1 * lambda * ttm))/(lambda * ttm) +
+				tdns3 *((1-exp(-1 * lambda * ttm))/(lambda * ttm) - exp(-1 * lambda * ttm)),
 			) %>%
-		# Join on last historical date
+		# Join on last historical datapoints for each vintage (for spline fitting)
 		left_join(
 			.,
-			transmute(filter(dns_fit_hist, date == max(date)), ttm, yield_hist = value),
-			by = 'ttm'
-			) %>%
-		mutate(
-			.,
-			spline_fit = zoo::na.spline(
-				c(.$yield_hist[1:360], rep(tail(keep(.$yield_hist, \(x) !is.na(x)), 1), 120)),
-				  method = 'natural',
-				),
-			annualized_yield = .6 * annualized_yield_dns + .4 * spline_fit,
-			# Get dns_coefs yield
-			cum_return = (1 + annualized_yield/100)^(ttm/12)
-			)
+			dns_fit_hist %>%
+				group_by(., vdate) %>%
+				slice_max(., date) %>%
+				ungroup(.) %>%
+				transmute(., vdate, ttm, yield_hist = value),
+			by = c('vdate', 'ttm')
+		) %>%
+		group_split(., vdate) %>%
+		map(., function(x)
+			x %>%
+				mutate(
+					.,
+					spline_fit = zoo::na.spline(
+						c(.$yield_hist[1:360], rep(tail(keep(.$yield_hist, \(x) !is.na(x)), 1), 120)),
+						method = 'natural',
+						),
+					annualized_yield = .6 * annualized_yield_dns + .4 * spline_fit,
+					# Get dns_coefs yield
+					cum_return = (1 + annualized_yield/100)^(ttm/12)
+					)
+		) %>%
+		bind_rows(.) %>%
+		select(., -tdns1, -tdns2, -tdns3, -lambda)
 
-	full_fit =
-		ggplot(fitted_curve) +
-		geom_line(aes(x = ttm, y = annualized_yield_dns), color = 'red') +
-		geom_line(aes(x = ttm, y = spline_fit), color = 'green') +
-		geom_line(aes(x = ttm, y = annualized_yield), color = 'blue')
-	print(full_fit)
+	# Check how well the spline combined with TDNS fits the history
+	full_fit_plots =
+		fitted_curve %>%
+		filter(., vdate %in% c(head(unique(.$vdate, 6)), tail(unique(.$vdate), 6))) %>%
+		ggplot(.) +
+		geom_line(aes(x = ttm, y = annualized_yield_dns), color = 'blue') +
+		geom_line(aes(x = ttm, y = spline_fit), color = 'black') +
+		geom_point(aes(x = ttm, y = yield_hist), color = 'black') +
+		geom_line(aes(x = ttm, y = annualized_yield), color = 'red') +
+		facet_wrap(vars(vdate))
+
+	print(full_fit_plots)
+
 
 	# Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
 	# and for each, iterate over the original "ttms" 1, 2, 3,
@@ -825,50 +877,61 @@ local({
 		yield_curve_names_map$ttm %>%
 		lapply(., function(yttm)
 			fitted_curve %>%
+				arrange(., vdate, ttm) %>%
+				group_by(., vdate) %>%
 				mutate(
 					.,
-					yttm_ahead_cum_return = dplyr::lead(cum_return, yttm)/cum_return,
+					yttm_ahead_cum_return = dplyr::lead(cum_return, yttm, order_by = ttm)/cum_return,
 					yttm_ahead_annualized_yield = (yttm_ahead_cum_return^(12/yttm) - 1) * 100
 				) %>%
+				ungroup(.) %>%
 				filter(., ttm <= 120) %>%
 				mutate(., yttm = yttm) %>%
 				inner_join(., yield_curve_names_map, c('yttm' = 'ttm'))
 		) %>%
 		bind_rows(.) %>%
-		mutate(
-			.,
-			date = add_with_rollback(cur_date, months(ttm - 1))
-			) %>%
-		select(., varname, date, value = yttm_ahead_annualized_yield) %>%
+		mutate(., date = add_with_rollback(floor_date(vdate, 'months'), months(ttm - 1))) %>%
+		select(., vdate, varname, date, value = yttm_ahead_annualized_yield) %>%
 		inner_join(
 			.,
 			submodels$cme %>%
 				filter(., varname == 'ffr') %>%
-				filter(., vdate == max(vdate)) %>%
-				transmute(., ffr = value, date),
-			by = 'date'
+				transmute(., ffr_vdate = vdate, ffr = value, date),
+			join_by(date, closest(vdate >= ffr_vdate)) # Use last available ffr_vdate (but in practice always ==)
 			) %>%
-		transmute(., varname, freq = 'm', date, vdate = today(), value = value + ffr)
+		# Only include forecasts where the ffr vdate was within 7 days of tyield vdate
+		filter(., interval(ffr_vdate, vdate) %/% days(1) <= 7) %>%
+		transmute(., vdate, varname, freq = 'm', date, value = value + ffr)
 
 	# Plot point forecasts
 	treasury_forecasts %>%
+		filter(., vdate == max(vdate)) %>%
 		ggplot(.) +
-		geom_line(aes(x = date, y = value, color = varname))
+		geom_line(aes(x = date, y = value, color = varname)) +
+		labs(title = 'Current forecast')
 
 	# Plot curve forecasts
 	treasury_forecasts %>%
+		filter(., vdate == max(vdate)) %>%
 		left_join(., yield_curve_names_map, by = 'varname') %>%
 		hchart(., 'line', hcaes(x = ttm, y = value, color = date, group = date))
+
+	# Plot forecasts over time for current period
+	treasury_forecasts %>%
+		filter(., date == floor_date(today(), 'months')) %>%
+		ggplot(.) +
+		geom_line(aes(x = vdate, y = value, color = varname))
 
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
 	# date since reliant purely on historical data
 	dns_coefs_forecast =
 		treasury_forecasts %>%
-		select(., varname, date, value) %>%
-		pivot_wider(., names_from = 'varname') %>%
+		select(., vdate, varname, date, value) %>%
+		pivot_wider(id_cols = c('vdate', 'date'), names_from = 'varname', values_from = 'value') %>%
 		transmute(
 			.,
+			vdate,
 			date,
 			tdns1 = t10y,
 			tdns2 = -1 * (t10y - t03m),
@@ -881,12 +944,11 @@ local({
 		dns_coefs_forecast = dns_coefs_forecast
 		)
 
-
 	submodels$tdns <<- treasury_forecasts
 })
 
 
-## TCME: Nelson-Siegel Treasury Yield Forecast ----------------------------------------------------------
+## TCME: Join forecasts with futures data using mgvc splines ----------------------------------------------------------
 local({
 
 	library(mgcv)
@@ -894,20 +956,25 @@ local({
 	Fit splines on both temporal dimension and ttm dimension
 	"
 	#' Fit splines between
-	#' library(mgcv)
+	# library(mgcv)
+	this_vdate = today()
+
+	# In actuality get closest futures before this_vdate
 	futures_df =
 		submodels$cme %>%
 		filter(., str_detect(varname, '^t\\d\\d[y|m]$')) %>%
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1)) %>%
-		select(., date, vdate, ttm) %>%
-		filter(., vdate == max(vdate)) %>%
+		select(., date, vdate, ttm, value) %>%
+		filter(., vdate == this_vdate) %>%
 		mutate(
 			.,
-			months_out = interval(floor_date(today(), 'month'), floor_date(date, 'month')) %/% months(1)
+			months_out = interval(floor_date(this_vdate, 'month'), floor_date(date, 'month')) %/% months(1)
 			)
 
 	submodels$tdns %>%
-		filter(., vdate == max(vdate))
+		filter(., vdate == this_vdate) %>%
+
+
 
 
 	fit <- gam(mpg ~ factor(gear)
