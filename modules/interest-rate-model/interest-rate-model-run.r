@@ -24,6 +24,7 @@ library(httr)
 library(rvest)
 library(highcharter)
 library(DBI)
+library(data.table)
 library(jsonlite, include.only = c('toJSON'))
 library(forecast, include.only = c('forecast', 'Arima'))
 
@@ -140,8 +141,8 @@ local({
 	)
 
 	boe_data = lapply(purrr::transpose(boe_keys), function(x)
-		httr::GET(x$url) %>%
-			httr::content(., 'parsed', encoding = 'UTF-8') %>%
+		GET(x$url) %>%
+			content(., 'parsed', encoding = 'UTF-8') %>%
 			html_node(., '#stats-table') %>%
 			html_table(.) %>%
 			set_names(., c('date', 'value')) %>%
@@ -188,12 +189,11 @@ local({
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
-			create_insert_query(
+			dbExecute(db, create_insert_query(
 				x,
 				'interest_rate_model_input_values',
 				'ON CONFLICT (vdate, form, varname, freq, date) DO UPDATE SET value=EXCLUDED.value'
-			) %>%
-				dbExecute(db, .)
+			))
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
@@ -446,7 +446,7 @@ local({
 			tibble(
 				varname = c('sofr', 'ffr', 't02y', 't05y', 't10y', 't30y'),
 				ticker = c('SQ', 'ZQ', 'TU', 'TF', 'TO', 'TZ'),
-				max_months_out = c(5, 5, 2, 2, 2, 2) * 12
+				max_months_out = c(5, 5, 1, 1, 1, 1) * 12
 				)
 			) %>%
 		mutate(
@@ -614,54 +614,90 @@ local({
 	#' (see CME micro futures)
 	#'
 	message('***** Adding Calculated Variables')
+	backtest_months = 12
+
+
+	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
+	yield_curve_names_map =
+		input_sources %>%
+		filter(., str_detect(varname, '^t\\d{2}[m|y]$')) %>%
+		select(., varname) %>%
+		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
 
 	fred_data =
 		hist$fred %>%
-		filter(., str_detect(varname, 't\\d{2}[m|y]') | varname == 'ffr')
+		filter(., str_detect(varname, '^t\\d{2}[m|y]$') | varname == 'ffr')
 
-	today = today('US/Eastern')
 
-	# Monthly aggregation & append EOM with current val
-	fred_data_cat =
-		fred_data %>%
-		mutate(., is_current_month = year(today) == year(date) & month(today) == month(date)) %>%
+	backtest_vdate_groups =
+		submodels$cme %>%
+		filter(., varname == 'ffr') %>%
+		transmute(., ffr = value, vdate, date) %>%
+		# Only backtest vdates with at least 36 months of ffr forecasts
+		group_by(., vdate) %>%
+		mutate(., vdate_forecasts = n()) %>%
+		filter(., vdate_forecasts >= 36) %>%
+		filter(., vdate >= today() - months(backtest_months)) %>%
+		group_split(.) %>%
+		lapply(., \(x) list(vdate = x$vdate[[1]], ffr_forecasts = x))
+
+	# today = today('US/Eastern')
+	x$vdate = today
+
+	# Get available historical data at each vintage date (36 months of history)
+	hist_df_0 =
+		tibble(vdate = map_vec(backtest_vdate_groups, ~.$vdate)) %>%
+		mutate(., floor_vdate = floor_date(vdate, 'month')) %>%
+		left_join(
+			.,
+			fred_data %>% mutate(., floor_date = floor_date(date, 'month')),
+			# Only pulls dates that are strictly less than the vdate (1 day delay in FRED)
+			join_by(vdate > date)
+			) %>%
+		# Get floor month diff
+		left_join(
+			.,
+			distinct(., floor_vdate, floor_date) %>%
+				mutate(., months_diff = interval(floor_date, floor_vdate) %/% months(1)),
+			by = c('floor_vdate', 'floor_date')
+		) %>%
+		filter(., months_diff <= 36) %>%
+		mutate(., is_current_month = floor_vdate == floor_date) %>%
 		group_split(., is_current_month) %>%
 		lapply(., function(df)
 			if (df$is_current_month[[1]] == TRUE) {
 				# If current month, use last available date
 				df %>%
- 					group_by(., varname) %>%
+					group_by(., vdate, varname) %>%
 					filter(., date == max(date)) %>%
 					ungroup(.) %>%
-					select(., varname, date, value) %>%
+					select(., vdate, varname, date, value) %>%
 					mutate(., date = floor_date(date, 'months'))
 			} else {
 				# Otherwise use monthly average for history
 				df %>%
-					mutate(., date = floor_date(date, 'months')) %>%
-					group_by(., varname, date) %>%
+					mutate(., date = floor_date) %>%
+					group_by(., vdate, varname, date) %>%
 					summarize(., value = mean(value), .groups = 'drop')
 			}
 		) %>%
-		bind_rows(.)
-
-	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
-	yield_curve_names_map =
-		input_sources %>%
-		filter(., str_detect(varname, 't\\d{2}[m|y]') & str_length(varname) == 4) %>%
-		select(., varname) %>%
-		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
+		bind_rows(.) %>%
+		arrange(., vdate, varname, date)
 
 	# Create training dataset from SPREAD from ffr - fitted on last 3 months
 	hist_df =
-		filter(fred_data_cat, varname %in% yield_curve_names_map$varname) %>%
-		filter(., date >= add_with_rollback(today(), months(-36))) %>%
+		filter(hist_df_0, varname %in% yield_curve_names_map$varname) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
-		left_join(., transmute(filter(fred_data_cat, varname == 'ffr'), date, ffr = value), by = 'date') %>%
+		left_join(
+			.,
+			transmute(filter(hist_df_0, varname == 'ffr'), vdate, date, ffr = value),
+			by = c('vdate', 'date')
+			) %>%
 		mutate(., value = value - ffr) %>%
 		select(., -ffr)
 
-	train_df = hist_df %>% filter(., date >= add_with_rollback(today(), months(-3)))
+	# 3 months training dataset
+	train_df = hist_df %>% filter(., date >= add_with_rollback(vdate, months(-3)))
 
 	#' Calculate DNS fit
 	#'
@@ -670,28 +706,53 @@ local({
 	#' If FALSE, will return only the MSE (useful for optimization).
 	#' Otherwise, will return a tibble containing fitted values, residuals, and the beta coefficients.
 	#'
+	#' @details
+	#' Recasted into data.table as of 12/21/22, significant speed improvements (600ms optim -> 110ms)
+	#'	test = train_df %>% group_split(., vdate) %>% .[[1]]
+	#'  microbenchmark::microbenchmark(
+	#'  	optimize(get_dns_fit, df = test, return_all = F, interval = c(-1, 1), maximum = F)
+	#'  	times = 10,
+	#'  	unit = 'ms'
+	#'	)
 	#' @export
 	get_dns_fit = function(df, lambda, return_all = FALSE) {
 		df %>%
-			mutate(f1 = 1, f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm), f3 = f2 - exp(-1 * lambda * ttm)) %>%
-			group_split(., date) %>%
-			map_dfr(., function(x) {
+			# mutate(f1 = 1, f2 = (1 - exp(-1 * lambda * ttm))/(lambda * ttm), f3 = f2 - exp(-1 * lambda * ttm)) %>%
+			# group_split(., date) %>%
+			# map_dfr(., function(x) {
+			# 	reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
+			# 	bind_cols(x, fitted = fitted(reg)) %>%
+			# 		mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
+			# 		mutate(., resid = value - fitted)
+			# 	}) %>%
+			as.data.table(.) %>%
+			.[, c('f1', 'f2') := list(1, (1 - exp(-1 * lambda * ttm))/(lambda * ttm))] %>%
+			.[, f3 := f2 - exp(-1*lambda*ttm)] %>%
+			split(., by = 'date') %>%
+			lapply(., function(x) {
 				reg = lm(value ~ f1 + f2 + f3 - 1, data = x)
-				bind_cols(x, fitted = fitted(reg)) %>%
-					mutate(., b1 = coef(reg)[['f1']], b2 = coef(reg)[['f2']], b3 = coef(reg)[['f3']]) %>%
-					mutate(., resid = value - fitted)
+				x %>%
+					.[, fitted := fitted(reg)] %>%
+					.[, c('b1', 'b2', 'b3') := list(coef(reg)[['f1']], coef(reg)[['f2']], coef(reg)[['f3']])] %>%
+					.[, resid := value - fitted]
 				}) %>%
-			{if (return_all == FALSE) summarise(., mae = mean(abs(resid))) %>% .$mae else .}
+			rbindlist(.) %>%
+			{if (return_all == FALSE) mean(abs(.$resid)) else as_tibble(.)}
 	}
 
+
+
 	# Find MSE-minimizing lambda value
-	optim_lambda = optimize(
-		get_dns_fit,
-		df = train_df,
-		return_all = FALSE,
-		interval = c(-1, 1),
-		maximum = FALSE
-		)$minimum
+	# Can use furrr if too slow
+	# library(furrr)
+	# plan(multisession, workers = 2)
+	# future:::ClusterRegistry("stop")
+	optim_lambdas =
+		train_df %>%
+		group_split(., vdate) %>%
+		map_dbl(., function(x)
+			optimize(get_dns_fit, df = x, return_all = F, interval = c(-1, 1), maximum = F)$minimum
+			)
 
 	# Get historical DNS coefficients
 	dns_fit_hist = get_dns_fit(df = hist_df, optim_lambda, return_all = TRUE)
@@ -750,10 +811,12 @@ local({
 			cum_return = (1 + annualized_yield/100)^(ttm/12)
 			)
 
-	ggplot(fitted_curve) +
+	full_fit =
+		ggplot(fitted_curve) +
 		geom_line(aes(x = ttm, y = annualized_yield_dns), color = 'red') +
 		geom_line(aes(x = ttm, y = spline_fit), color = 'green') +
 		geom_line(aes(x = ttm, y = annualized_yield), color = 'blue')
+	print(full_fit)
 
 	# Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
 	# and for each, iterate over the original "ttms" 1, 2, 3,
@@ -826,87 +889,32 @@ local({
 ## TCME: Nelson-Siegel Treasury Yield Forecast ----------------------------------------------------------
 local({
 
-	## Barchart.com data
-	message('Starting Barchart data scrape...')
-
-	barchart_sources =
-		# 3 year history + max of 5 year forecast
-		tibble(date = seq(floor_date(today() - years(3), 'month'), length.out = (3 + 5) * 12, by = '1 month')) %>%
-		mutate(., year = year(date), month = month(date)) %>%
-		left_join(
-			.,
-			tibble(month = 1:12, code = c('F', 'G', 'H', 'J', 'K', 'M', 'N', 'Q', 'U', 'V', 'X', 'Z')),
-			by = 'month'
-		) %>%
-		expand_grid(
-			.,
-			tibble(
-				varname = c('sofr', 'ffr', 't02y', 't05y', 't10y', 't30y'),
-				ticker = c('SQ', 'ZQ', 'TU', 'TF', 'TO', 'TZ'),
-				max_months_out = c(5, 5, 2, 2, 2, 2) * 12
-			)
-		) %>%
+	library(mgcv)
+	"
+	Fit splines on both temporal dimension and ttm dimension
+	"
+	#' Fit splines between
+	#' library(mgcv)
+	futures_df =
+		submodels$cme %>%
+		filter(., str_detect(varname, '^t\\d\\d[y|m]$')) %>%
+		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1)) %>%
+		select(., date, vdate, ttm) %>%
+		filter(., vdate == max(vdate)) %>%
 		mutate(
 			.,
-			code = paste0(ticker, code, str_sub(year, -2)),
 			months_out = interval(floor_date(today(), 'month'), floor_date(date, 'month')) %/% months(1)
-		) %>%
-		filter(., months_out <= max_months_out) %>%
-		transmute(., varname, code, date) %>%
-		arrange(., date) %>%
-		purrr::transpose(.)
+			)
+
+	submodels$tdns %>%
+		filter(., vdate == max(vdate))
 
 
-	cookies =
-		GET('https://www.barchart.com/futures/quotes/ZQV22') %>%
-		cookies(.) %>%
-		as_tibble(.)
-
-	barchart_data = lapply(barchart_sources, function(x) {
-
-		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
-		Sys.sleep(runif(1, .4, .6))
-
-		http_response = RETRY(
-			'GET',
-			times = 10,
-			paste0(
-				'https://www.barchart.com/proxies/timeseries/queryeod.ashx?',
-				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
-				'&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration'
-			),
-			add_headers(get_standard_headers(c(
-				'X-XSRF-TOKEN' = URLdecode(filter(cookies, name == 'XSRF-TOKEN')$value),
-				'Referer' = 'https://www.barchart.com/futures/quotes/ZQZ20',
-				'Cookie' = URLdecode(paste0(
-					'bcFreeUserPageView=0; webinar113WebinarClosed=true; ',
-					paste0(paste0(cookies$name, '=', cookies$value), collapse = '; ')
-				))
-			)))
-		)
-
-		if (http_response$status_code != 200) {
-			print('No response, skipping')
-			return(NULL)
-		}
-
-		http_response %>%
-			content(.) %>%
-			read_csv(
-				.,
-				# Verified columns are correct - compare CME official chart to barchart
-				col_names = c('contract', 'vdate', 'open', 'high', 'low', 'close', 'volume', 'oi'),
-				col_types = 'cDdddddd'
-			) %>%
-			select(., contract, vdate, close) %>%
-			mutate(., varname = x$varname, vdate = vdate - days(1), date = as_date(x$date), value = 100 - close) %>%
-			return(.)
-	}) %>%
-		compact(.) %>%
-		bind_rows(.) %>%
-		transmute(., varname, vdate, date, value) %>%
-		filter(., date >= floor_date(vdate, 'month')) # Get rid of forecasts for old observations
-
+	fit <- gam(mpg ~ factor(gear)
+			   + s(wt, bs = 'cr', k = 4, fx = TRUE)
+			   + s(hp, bs = 'cr', k = 4, fx = TRUE)
+			   + ti(wt, hp, bs = 'cr', k = c(4, 4), d = c(1, 1), fx = TRUE),
+			   data = mtcars)
 
 })
 

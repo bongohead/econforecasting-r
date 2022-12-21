@@ -104,6 +104,7 @@ log_job_in_db = function(db, jobname, module, log_type, log_dump = NA_character_
 #' @param tablename The name of the table.
 #'
 #' @importFrom DBI dbGetQuery
+#' @export
 get_rowcount = function(db, tablename) {
 
 	if (class(db) != 'PqConnection') stop('Parameter db must be a PqConnection object!')

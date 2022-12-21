@@ -12,8 +12,11 @@ This code is developed locally on a Windows machine and deployed locally to an U
 - Test: DL model ensembling (subject to random variation)
 
 ## [v2.00] (API Integration & Design Overhaul)
-- Add bond forecasts for international markets (EU, see ticket chain)
-- Added new db connector function
+- Added bond forecasts for international markets (EU, see ticket chain)
+- Added new DB connector function and various DB related helpers
+- Added TDNS forecast backtests
+- Fixed purrr v1.0 and dplyr 1.1 migration breaks
+
 
 ## [v1.04] (Misc Bugfixes) 
 - Fixed bug related to einf forecasts missing latest vintage
