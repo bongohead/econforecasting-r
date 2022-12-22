@@ -27,6 +27,9 @@ library(DBI)
 library(data.table)
 library(jsonlite, include.only = c('toJSON'))
 library(forecast, include.only = c('forecast', 'Arima'))
+library(mgcv, include.only = c('gam', 'gam.fit', 's', 'te'))
+library(furrr, include.only = c('future_map'))
+library(future, include.only = c('plan', 'makeClusterPSOCK'))
 
 ## Load Connection Info ----------------------------------------------------------
 db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
@@ -742,13 +745,7 @@ local({
 			{if (return_all == FALSE) mean(abs(.$resid)) else as_tibble(.)}
 	}
 
-
-
 	# Find MSE-minimizing lambda value by vintage date
-	# Can use furrr if too slow
-	# library(furrr)
-	# plan(multisession, workers = 2)
-	# future:::ClusterRegistry("stop")
 	optim_lambdas =
 		train_df %>%
 		group_split(., vdate) %>%
@@ -948,41 +945,82 @@ local({
 })
 
 
-## TCME: Join forecasts with futures data using mgvc splines ----------------------------------------------------------
+## TFUT: Smoothed DNS + Futures ----------------------------------------------------------
 local({
 
-	library(mgcv)
 	"
-	Fit splines on both temporal dimension and ttm dimension
+	Fit splines on both temporal dimension, ttm dimension, and their tensor product
+	https://www.math3ma.com/blog/the-tensor-product-demystified
 	"
-	#' Fit splines between
-	# library(mgcv)
-	this_vdate = today()
 
-	# In actuality get closest futures before this_vdate
+	# Match each varname x forecast date from TDNS to the closest futures vdate (within 7 day range)
 	futures_df =
-		submodels$cme %>%
-		filter(., str_detect(varname, '^t\\d\\d[y|m]$')) %>%
-		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1)) %>%
-		select(., date, vdate, ttm, value) %>%
-		filter(., vdate == this_vdate) %>%
+		submodels$tdns %>%
+		left_join(
+			.,
+			submodels$cme %>%
+				filter(., str_detect(varname, '^t\\d\\d[y|m]$')) %>%
+				transmute(., date, futures_vdate = vdate, varname, futures_value = value),
+			join_by(date, closest(vdate >= futures_vdate), varname)
+		) %>%
+		# Replace future_values that are too far lagged (before TDNS vdate) with NAs
+		mutate(., futures_value = ifelse(futures_vdate >= vdate - days(7), futures_value, NA)) %>%
+		group_by(., vdate) %>%
+		mutate(., count_hist = sum(ifelse(!is.na(futures_value), 1, 0))) %>%
+		ungroup(.) %>%
+		filter(., count_hist >= 1) %>%
 		mutate(
 			.,
-			months_out = interval(floor_date(this_vdate, 'month'), floor_date(date, 'month')) %/% months(1)
-			)
+			ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1),
+			months_out = interval(floor_date(vdate, 'month'), floor_date(date, 'month')) %/% months(1)
+		) %>%
+		mutate(., mod_value = ifelse(!is.na(futures_value), futures_value, value))
 
-	submodels$tdns %>%
-		filter(., vdate == this_vdate) %>%
+	# Can use furrr if too slow
+	makeClusterPSOCK(2)
+	plan(cluster, workers = cl)
 
+	future_forecasts =
+		futures_df %>%
+		group_split(., vdate) %>%
+		tail(., 1) %>%
+		future_map(., .progress = T, function(df, i) {
 
+			fit = gam(
+				mod_value ~
+					s(months_out, bs = 'tp', fx = F, k = -1) +
+					s(ttm, bs = 'tp', fx = F, k = -1) +
+					te(ttm, months_out, k = 10),
+				data = df,
+				method = 'ML'
+				)
 
+			final_df = mutate(df, gam_fit = fit$fitted.values, final_value = .6 * value + .4 * gam_fit)
 
-	fit <- gam(mpg ~ factor(gear)
-			   + s(wt, bs = 'cr', k = 4, fx = TRUE)
-			   + s(hp, bs = 'cr', k = 4, fx = TRUE)
-			   + ti(wt, hp, bs = 'cr', k = c(4, 4), d = c(1, 1), fx = TRUE),
-			   data = mtcars)
+			plot =
+				final_df %>%
+				filter(., varname == 't10y') %>%
+				arrange(., ttm) %>%
+				ggplot(.) +
+				geom_line(aes(x = date, y = value), color = 'green') +
+				geom_point(aes(x = date, y = futures_value), color = 'black') +
+				geom_line(aes(x = date, y = mod_value), color = 'red') +
+				geom_line(aes(x = date, y = gam_fit), color = 'pink') +
+				geom_line(aes(x = date, y = final_value), color = 'blue')
 
+			list(
+				final_df = final_df,
+				plot = plot
+				)
+			})
+
+	parallel::stopCluster(cl)
+
+	forecasts_df =
+		map_dfr(future_forecasts, \(x) x$final_df) %>%
+		transmute(., vdate, varname, freq = 'm', date, value)
+
+	submodels$tfut <<- forecasts_df
 })
 
 
@@ -990,8 +1028,8 @@ local({
 local({
 
 	cboe_data =
-		httr::GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
-		httr::content(.) %>%
+		GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
+		content(.) %>%
 		rvest::html_elements(., 'ul.document-list > li > a') %>%
 		map_dfr(., function(x)
 			tibble(
