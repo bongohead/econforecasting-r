@@ -29,7 +29,7 @@ library(jsonlite, include.only = c('toJSON'))
 library(forecast, include.only = c('forecast', 'Arima'))
 library(mgcv, include.only = c('gam', 'gam.fit', 's', 'te'))
 library(furrr, include.only = c('future_map'))
-library(future, include.only = c('plan', 'makeClusterPSOCK'))
+library(future, include.only = c('plan', 'multisession'))
 
 ## Load Connection Info ----------------------------------------------------------
 db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
@@ -617,7 +617,7 @@ local({
 	#' (see CME micro futures)
 	#'
 	message('***** Adding Calculated Variables')
-	backtest_months = 12
+	backtest_months = 36
 
 
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
@@ -646,7 +646,6 @@ local({
 		group_by(., vdate) %>%
 		summarize(.) %>%
 		.$vdate
-
 
 	# Get available historical data at each vintage date (36 months of history)
 	hist_df_0 =
@@ -779,15 +778,6 @@ local({
 			.groups = 'drop'
 			)
 
-	# # Get last DNS coefs
-	# dns_coefs_now =
-	# 	dns_coefs_hist %>%
-	# 	filter(., date == max_date) %>%
-	# 	select(., tdns1, tdns2, tdns3)
-	#
-	#
-	# 	as.list(select(filter(dns_coefs_hist, date == max(date)), tdns1, tdns2, tdns3))
-
 	# Check fits for last 12 vintage date (last historical fit for each vintage)
 	dns_fit_plots =
 		dns_fit_hist %>%
@@ -802,10 +792,6 @@ local({
 		facet_wrap(vars(vdate))
 
 	print(dns_fit_plots)
-
-	# Calculated TDNS1: TYield_10y
-	# Calculated TDNS2: -1 * (t10y - t03m)
-	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 
 
 	# For each vintage date, gets:
@@ -919,9 +905,13 @@ local({
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = value, color = varname))
 
+
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
 	# date since reliant purely on historical data
+	# Calculated TDNS1: TYield_10y
+	# Calculated TDNS2: -1 * (t10y - t03m)
+	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 	dns_coefs_forecast =
 		treasury_forecasts %>%
 		select(., vdate, varname, date, value) %>%
@@ -937,7 +927,6 @@ local({
 
 	tdns <<- list(
 		dns_coefs_hist = dns_coefs_hist,
-		optim_lambda = optim_lambda,
 		dns_coefs_forecast = dns_coefs_forecast
 		)
 
@@ -946,82 +935,81 @@ local({
 
 
 ## TFUT: Smoothed DNS + Futures ----------------------------------------------------------
-local({
-
-	"
-	Fit splines on both temporal dimension, ttm dimension, and their tensor product
-	https://www.math3ma.com/blog/the-tensor-product-demystified
-	"
-
-	# Match each varname x forecast date from TDNS to the closest futures vdate (within 7 day range)
-	futures_df =
-		submodels$tdns %>%
-		left_join(
-			.,
-			submodels$cme %>%
-				filter(., str_detect(varname, '^t\\d\\d[y|m]$')) %>%
-				transmute(., date, futures_vdate = vdate, varname, futures_value = value),
-			join_by(date, closest(vdate >= futures_vdate), varname)
-		) %>%
-		# Replace future_values that are too far lagged (before TDNS vdate) with NAs
-		mutate(., futures_value = ifelse(futures_vdate >= vdate - days(7), futures_value, NA)) %>%
-		group_by(., vdate) %>%
-		mutate(., count_hist = sum(ifelse(!is.na(futures_value), 1, 0))) %>%
-		ungroup(.) %>%
-		filter(., count_hist >= 1) %>%
-		mutate(
-			.,
-			ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1),
-			months_out = interval(floor_date(vdate, 'month'), floor_date(date, 'month')) %/% months(1)
-		) %>%
-		mutate(., mod_value = ifelse(!is.na(futures_value), futures_value, value))
-
-	# Can use furrr if too slow
-	makeClusterPSOCK(2)
-	plan(cluster, workers = cl)
-
-	future_forecasts =
-		futures_df %>%
-		group_split(., vdate) %>%
-		tail(., 1) %>%
-		future_map(., .progress = T, function(df, i) {
-
-			fit = gam(
-				mod_value ~
-					s(months_out, bs = 'tp', fx = F, k = -1) +
-					s(ttm, bs = 'tp', fx = F, k = -1) +
-					te(ttm, months_out, k = 10),
-				data = df,
-				method = 'ML'
-				)
-
-			final_df = mutate(df, gam_fit = fit$fitted.values, final_value = .6 * value + .4 * gam_fit)
-
-			plot =
-				final_df %>%
-				filter(., varname == 't10y') %>%
-				arrange(., ttm) %>%
-				ggplot(.) +
-				geom_line(aes(x = date, y = value), color = 'green') +
-				geom_point(aes(x = date, y = futures_value), color = 'black') +
-				geom_line(aes(x = date, y = mod_value), color = 'red') +
-				geom_line(aes(x = date, y = gam_fit), color = 'pink') +
-				geom_line(aes(x = date, y = final_value), color = 'blue')
-
-			list(
-				final_df = final_df,
-				plot = plot
-				)
-			})
-
-	parallel::stopCluster(cl)
-
-	forecasts_df =
-		map_dfr(future_forecasts, \(x) x$final_df) %>%
-		transmute(., vdate, varname, freq = 'm', date, value)
-
-	submodels$tfut <<- forecasts_df
-})
+#' Temporarily disabled but works
+# local({
+#
+# 	"
+# 	Fit splines on both temporal dimension, ttm dimension, and their tensor product
+# 	https://www.math3ma.com/blog/the-tensor-product-demystified
+# 	"
+#
+# 	# Match each varname x forecast date from TDNS to the closest futures vdate (within 7 day range)
+# 	futures_df =
+# 		submodels$tdns %>%
+# 		left_join(
+# 			.,
+# 			submodels$cme %>%
+# 				filter(., str_detect(varname, '^t\\d\\d[y|m]$')) %>%
+# 				transmute(., date, futures_vdate = vdate, varname, futures_value = value),
+# 			join_by(date, closest(vdate >= futures_vdate), varname)
+# 		) %>%
+# 		# Replace future_values that are too far lagged (before TDNS vdate) with NAs
+# 		mutate(., futures_value = ifelse(futures_vdate >= vdate - days(7), futures_value, NA)) %>%
+# 		group_by(., vdate) %>%
+# 		mutate(., count_hist = sum(ifelse(!is.na(futures_value), 1, 0))) %>%
+# 		ungroup(.) %>%
+# 		filter(., count_hist >= 1) %>%
+# 		mutate(
+# 			.,
+# 			ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1),
+# 			months_out = interval(floor_date(vdate, 'month'), floor_date(date, 'month')) %/% months(1)
+# 		) %>%
+# 		mutate(., mod_value = ifelse(!is.na(futures_value), futures_value, value))
+#
+# 	# Can use furrr if too slow
+# 	plan(multisession, workers = cl, gc = TRUE)
+#
+# 	future_forecasts =
+# 		futures_df %>%
+# 		group_split(., vdate) %>%
+# 		future_map(., .progress = T, function(df, i) {
+#
+# 			fit = gam(
+# 				mod_value ~
+# 					s(months_out, bs = 'tp', fx = F, k = -1) +
+# 					s(ttm, bs = 'tp', fx = F, k = -1) +
+# 					te(ttm, months_out, k = 10),
+# 				data = df,
+# 				method = 'ML'
+# 				)
+#
+# 			final_df = mutate(df, gam_fit = fit$fitted.values, final_value = .6 * value + .4 * gam_fit)
+#
+# 			plot =
+# 				final_df %>%
+# 				filter(., varname == 't10y') %>%
+# 				arrange(., ttm) %>%
+# 				ggplot(.) +
+# 				geom_line(aes(x = date, y = value), color = 'green') +
+# 				geom_point(aes(x = date, y = futures_value), color = 'black') +
+# 				geom_line(aes(x = date, y = mod_value), color = 'red') +
+# 				geom_line(aes(x = date, y = gam_fit), color = 'pink') +
+# 				geom_line(aes(x = date, y = final_value), color = 'blue')
+#
+# 			list(
+# 				final_df = final_df,
+# 				plot = plot
+# 				)
+# 			})
+#
+# 	future:::ClusterRegistry("stop")
+#
+# 	forecasts_df =
+# 		map_dfr(future_forecasts, \(x) x$final_df) %>%
+# 		transmute(., vdate, varname, freq = 'm', date, value)
+#
+# 	submodels$tfut <<- forecasts_df
+# })
 
 
 ## CBOE: Futures ---------------------------------------------------------------------
@@ -1030,11 +1018,11 @@ local({
 	cboe_data =
 		GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
 		content(.) %>%
-		rvest::html_elements(., 'ul.document-list > li > a') %>%
+		html_elements(., 'ul.document-list > li > a') %>%
 		map_dfr(., function(x)
 			tibble(
-				vdate = as_date(str_sub(rvest::html_attr(x, 'href'), -10)),
-				url = paste0('https://cboe.com', rvest::html_attr(x, 'href'))
+				vdate = as_date(str_sub(html_attr(x, 'href'), -10)),
+				url = paste0('https://cboe.com', html_attr(x, 'href'))
 			)
 		) %>%
 		purrr::transpose(.) %>%
@@ -1088,7 +1076,7 @@ local({
 			vdate = head(vdate, 1),
 			spread = {c(
 				na.omit(.$spread),
-				forecast::forecast(forecast::Arima(.$spread, order = c(1, 1, 0)), length(.$spread[is.na(.$spread)]))$mean
+				forecast::forecast(Arima(.$spread, order = c(1, 1, 0)), length(.$spread[is.na(.$spread)]))$mean
 				)},
 			value = round(ifelse(!is.na(value), value, sofr + spread), 4)
 			) %>%
@@ -1110,7 +1098,7 @@ local({
 		pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value') %>%
 		mutate(., t15y = (t10y + t20y)/2) %>%
 		mutate(., spread15 = mort15y - t15y, spread30 = mort30y - t30y) %>%
-		inner_join(., tdns$dns_coefs_hist, by = 'date') %>%
+		inner_join(., filter(tdns$dns_coefs_hist, vdate == max(vdate)), by = 'date') %>%
 		select(date, spread15, spread30, tdns1, tdns2) %>%
 		arrange(., date) %>%
 		mutate(., spread15.l1 = lag(spread15, 1), spread30.l1 = lag(spread30, 1)) %>%
@@ -1118,6 +1106,7 @@ local({
 
 	pred_df =
 		tdns$dns_coefs_forecast %>%
+		filter(., vdate == max(vdate)) %>%
 		bind_rows(tail(filter(input_df, date < .$date[[1]]), 1), .)
 
 	# Include average of historical month as "forecast" period
@@ -1242,14 +1231,14 @@ local({
 		bind_rows(submodels) %>%
 		transmute(., forecast = 'int', form = 'd1', vdate, freq, varname, date, value)
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	initial_count = get_rowcount(db, 'forecast_values')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
 		submodel_values %>%
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
+		map_dbl(., .progress = T, function(x)
 			create_insert_query(
 				x,
 				'forecast_values',
@@ -1259,20 +1248,10 @@ local({
 			) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	final_count = get_rowcount(db, 'forecast_values')
 	message('***** Rows Added: ', final_count - initial_count)
 
-	tribble(
-		~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-		JOB_NAME, 'interest-rate-model', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count))
-		) %>%
-		create_insert_query(
-			.,
-			'job_logs',
-			'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-		) %>%
-		dbExecute(db, .)
+	log_job_in_db(db, JOB_NAME, 'interest-rate-model', 'job-success')
 
 	submodel_values <<- submodel_values
 })

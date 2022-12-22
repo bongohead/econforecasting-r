@@ -110,7 +110,7 @@ get_rowcount = function(db, tablename) {
 	if (class(db) != 'PqConnection') stop('Parameter db must be a PqConnection object!')
 	if (!is.character(tablename)) stop('Parameter tablename must be a character!')
 
-	count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM interest_rate_model_input_values')$count)
+	count = as.numeric(dbGetQuery(db, paste0('SELECT COUNT(*) AS count FROM ', tablename, ''))$count)
 
 	return(count)
 }
