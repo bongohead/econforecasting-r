@@ -86,7 +86,7 @@ local({
 ## 3. SQL ----------------------------------------------------------
 local({
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_hist_release_dates')$count)
+	initial_count = get_rowcount(db, 'forecast_hist_release_dates')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -103,7 +103,7 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_hist_release_dates')$count)
+	final_count = get_rowcount(db, 'forecast_hist_release_dates')
 	message('***** Rows Added: ', final_count - initial_count)
 })
 
@@ -166,7 +166,7 @@ local({
 					.,
 					varname = x$varname,
 					freq = x$hist_source_freq,
-					date,
+					date = as_date(date),
 					vdate = date,
 					value = as.numeric(value)
 				) %>%
@@ -184,7 +184,7 @@ local({
 		purrr::transpose(.) %>%
 		keep(., ~ .$hist_source == 'bloom') %>%
 		map_dfr(., function(x) {
-			
+
 			res = httr::GET(
 				paste0(
 					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
@@ -216,10 +216,10 @@ local({
 					value
 				) %>%
 				na.omit(.)
-			
+
 			# Add sleep due to bot detection
 			Sys.sleep(runif(1, 5, 10))
-			
+
 			return(res)
 		})
 
@@ -253,7 +253,7 @@ local({
 
 ## 5. ECB ---------------------------------------------------------------------
 local({
-	
+
 	# Migrated to ECBESTRVOLWGTTRMDMNRT!
 	# Note 2022-07-22: deprecated!
 	# https://sdw.ecb.europa.eu/quickview.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR
@@ -270,13 +270,13 @@ local({
 
 ## 6. BOE ---------------------------------------------------------------------
 local({
-	
+
 	# Bank rate
 	boe_keys = tribble(
 		~ varname, ~ url,
 		'ukbankrate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
 	)
-	
+
 	boe_data = map_dfr(purrr::transpose(boe_keys), function(x)
 		httr::GET(x$url) %>%
 			httr::content(., 'parsed', encoding = 'UTF-8') %>%

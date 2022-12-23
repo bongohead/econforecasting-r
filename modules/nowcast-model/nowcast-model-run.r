@@ -35,15 +35,8 @@ library(xtable) # Needed for knitting latex docs
 library(ggthemes) # Needed for knitting latex docs
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-	)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+log_job_in_db(db, JOB_NAME, 'nowcast-model', 'job-start')
 releases = list()
 hist = list()
 model = list()
@@ -79,6 +72,7 @@ local({
 local({
 
 	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
+	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 
 	fred_releases =
 		release_params %>%
@@ -90,7 +84,7 @@ local({
 				str_glue(
 					'https://api.stlouisfed.org/fred/release/dates?',
 					'release_id={x$source_key}&realtime_start=2010-01-01',
-					'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
+					'&include_release_dates_with_no_data=true&api_key={api_key}&file_type=json'
 				),
 				times = 10
 				) %>%
@@ -113,7 +107,7 @@ local({
 ## 3. SQL ----------------------------------------------------------
 local({
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_release_dates')$count)
+	initial_count = get_rowcount(db, 'nowcast_model_input_release_dates')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -130,7 +124,7 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_release_dates')$count)
+	final_count = get_rowcount(db, 'nowcast_model_input_release_dates')
 	message('***** Rows Added: ', final_count - initial_count)
 })
 
@@ -140,20 +134,24 @@ local({
 local({
 
 	message('*** Importing FRED Data')
-
+	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	# There is a limit on the maximum number of vintage dates pulled @ 2000
 	fred_data =
 		variable_params %>%
 		purrr::transpose(.) %>%
 		keep(., ~ .$hist_source == 'fred') %>%
 		imap_dfr(., function(x, i) {
-			message(str_glue('**** Pull {i}: {x$varname}'))
+			message(str_glue('**** Pull {i}: {x$varname} {x$hist_source_key}'))
 			res =
 				get_fred_data(
 					x$hist_source_key,
-					CONST$FRED_API_KEY,
+					api_key,
 					.freq = x$hist_source_freq,
 					.return_vintages = T,
-					.obs_start = IMPORT_DATE_START,
+					.obs_start = {
+						if (x$hist_source_freq == 'd') today() - days(2000)
+						else IMPORT_DATE_START
+						},
 					) %>%
 				transmute(., varname = x$varname, freq = x$hist_source_freq, date, vdate = vintage_date, value) %>%
 				filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
@@ -192,7 +190,7 @@ local({
 					.,
 					varname = x$varname,
 					freq = x$hist_source_freq,
-					date,
+					date = as_date(date),
 					vdate = date,
 					value = as.numeric(value)
 					) %>%
@@ -341,6 +339,7 @@ local({
 })
 
 ## 5. Split By Vintage Date ----------------------------------------------------------
+#' Speed up with dplyr non-equi joins
 local({
 
 	message(str_glue('*** Splitting By Vintage Date | {format(now(), "%H:%M")}'))
@@ -472,7 +471,7 @@ local({
 
 		message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
 
-		initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
+		initial_count = get_rowcount(db, 'nowcast_model_input_values')
 		message('***** Initial Count: ', initial_count)
 
 		sql_result =
@@ -492,7 +491,7 @@ local({
 			) %>%
 			{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-		final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM nowcast_model_input_values')$count)
+		final_count = get_rowcount(db, 'nowcast_model_input_values')
 		message('***** Rows Added: ', final_count - initial_count)
 
 	}
@@ -1802,7 +1801,7 @@ local({
 		file.path(EF_DIR, 'logs', 'nowcast-model-documentation.pdf'),
 		file.path(EF_DIR, 'nowcast-model-documentation.pdf')
 		)
-	
+
 	# Copy file to web directory if on Linux
 	if (Sys.info()[['sysname']] == 'Linux') {
 		fs::file_copy(
