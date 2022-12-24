@@ -14,9 +14,10 @@ This code is developed locally on a Windows machine and deployed locally to an U
 ## [v2.00] (API Integration & Design Overhaul)
 - Added bond forecasts for international markets (EU, see ticket chain)
 - Added new DB connector function and various DB related helpers
-- Added TDNS forecast backtests
+- Added TDNS forecast backtests and GAM smoothing with micro futures data
+- Added improved logging system
 - Fixed purrr v1.0 and dplyr 1.1 migration breaks
-
+- Fixed broken nowcast model issues
 
 ## [v1.04] (Misc Bugfixes) 
 - Fixed bug related to einf forecasts missing latest vintage

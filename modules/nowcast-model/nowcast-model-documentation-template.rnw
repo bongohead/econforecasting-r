@@ -22,7 +22,7 @@
 	\rhead{\small{\textcolor{black}{\thepage}}}
 	\lfoot{}
 	\cfoot{}
-	\rfoot{\textit{charles@cmefi.com}}
+	\rfoot{\textit{charles@econforecasting.com}}
 	\renewcommand{\headrulewidth}{0.5pt}
 	%\renewcommand{\footrulewidth}{0.5pt}
 }\pagestyle{plain}
@@ -44,7 +44,7 @@
 \vskip\baselineskip
 \noindent
 \textsf{Model Run Date: \Sexpr{format(Sys.Date(), '%B %d, %Y')}}\\
-\textsf{charles@cmefi.com}
+\textsf{charles@econforecasting.com}
 \restoregeometry % restores the geometry
 \nopagecolor% Use this to restore the color pages to white
 \end{titlepage}
@@ -146,7 +146,7 @@ We additionally import quarterly data for our variables of interest. While this 
 <<>>=
 	variable_params %>%
   	# filter(., dispgroup == 'GDP') %>%
-  	filter(., freq == 'q') %>%
+  	filter(., hist_source_freq == 'q') %>%
   	select(., fullname, st) %>%
   	set_names(., c('Variable', 'Stationary Form')) %>%
   	xtable(., caption = 'Imported Quarterly Data', align = 'llc') %>%
@@ -156,7 +156,7 @@ We additionally import quarterly data for our variables of interest. While this 
 Finally, we import additional monthly data that may be of interest to forecast, but are not leading indicators that we will use in our principal components analysis.
 <<>>=
 	variable_params %>%
-  	filter(., (is.na(nc_dfm_input) | nc_dfm_input == 0) & freq == 'm') %>%
+  	filter(., (is.na(nc_dfm_input) | nc_dfm_input == 0) & hist_source_freq == 'm') %>%
   	select(., fullname, st) %>%
   	set_names(., c('Variable', 'Stationary Form')) %>%
   	xtable(., caption = 'Other Imported Monthly Data', align = 'llc') %>%
@@ -620,7 +620,7 @@ Our final nowcasts of GDP and its subcomponents are below. All units are reporte
   	filter(., bdate == max(bdate) & form == 'd1' & freq == 'q') %>%
   	select(., -bdate, -form, -freq)	%>%
   	# pivot_longer(., -date, names_to = 'varname') %>%
-		inner_join(filter(variable_params, dispgroup == 'GDP')[, c('varname', 'fullname')], ., by = 'varname') %>%
+		inner_join(filter(variable_params, dispgroup == 'GDP')[, c('varname', 'fullname')], ., by = 'varname', multiple = 'all') %>%
 		# Add tabs
     rowwise(.) %>%
     mutate(., fullname = paste0(paste0(rep(' ', str_count(fullname, ':')), collapse = ''), fullname)) %>%
@@ -658,7 +658,8 @@ We also report nowcasts of other variables of interest, including other quarterl
     inner_join(
     	filter(variable_params, dispgroup != 'GDP')[, c('varname', 'units', 'd1', 'fullname')],
     	.,
-    	by = 'varname'
+    	by = 'varname',
+    	multiple = 'all'
     	) %>%
     mutate(
     	.,
@@ -683,7 +684,8 @@ We also report nowcasts of other variables of interest, including other quarterl
     inner_join(
     	filter(variable_params, dispgroup != 'GDP')[, c('varname', 'units', 'd1', 'fullname')],
     	.,
-    	by = 'varname'
+    	by = 'varname',
+    	multiple = 'all'
     	) %>%
     mutate(
     	.,
