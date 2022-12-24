@@ -2,7 +2,7 @@
 .Rproj.user/
 renv/
 Rplots.pdf
-*.Rd
+**.Rd
 
 # Python
 .virtualenvs/
