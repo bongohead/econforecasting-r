@@ -1751,7 +1751,7 @@ local({
 
 	message(str_glue('*** Sending Values to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	initial_count = get_rowcount(db, 'forecast_values')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -1770,20 +1770,16 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	final_count = get_rowcount(db, 'forecast_values')
 	message('***** Initial Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'nowcast-model-run', today(), 'job-success',
-				toJSON(list(rows_added = final_count - initial_count, last_bdate = max(model$pred_flat$bdate)))
-			),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-		) %>%
-		dbExecute(db, .)
+	log_object = toJSON(list(
+		rows_added = final_count - initial_count,
+		last_bdate = max(model$pred_flat$bdate)
+	))
+
+	log_job_in_db(db, JOB_NAME, 'nowcast-model-run', 'job-success', log_object)
 })
 
 ## 2. Create Docs  ----------------------------------------------------------
