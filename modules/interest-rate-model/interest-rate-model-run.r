@@ -932,7 +932,7 @@ local({
 
 
 ## TFUT: Smoothed DNS + Futures ----------------------------------------------------------
-#' Temporarily disabled but works
+#' Temporarily disabled - since currently all these are merged into a single INT model
 # local({
 #
 # 	"
@@ -1248,7 +1248,13 @@ local({
 	final_count = get_rowcount(db, 'forecast_values')
 	message('***** Rows Added: ', final_count - initial_count)
 
-	log_job_in_db(db, JOB_NAME, 'interest-rate-model', 'job-success')
+	# Log
+	log_data = list(
+		rows_added = final_count - initial_count,
+		last_vdate = max(submodel_values$vdate),
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'interest-rate-model', log_data)
 
 	submodel_values <<- submodel_values
 })
