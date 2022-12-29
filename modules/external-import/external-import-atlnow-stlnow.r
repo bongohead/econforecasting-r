@@ -18,20 +18,12 @@ library(jsonlite)
 library(httr)
 library(rvest)
 library(DBI)
-library(RPostgres)
 library(econforecasting)
 library(lubridate)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+run_id = log_start_in_db(db, JOB_NAME, 'external-import')
 
 
 # Import ------------------------------------------------------------------
@@ -57,6 +49,8 @@ hist_data =
 ## Get ATL + STL Forecasts ---------------------------------------------------
 local({
 
+	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+
 	fred_sources = tribble(
 		~ forecast, ~ varname, ~ fred_key,
 		'atlnow', 'gdp','GDPNOW',
@@ -68,7 +62,7 @@ local({
 		fred_sources %>%
 		purrr::transpose(.) %>%
 		lapply(., function(x) {
-			get_fred_data(x$fred_key, CONST$FRED_API_KEY, .freq = 'q', .return_vintages = T) %>%
+			get_fred_data(x$fred_key, api_key, .freq = 'q', .return_vintages = T) %>%
 				filter(., date >= as_date('2020-01-01')) %>%
 				transmute(
 					.,
@@ -134,7 +128,7 @@ local({
 ## Export SQL Server ------------------------------------------------------------------
 local({
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	initial_count = get_rowcount(db, 'forecast_values')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -152,19 +146,16 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	final_count = get_rowcount(db, 'forecast_values')
 	message('***** Rows Added: ', final_count - initial_count)
 
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'external-import', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count, last_vdate = max(raw_data$vdate)))
-		),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-	) %>%
-		dbExecute(db, .)
+	# Log
+	log_data = list(
+		rows_added = final_count - initial_count,
+		last_vdate = max(raw_data$vdate),
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------
