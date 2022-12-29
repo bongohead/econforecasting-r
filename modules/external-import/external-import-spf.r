@@ -18,20 +18,12 @@ library(jsonlite)
 library(httr)
 library(rvest)
 library(DBI)
-library(RPostgres)
 library(econforecasting)
 library(lubridate)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+run_id = log_start_in_db(db, JOB_NAME, 'external-import')
 
 
 # Import ------------------------------------------------------------------
@@ -72,7 +64,7 @@ local({
 		filter(., release_date >= as_date('2000-01-01'))
 
 	print(arrange(vintage_dates, desc(release_date)))
-	
+
 	# method: sv is for 'single value, refers to level'
 	spf_params = tribble(
 		~ varname, ~ spfname, ~ transform, ~ single_value,
@@ -97,7 +89,7 @@ local({
 		# 'infpce5y', 'PCE5YR', 'base', T,
 		# 'infpce10y', 'PCE10', 'base', T
 		)
-	
+
 	httr::GET(
 		paste0(
 			'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
@@ -136,14 +128,14 @@ local({
 					value
 				)
 		})
-	
-	spf_data_1 = 
+
+	spf_data_1 =
 		spf_data_1_import %>%
 		group_split(., vdate) %>%
 		# Add in calculated variables
 		map_dfr(., function(x)
 			x %>%
-				pivot_wider(., id_cols = c('vdate', 'date'), names_from = 'varname', values_from = 'value' ) %>% 
+				pivot_wider(., id_cols = c('vdate', 'date'), names_from = 'varname', values_from = 'value' ) %>%
 				arrange(., date) %>%
 				mutate(
 					.,
@@ -199,19 +191,19 @@ local({
 			date,
 			value
 		)
-	
-	spf_data = bind_rows(spf_data_1, spf_data_2) 
-	
+
+	spf_data = bind_rows(spf_data_1, spf_data_2)
+
 	raw_data <<- spf_data
 })
 
 
 ## Export SQL Server ------------------------------------------------------------------
 local({
-	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+
+	initial_count = get_rowcount(db, 'forecast_values')
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		raw_data %>%
 		transmute(., forecast, form, vdate, freq, varname, date, value) %>%
@@ -227,19 +219,16 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	final_count = get_rowcount(db, 'forecast_values')
 	message('***** Rows Added: ', final_count - initial_count)
-	
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'external-import', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count, last_vdate = max(raw_data$vdate)))
-		),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-	) %>%
-		dbExecute(db, .)
+
+	# Log
+	log_data = list(
+		rows_added = final_count - initial_count,
+		last_vdate = max(raw_data$vdate),
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		)
+	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------

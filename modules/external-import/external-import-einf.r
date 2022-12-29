@@ -23,21 +23,16 @@ library(econforecasting)
 library(lubridate)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+run_id = log_start_in_db(db, JOB_NAME, 'interest-rate-model')
 
 
 # Import ------------------------------------------------------------------
 
 ## Get Data ------------------------------------------------------------------
 local({
+
+	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 
 	# Note: Cleveland Fed gives one-year forward rates
 	# Combine these with historical data to calculate historical one-year trailing rates
@@ -48,11 +43,11 @@ local({
 	)
 
 	# Get vintage dates for each release
-	
+
 	## Latest vintage date - sometime the archives page doesn't have the latest data (Aug 2022)
 	vintage_dates = paste0(
 		'https://api.stlouisfed.org/fred/release/dates?release_id=10',
-		'&api_key=', CONST$FRED_API_KEY,
+		'&api_key=', api_key,
 		'&file_type=json'
 		) %>%
 		GET(.) %>%
@@ -62,9 +57,9 @@ local({
 		unlist(., recursive = F) %>%
 		as_date(.) %>%
 		keep(., ~ . > as_date('2010-01-01'))
-	
+
 	# Deprecated 10/20/2022 due to source site update
-	# vintage_dates_0 = 
+	# vintage_dates_0 =
 	# 	httr::GET(paste0(
 	# 		'https://www.clevelandfed.org/en/our-research/',
 	# 		'indicators-and-data/inflation-expectations.aspx'
@@ -73,10 +68,10 @@ local({
 	# 	rvest::html_nodes('#RightAsideSPL > div > p') %>%
 	# 	keep(., ~ str_detect(html_text(.), 'Last updated')) %>%
 	# 	.[[1]] %>%
-	# 	html_text(.) %>% 
+	# 	html_text(.) %>%
 	# 	str_replace(., 'Last updated', '') %>%
 	# 	mdy(.)
-	# 	
+	#
 	# vintage_dates_1 =
 	# 	httr::GET(paste0(
 	# 		'https://www.clevelandfed.org/en/our-research/',
@@ -87,7 +82,7 @@ local({
 	# 	keep(., ~ length(rvest::html_nodes(., 'a.download')) == 1) %>%
 	# 	map_chr(., ~ str_extract(rvest::html_text(.), '(?<=released ).*')) %>%
 	# 	mdy(.)
-	# 
+	#
 	# vintage_dates_2 =
 	# 	httr::GET(paste0(
 	# 		'https://www.clevelandfed.org/en/our-research/',
@@ -155,7 +150,7 @@ local({
 
 	# For each vintage_date, get the historical data for the last 12 months available at that vintage
 	hist_data =
-		get_fred_data('CPIAUCSL', CONST$FRED_API_KEY, .return_vintages = T) %>%
+		get_fred_data('CPIAUCSL', api_key, .return_vintages = T) %>%
 		transmute(., date, vdate = vintage_date, value)
 
 	einf_results =
@@ -234,7 +229,7 @@ local({
 ## Export to SQL ------------------------------------------------------------------
 local({
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	initial_count = get_rowcount(db, 'forecast_values')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -253,19 +248,16 @@ local({
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+	final_count = get_rowcount(db, 'forecast_values')
 	message('***** Rows Added: ', final_count - initial_count)
 
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'external-import', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count, last_vdate = max(raw_data$vdate)))
-		),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-		) %>%
-		dbExecute(db, .)
+	# Log
+	log_data = list(
+		rows_added = final_count - initial_count,
+		last_vdate = max(raw_data$vdate),
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------

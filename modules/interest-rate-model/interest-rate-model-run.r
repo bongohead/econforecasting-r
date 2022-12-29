@@ -25,7 +25,6 @@ library(rvest)
 library(highcharter)
 library(DBI)
 library(data.table)
-library(jsonlite, include.only = c('toJSON'))
 library(forecast, include.only = c('forecast', 'Arima'))
 library(mgcv, include.only = c('gam', 'gam.fit', 's', 'te'))
 library(furrr, include.only = c('future_map'))
@@ -33,7 +32,7 @@ library(future, include.only = c('plan', 'multisession'))
 
 ## Load Connection Info ----------------------------------------------------------
 db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-log_job_in_db(db, JOB_NAME, 'interest-rate-model', 'job-start')
+run_id = log_start_in_db(db, JOB_NAME, 'interest-rate-model')
 hist = list()
 submodels = list()
 
@@ -405,7 +404,7 @@ local({
 				})
 			)
 
-	log_job_in_db(db, JOB_NAME, 'interest-rate-model', 'data-dump', toJSON(cme_raw_data), 'cme-raw-data')
+	log_dump_in_db(db, run_id, JOB_NAME, 'interest-rate-model', list(cme_raw_data = cme_raw_data))
 
 	cme_raw_data %>%
 		arrange(., date) %>%
@@ -619,7 +618,6 @@ local({
 	message('***** Adding Calculated Variables')
 	backtest_months = 36
 
-
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yield_curve_names_map =
 		input_sources %>%
@@ -630,7 +628,6 @@ local({
 	fred_data =
 		hist$fred %>%
 		filter(., str_detect(varname, '^t\\d{2}[m|y]$') | varname == 'ffr')
-
 
 	# Get all vintage dates that need to be backtested
 	backtest_vdates =

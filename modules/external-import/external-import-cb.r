@@ -18,20 +18,12 @@ library(jsonlite)
 library(httr)
 library(rvest)
 library(DBI)
-library(RPostgres)
 library(econforecasting)
 library(lubridate)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+run_id = log_start_in_db(db, JOB_NAME, 'external-import')
 
 
 # Import ------------------------------------------------------------------
@@ -53,13 +45,13 @@ local({
 		'ffr', 'Fed Funds (%, Midpoint, Period End)'
 		) %>%
 		mutate(., fullname = str_to_lower(fullname))
-	
+
 	httr::set_config(config(ssl_verifypeer = FALSE))
-	
+
 	html_content =
 		GET('https://www.conference-board.org/research/us-forecast/us-forecast') %>%
 		content(.)
-	
+
 	vintage_date =
 		html_content %>%
 		html_element(., '#productTypeText') %>%
@@ -67,10 +59,10 @@ local({
 		str_extract(., '[^|]+') %>%
 		str_trim(.) %>%
 		readr::parse_date(., format = '%B %d, %Y')
-	
+
 	iframe_src = html_content %>% html_element(., '#chConferences iframe') %>% html_attr(., 'src')
 	table_content = paste0(iframe_src, 'dataset.csv') %>% read_tsv(., col_names = F)
-	
+
 	# First two rows are headers
 	headers_fixed =
 		table_content %>%
@@ -81,16 +73,16 @@ local({
 		fill(., V1, .direction = 'down') %>%
 		mutate(., V2 = str_replace_all(V2, c('IV Q' = 'Q4', 'III Q' = 'Q3', 'II Q' = 'Q2', 'I Q' = 'Q1'))) %>%
 		mutate(., col_index = 1:nrow(.), quarter = ifelse(is.na(V1) | is.na(V2), NA, paste0(V1, V2))) %>%
-		mutate(., quarter = ifelse(col_index == 1, 'fullname', ifelse(is.na(quarter), paste0('drop_', 1:nrow(.)), quarter))) %>% 
+		mutate(., quarter = ifelse(col_index == 1, 'fullname', ifelse(is.na(quarter), paste0('drop_', 1:nrow(.)), quarter))) %>%
 		.$quarter
-	
+
 	table_fixed =
 		table_content %>%
 		tail(., -2) %>%
 		set_names(., headers_fixed) %>%
 		select(., -contains(coll('*'))) %>%
-		select(., -contains('drop')) 
-	
+		select(., -contains('drop'))
+
 	final_data =
 		table_fixed %>%
 		pivot_longer(., cols = -fullname, names_to = 'date', values_to = 'value') %>%
@@ -106,7 +98,7 @@ local({
 			date,
 			value
 		)
-	
+
 	print(unique(final_data$varname))
 	if (length(unique(final_data$varname)) != nrow(varnames_map)) stop('Missing variables!')
 
@@ -116,10 +108,10 @@ local({
 
 ## Export SQL Server ------------------------------------------------------------------
 local({
-	
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+
+	initial_count = get_rowcount(db, 'forecast_values')
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		raw_data %>%
 		transmute(., forecast, form, vdate, freq, varname, date, value) %>%
@@ -134,20 +126,17 @@ local({
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
+
+	final_count = get_rowcount(db, 'forecast_values')
 	message('***** Rows Added: ', final_count - initial_count)
-	
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'external-import', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count, last_vdate = max(raw_data$vdate)))
-		),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-	) %>%
-		dbExecute(db, .)
+
+	# Log
+	log_data = list(
+		rows_added = final_count - initial_count,
+		last_vdate = max(raw_data$vdate),
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------
