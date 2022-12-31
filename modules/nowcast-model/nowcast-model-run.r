@@ -36,6 +36,7 @@ library(ggthemes) # Needed for knitting latex docs
 ## Load Connection Info ----------------------------------------------------------
 db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 run_id = log_start_in_db(db, JOB_NAME, 'nowcast-model')
+log_job_in_db(db, JOB_NAME, 'nowcast-model', 'job-start')
 releases = list()
 hist = list()
 model = list()
