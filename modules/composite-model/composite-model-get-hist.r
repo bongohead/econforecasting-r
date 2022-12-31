@@ -23,22 +23,14 @@ library(data.table)
 library(readxl)
 library(httr)
 library(DBI)
-library(RPostgres)
 library(lubridate)
 library(jsonlite)
 library(roll)
 library(rvest)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+run_id = log_start_in_db(db, JOB_NAME, 'composite-model')
 releases = list()
 hist = list()
 
@@ -52,6 +44,7 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'
 local({
 
 	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
+	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 
 	fred_releases =
 		release_params %>%
@@ -63,7 +56,7 @@ local({
 				str_glue(
 					'https://api.stlouisfed.org/fred/release/dates?',
 					'release_id={x$source_key}&realtime_start=2010-01-01',
-					'&include_release_dates_with_no_data=true&api_key={CONST$FRED_API_KEY}&file_type=json'
+					'&include_release_dates_with_no_data=true&api_key={api_key}&file_type=json'
 				),
 				times = 10
 			) %>%
@@ -113,6 +106,7 @@ local({
 local({
 
 	message('*** Importing FRED Data')
+	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 
 	fred_data =
 		variable_params %>%
@@ -123,7 +117,7 @@ local({
 			res =
 				get_fred_data(
 					x$hist_source_key,
-					CONST$FRED_API_KEY,
+					api_key,
 					.freq = x$hist_source_freq,
 					.return_vintages = T,
 					.obs_start = IMPORT_DATE_START,
@@ -190,18 +184,10 @@ local({
 					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
 					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
 				),
-				add_headers(c(
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0',
-					'Accept'= 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-					'Accept-Encoding' = 'gzip, deflate, br',
-					'Accept-Language' ='en-US,en;q=0.5',
-					'Cache-Control'='no-cache',
-					'Connection'='keep-alive',
-					'DNT' = '1',
+				add_headers(get_standard_headers(c(
 					'Host' = 'www.bloomberg.com',
-					'Pragma'='no-cache',
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
-				))
+				)))
 			) %>%
 				httr::content(., 'parsed') %>%
 				.[[1]] %>%
@@ -230,8 +216,8 @@ local({
 local({
 
 	afx_data =
-		httr::GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
-		httr::content(., 'parsed') %>%
+		GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
+		content(., 'parsed') %>%
 		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
 		map_dfr(., function(x)
 			as_tibble(x) %>%
@@ -278,8 +264,8 @@ local({
 	)
 
 	boe_data = map_dfr(purrr::transpose(boe_keys), function(x)
-		httr::GET(x$url) %>%
-			httr::content(., 'parsed', encoding = 'UTF-8') %>%
+		GET(x$url) %>%
+			content(., 'parsed', encoding = 'UTF-8') %>%
 			html_node(., '#stats-table') %>%
 			html_table(.) %>%
 			set_names(., c('date', 'value')) %>%
@@ -622,7 +608,7 @@ local({
 
 	message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_hist_values')$count)
+	initial_count = get_rowcount(db, 'forecast_hist_values')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -641,19 +627,18 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_hist_values')$count)
+	final_count = get_rowcount(db, 'forecast_hist_values')
 	message('***** Rows Added: ', final_count - initial_count)
 
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'composite-model', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count))
-		),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-		) %>%
-		dbExecute(db, .)
+
+	log_data = list(
+		rows_added = final_count - initial_count,
+		last_vdate = max(hist$flat_final$vdate),
+		missing_varnames = variable_params$varname %>% .[!. %in% unique(hist$flat_final$varname)],
+		rows_pulled = nrow(hist$flat_final),
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'composite-model', log_data)
 })
 
 ## 2. Close Connections ----------------------------------------------------------

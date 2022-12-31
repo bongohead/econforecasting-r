@@ -24,7 +24,6 @@ library(data.table)
 library(readxl)
 library(httr)
 library(DBI)
-library(RPostgres)
 library(lubridate)
 library(jsonlite)
 library(glmnet)
@@ -36,7 +35,7 @@ library(ggthemes) # Needed for knitting latex docs
 
 ## Load Connection Info ----------------------------------------------------------
 db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-log_job_in_db(db, JOB_NAME, 'nowcast-model', 'job-start')
+run_id = log_start_in_db(db, JOB_NAME, 'nowcast-model')
 releases = list()
 hist = list()
 model = list()
