@@ -30,20 +30,11 @@ library(httr)
 library(rvest)
 library(RCurl)
 library(DBI)
-library(RPostgres)
 library(lubridate)
-library(jsonlite)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+run_id = log_start_in_db(db, JOB_NAME, 'sentiment-analysis')
 
 
 # Reddit ----------------------------------------------------------------
@@ -92,19 +83,22 @@ local({
 
 ## Token --------------------------------------------------------
 local({
+
+	secrets = get_secrets(file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+
 	token =
 		POST(
 			'https://www.reddit.com/api/v1/access_token',
 			add_headers(c(
 				'User-Agent' = 'windows:SentimentAnalysis:v0.0.1 (by /u/dongobread)',
 				'Authorization' = paste0(
-					'Basic ', base64(txt = paste0(CONST$REDDIT_ID, ':', CONST$REDDIT_SECRET), mode = 'character')
+					'Basic ', base64(txt = paste0(secrets$REDDIT_ID, ':', secrets$REDDIT_SECRET), mode = 'character')
 					)
 				)),
 			body = list(
 				grant_type = 'client_credentials',
-				username = CONST$REDDIT_USERNAME,
-				password = CONST$REDDIT_PASSWORD
+				username = secrets$REDDIT_USERNAME,
+				password = secrets$REDDIT_PASSWORD
 				),
 			encoding = 'json'
 			) %>%
@@ -474,6 +468,19 @@ local({
 ## PushShift ---------------------------------------------------------------
 local({
 
+	# Check if Pushshift is down
+	pushshift_test = possibly(function() RETRY(
+		'GET',
+		'https://api.pushshift.io/reddit/comment/search/?q=test',
+		timeout(30), pause_base = .1, times = 4 # pause_base * 2^i
+		), otherwise = NULL)()
+
+	if (is.null(pushshift_test)) {
+		print('Exiting early, Pushshift is down: ')
+		return()
+	}
+
+
 	# List of subreddits to force a full repull of data
 	# Leave as an empty vector generally
 	BOARDS_FULL_REPULL = c()
@@ -663,7 +670,7 @@ local({
 
 	message(str_glue('*** Sending Reddit Data to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_reddit_scrape')$count)
+	initial_count = get_rowcount(db, 'sentiment_analysis_reddit_scrape')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -698,19 +705,14 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_reddit_scrape')$count)
+	final_count = get_rowcount(db, 'sentiment_analysis_reddit_scrape')
 	message('***** Rows Added: ', final_count - initial_count)
 
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'sentiment-analysis-pull-reddit', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count))
-		),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-		) %>%
-		dbExecute(db, .)
+	log_data = list(
+		rows_added = final_count - initial_count,
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'sentiment-analysis', log_data)
 })
 
 # News --------------------------------------------------------
@@ -748,7 +750,7 @@ local({
 	reuters_data =
 		reduce(1:page_to, function(accum, page) {
 
-			if (page %% 20 == 1) message('***** Downloading data for page ', page)
+			if (page %% 10 == 1) message('***** Downloading data for page ', page)
 
 			page_content =
 				RETRY('GET', paste0(
@@ -894,7 +896,7 @@ local({
 
 	message(str_glue('*** Sending Media Data to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_media_scrape')$count)
+	initial_count = get_rowcount(db, 'sentiment_analysis_media_scrape')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -917,19 +919,14 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM sentiment_analysis_media_scrape')$count)
+	final_count = get_rowcount(db, 'sentiment_analysis_media_scrape')
 	message('***** Rows Added: ', final_count - initial_count)
 
-	create_insert_query(
-		tribble(
-			~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
-			JOB_NAME, 'sentiment-analysis-pull-media', today(), 'job-success',
-			toJSON(list(rows_added = final_count - initial_count))
-		),
-		'job_logs',
-		'ON CONFLICT ON CONSTRAINT job_logs_pk DO UPDATE SET log_info=EXCLUDED.log_info,log_dttm=CURRENT_TIMESTAMP'
-		) %>%
-		dbExecute(db, .)
+	log_data = list(
+		rows_added = final_count - initial_count,
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 100), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'sentiment-analysis', log_data)
 })
 
 # Finalize --------------------------------------------------------

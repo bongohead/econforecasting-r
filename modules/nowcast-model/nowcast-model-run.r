@@ -1771,15 +1771,15 @@ local({
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
 	final_count = get_rowcount(db, 'forecast_values')
-	message('***** Initial Count: ', final_count)
+	message('***** Final Count: ', final_count)
 	message('***** Rows Added: ', final_count - initial_count)
 
-	log_object = toJSON(list(
+	log_data = list(
 		rows_added = final_count - initial_count,
-		last_bdate = max(model$pred_flat$bdate)
-	))
-
-	log_job_in_db(db, JOB_NAME, 'nowcast-model-run', 'job-success', log_object)
+		last_bdate = model$pred_flat$bdate,
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+	)
+	log_finish_in_db(db, run_id, JOB_NAME, 'nowcast-model', log_data)
 })
 
 ## 2. Create Docs  ----------------------------------------------------------
