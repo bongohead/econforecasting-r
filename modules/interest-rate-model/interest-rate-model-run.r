@@ -1,11 +1,16 @@
-#'  Run this script on scheduler after close of business each day
-#'  Assumes rate data is not subject to revisions
+#'  Run this script on scheduler at noon Eastern daily
+#'  - Last values to run are FFR/SOFR (1 day lag, 9am ET)
+#'  - Treasury data releases on day of
+#'  - Bloomberg data releases on day of
+#'  - AFX data releases with 1 day lag (8am)
+#' Historical vintage dates are assigned given these assumptions!
 
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'interest-rate-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
+BACKTEST_MONTHS = 60
 
 ## Log Job ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -42,8 +47,12 @@ input_sources = as_tibble(dbGetQuery(db, 'SELECT * FROM interest_rate_model_vari
 # Historical Data ----------------------------------------------------------
 
 ## FRED ----------------------------------------------------------
+# Vintages release with 1-day lag relative to current vals.
 local({
 
+	# Get historical data with latest release date
+	# Note that only a single vintage date is pulled (last available value for each data point).
+	# This assumes for rate historical data there are no revisions
 	message('***** Importing FRED Data')
 	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
 
@@ -51,14 +60,55 @@ local({
 		input_sources %>%
 		purrr::transpose(.)	%>%
 		keep(., ~ .$hist_source == 'fred') %>%
-		imap_dfr(., function(x, i) {
+		imap(., function(x, i) {
 			message(str_glue('Pull {i}: {x$varname}'))
-			get_fred_data(x$hist_source_key, api_key, .freq = x$hist_source_freq, .return_vintages = F) %>%
-				transmute(., varname = x$varname, freq = x$hist_source_freq, date, value) %>%
-				filter(., date >= as_date('2010-01-01'))
-			})
+			get_fred_obs(x$hist_source_key, api_key, .freq = x$hist_source_freq, .obs_start = '2010-01-01', .verbose = F) %>%
+				transmute(., varname = x$varname, freq = x$hist_source_freq, date, value)
+			}) %>%
+		list_rbind(.) %>%
+		# For simplicity, assume all data with daily frequency is released the same day.
+		# Only weekly/monthly data keeps the true vintage date.
+		mutate(., vdate = case_when(
+			freq == 'd' ~ date + days(1),
+			str_detect(varname, 'mort') ~ date + days(7),
+			TRUE ~ NA_Date_
+		))
 
 	hist$fred <<- fred_data
+})
+
+## TREAS ----------------------------------------------------------
+local({
+
+	treasury_data = c(
+		'https://home.treasury.gov/system/files/276/yield-curve-rates-2011-2020.csv',
+		paste0(
+			'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/',
+			2021:year(today('US/Eastern')),
+			'/all?type=daily_treasury_yield_curve&field_tdr_date_value=2023&page&_format=csv'
+			)
+		) %>%
+		map(., .progress = F, \(x) read_csv(x, col_types = 'c')) %>%
+		list_rbind(.) %>%
+		pivot_longer(., cols = -c('Date'), names_to = 'varname', values_to = 'value') %>%
+		separate(., col = 'varname', into = c('ttm_1', 'ttm_2'), sep = ' ') %>%
+		mutate(
+			.,
+			varname = paste0('t', str_pad(ttm_1, 2, pad = '0'), ifelse(ttm_2 == 'Mo', 'm', 'y')),
+			date = mdy(Date),
+			) %>%
+		transmute(
+			.,
+			vdate = date,
+			freq = 'd',
+			varname,
+			date,
+			value
+		) %>%
+		filter(., !is.na(value)) %>%
+		filter(., varname %in% filter(input_sources, hist_source == 'treas')$varname)
+
+	hist$treasury <<- treasury_data
 })
 
 ## BLOOM  ----------------------------------------------------------
@@ -68,25 +118,32 @@ local({
 		input_sources %>%
 		purrr::transpose(.) %>%
 		keep(., ~ .$hist_source == 'bloom') %>%
-		map_dfr(., function(x) {
+		map(., function(x) {
+
+			url = str_glue(
+				'https://www.bloomberg.com/markets2/api/history/{x$hist_source_key}%3AIND/PX_LAST?',
+				'timeframe=5_YEAR&period=daily&volumePeriod=daily'
+				)
 
 			res = GET(
-				str_glue(
-					'https://www.bloomberg.com/markets2/api/history/{x$hist_source_key}%3AIND/PX_LAST?',
-					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
-					),
+				url,
 				add_headers(get_standard_headers(c(
 					'Host' = 'www.bloomberg.com',
-					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
+					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND'),
+					'Accept' = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+					'User-Agent' = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:108.0) Gecko/20100101 Firefox/108.0'
 					)))
 				) %>%
 				content(., 'parsed') %>%
 				.[[1]] %>%
 				.$price %>%
-				map_dfr(., ~ as_tibble(.)) %>%
+				map_dfr(., \(row) as_tibble(row)) %>%
 				transmute(
 					.,
-					varname = x$varname, freq = 'd', date = as_date(dateTime),
+					varname = x$varname,
+					freq = 'd',
+					date = as_date(dateTime),
+					vdate = date,
 					value
 					) %>%
 				na.omit(.)
@@ -95,7 +152,8 @@ local({
 			Sys.sleep(runif(1, 3, 5))
 
 			return(res)
-		})
+		}) %>%
+		list_rbind(.)
 
 	hist$bloom <<- bloom_data
 })
@@ -120,7 +178,7 @@ local({
 			by = c('varname_scrape' = 'hist_source_key')
 			) %>%
 		distinct(.) %>%
-		transmute(., varname, freq = 'd', date, value)
+		transmute(., vdate = date + days(1), varname, freq = 'd', date, value)
 
 	hist$afx <<- afx_data
 })
@@ -158,7 +216,7 @@ local({
 				by = 'date'
 				) %>%
 			mutate(., value = zoo::na.locf(value)) %>%
-			transmute(., varname = x$varname, freq = 'd', date, value)
+			transmute(., vdate = date, varname = x$varname, freq = 'd', date, value)
 		) %>%
 		bind_rows(.)
 
@@ -436,7 +494,7 @@ local({
 
 	barchart_sources =
 		# 3 year history + max of 5 year forecast
-		tibble(date = seq(floor_date(today() - years(3), 'month'), length.out = (3 + 5) * 12, by = '1 month')) %>%
+		tibble(date = seq(floor_date(today() - months(BACKTEST_MONTHS), 'month'), length.out = (3 + 5) * 12, by = '1 month')) %>%
 		mutate(., year = year(date), month = month(date)) %>%
 		left_join(
 			.,
@@ -461,13 +519,22 @@ local({
 		arrange(., date) %>%
 		purrr::transpose(.)
 
+	# Check ahead of time whether the source is valid
+	# This is a lot faster then checking it during the actual scraping process
+	barchart_sources_valid = keep(barchart_sources, .progress = T, function(source) {
+		GET(paste0('https://instruments-prod.aws.barchart.com/instruments/search/', source$code, '?region=us')) %>%
+			content(.) %>%
+			.$instruments %>%
+			map_chr(., \(x) x$symbol) %>%
+			some(., \(x) x == source$code)
+		})
 
 	cookies =
 		GET('https://www.barchart.com/futures/quotes/ZQV22') %>%
 		cookies(.) %>%
 		as_tibble(.)
 
-	barchart_data = lapply(barchart_sources, function(x) {
+	barchart_data = map(barchart_sources, function(x) {
 
 		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
 		Sys.sleep(runif(1, .4, .6))
@@ -536,8 +603,8 @@ local({
 		full_join(., rename(bloom_data, bloom = value), by = c('varname', 'vdate', 'date')) %>%
 		mutate(., value = ifelse(is.na(value), bloom, value)) %>%
 		select(., -bloom) %>%
-		# If this months forecast misisng for BSBY, add it in for interpolation purposes
-		# Otherwise the dataset starts 3 motnhs out
+		# If this months forecast missing for BSBY, add it in for interpolation purposes
+		# Otherwise the dataset starts 3 months out
 		group_split(., vdate, varname) %>%
 		map_dfr(., function(x) {
 			x %>%
@@ -616,7 +683,6 @@ local({
 	#' (see CME micro futures)
 	#'
 	message('***** Adding Calculated Variables')
-	backtest_months = 36
 
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yield_curve_names_map =
@@ -639,7 +705,7 @@ local({
 		mutate(., vdate_forecasts = n()) %>%
 		filter(., vdate_forecasts >= 36) %>%
 		# Limit to backtest vdates
-		filter(., vdate >= today() - months(backtest_months)) %>%
+		filter(., vdate >= today() - months(BACKTEST_MONTHS)) %>%
 		group_by(., vdate) %>%
 		summarize(.) %>%
 		.$vdate
@@ -651,7 +717,7 @@ local({
 		left_join(
 			.,
 			fred_data %>% mutate(., floor_date = floor_date(date, 'month')),
-			# Only pulls dates that are strictly less than the vdate (1 day delay in FRED)
+			# Only pulls dates that are strictly less than the vdate (1 day EFFR delay in FRED)
 			join_by(vdate > date)
 			) %>%
 		# Get floor month diff
@@ -684,7 +750,7 @@ local({
 		bind_rows(.) %>%
 		arrange(., vdate, varname, date)
 
-	# Create training dataset from SPREAD from ffr - fitted on last 3 months
+	# Create training dataset on spread
 	hist_df =
 		filter(hist_df_0, varname %in% yield_curve_names_map$varname) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
@@ -745,7 +811,7 @@ local({
 	optim_lambdas =
 		train_df %>%
 		group_split(., vdate) %>%
-		map(., function(x) {
+		map(., .progress = T, function(x) {
 			list(
 				vdate = x$vdate[[1]],
 				train_df = x,
@@ -902,7 +968,6 @@ local({
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = value, color = varname))
 
-
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
 	# date since reliant purely on historical data
@@ -969,7 +1034,7 @@ local({
 # 	future_forecasts =
 # 		futures_df %>%
 # 		group_split(., vdate) %>%
-# 		future_map(., .progress = T, function(df, i) {
+# 		map(., .progress = T, function(df, i) {
 #
 # 			fit = gam(
 # 				mod_value ~
@@ -1087,14 +1152,20 @@ local({
 
 	# Calculate historical mortgage curve spreads
 	input_df =
+		# Get historical monthly averages
 		hist$fred %>%
 		filter(., varname %in% c('t10y', 't20y', 't30y', 'mort15y', 'mort30y')) %>%
 		mutate(., date = floor_date(date, 'months')) %>%
 		group_by(., varname, date) %>%
 		summarize(., value = mean(value), .groups = 'drop') %>%
+		# Pivot out and calculate spreads
 		pivot_wider(., id_cols = 'date', names_from = 'varname', values_from = 'value') %>%
-		mutate(., t15y = (t10y + t20y)/2) %>%
-		mutate(., spread15 = mort15y - t15y, spread30 = mort30y - t30y) %>%
+		mutate(
+			.,
+			t15y = (t10y + t20y)/2,
+			spread15 = mort15y - t15y, spread30 = mort30y - t30y
+			) %>%
+		# Join on latest DNS coefs
 		inner_join(., filter(tdns$dns_coefs_hist, vdate == max(vdate)), by = 'date') %>%
 		select(date, spread15, spread30, tdns1, tdns2) %>%
 		arrange(., date) %>%
@@ -1141,7 +1212,14 @@ local({
 		mutate(., mort15y = (t10y + t30y)/2 + spread15, mort30y = t30y + spread30) %>%
 		select(., date, mort15y, mort30y) %>%
 		pivot_longer(., -date, names_to = 'varname', values_to = 'value') %>%
-		transmute(., varname, freq = 'm', vdate = today(), date, value)
+		transmute(
+			.,
+			varname,
+			freq = 'm',
+			vdate = today(),
+			date,
+			value
+			)
 
 	submodels$mor <<- mor_data
 })
