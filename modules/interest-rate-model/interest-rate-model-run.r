@@ -10,7 +10,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'interest-rate-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
-BACKTEST_MONTHS = 60
+BACKTEST_MONTHS = 48
 
 ## Log Job ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -692,8 +692,9 @@ local({
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
 
 	fred_data =
-		hist$fred %>%
-		filter(., str_detect(varname, '^t\\d{2}[m|y]$') | varname == 'ffr')
+		bind_rows(hist$fred, hist$treasury) %>%
+		filter(., str_detect(varname, '^t\\d{2}[m|y]$') | varname == 'ffr') %>%
+		select(., -vdate)
 
 	# Get all vintage dates that need to be backtested
 	backtest_vdates =
@@ -1153,7 +1154,7 @@ local({
 	# Calculate historical mortgage curve spreads
 	input_df =
 		# Get historical monthly averages
-		hist$fred %>%
+		bind_rows(hist$fred, hist$treasury) %>%
 		filter(., varname %in% c('t10y', 't20y', 't30y', 'mort15y', 'mort30y')) %>%
 		mutate(., date = floor_date(date, 'months')) %>%
 		group_by(., varname, date) %>%
@@ -1166,8 +1167,9 @@ local({
 			spread15 = mort15y - t15y, spread30 = mort30y - t30y
 			) %>%
 		# Join on latest DNS coefs
-		inner_join(., filter(tdns$dns_coefs_hist, vdate == max(vdate)), by = 'date') %>%
-		select(date, spread15, spread30, tdns1, tdns2) %>%
+		# inner_join(., filter(tdns$dns_coefs_hist, vdate == max(vdate)), by = 'date') %>%
+		# select(date, spread15, spread30, tdns1, tdns2) %>%
+		select(., date, spread15, spread30) %>%
 		arrange(., date) %>%
 		mutate(., spread15.l1 = lag(spread15, 1), spread30.l1 = lag(spread30, 1)) %>%
 		na.omit(.)
@@ -1302,35 +1304,19 @@ local({
 ## Store in SQL ----------------------------------------------------------
 local({
 
+	# Store in SQL
 	submodel_values =
 		bind_rows(submodels) %>%
 		transmute(., forecast = 'int', form = 'd1', vdate, freq, varname, date, value)
 
-	initial_count = get_rowcount(db, 'forecast_values')
-	message('***** Initial Count: ', initial_count)
-
-	sql_result =
-		submodel_values %>%
-		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		map_dbl(., .progress = T, function(x)
-			create_insert_query(
-				x,
-				'forecast_values',
-				'ON CONFLICT (forecast, vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
-				) %>%
-				dbExecute(db, .)
-			) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-
-	final_count = get_rowcount(db, 'forecast_values')
-	message('***** Rows Added: ', final_count - initial_count)
+	rows_added_v1 = store_forecast_values_v1(db, submodel_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(db, submodel_values, .verbose = T)
 
 	# Log
 	log_data = list(
-		rows_added = final_count - initial_count,
+		rows_added = rows_added_v2,
 		last_vdate = max(submodel_values$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 100), collapse = '\n')
 	)
 	log_finish_in_db(db, run_id, JOB_NAME, 'interest-rate-model', log_data)
 

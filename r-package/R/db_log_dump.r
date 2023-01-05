@@ -1,56 +1,3 @@
-#' Connect to main Postgres/TimescaleDB database
-#'
-#' @description
-#' Connect to Postgres/TimescaleDB database. You can either pass secrets directly through a list,
-#'  a YAML filepath, or seperate named arguments.
-#'
-#' @param secrets A list with database secrets key-value pairs
-#' @param secrets_path A filepath to a constants YAML file with database secrets key-value pairs
-#' @param ... Optional arguments with database secret key-value pairs
-#'
-#' @importFrom RPostgres Postgres
-#' @importFrom DBI dbConnect
-#' @export
-connect_db = function(secrets_list = NULL, secrets_path = NULL, ...) {
-
-	args = list(...)
-
-	if (any(c('DB_DATABASE', 'DB_SERVER', 'DB_USERNAME', 'DB_PASSWORD', 'DB_PORT') %in% names(args))) {
-		if (!all(c('DB_DATABASE', 'DB_SERVER', 'DB_USERNAME', 'DB_PASSWORD', 'DB_PORT') %in% names(args))) {
-			stop('Pass secrets, secrets_path, or all of DB_DATABASE, DB_SERVER, DB_USERNAME, DB_PASSWORD, and DB_PORT.')
-		}
-		secrets = list(
-			DB_DATABASE = args$DB_DATABASE,
-			DB_SERVER = args$DB_SERVER,
-			DB_PORT = args$DB_PORT,
-			DB_USERNAME = args$DB_USERNAME,
-			DB_PASSWORD = args$DB_PASSWORD
-		)
-	} else if (!is.null(secrets_list)) {
-		if (!all(c('DB_DATABASE', 'DB_SERVER', 'DB_USERNAME', 'DB_PASSWORD', 'DB_PORT') %in% names(secrets_list))) {
-			stop('Secrets list must include DB_DATABASE, DB_SERVER, DB_USERNAME, DB_PASSWORD, and DB_PORT.')
-		}
-		secrets = secrets_list
-	} else if (!is.null(secrets_path)) {
-		secrets = get_secrets(secrets_path, c('DB_DATABASE', 'DB_SERVER', 'DB_USERNAME', 'DB_PASSWORD', 'DB_PORT'))
-	} else {
-		stop('Pass secrets, secrets_path, or all of DB_DATABASE, DB_SERVER, DB_USERNAME, DB_PASSWORD, and DB_PORT.')
-	}
-
-
-	db = dbConnect(
-		Postgres(),
-		dbname = secrets$DB_DATABASE,
-		host = secrets$DB_SERVER,
-		port = secrets$DB_PORT,
-		user = secrets$DB_USERNAME,
-		password = secrets$DB_PASSWORD
-	)
-
-	return(db)
-}
-
-
 #' Log an entry in the run_logs Postgres table
 #'
 #' @description
@@ -86,7 +33,7 @@ log_job_in_db = function(db, run_id, job, module, log_type, log_dump = list()) {
 	log_entry = tribble(
 		~ run_id, ~ job, ~ module, ~ log_type, ~ log_dump, ~ is_interactive,
 		run_id, job, module, log_type, log_dump, interactive()
-		)
+	)
 
 	dbExecute(db, create_insert_query(
 		log_entry,
@@ -99,7 +46,7 @@ log_job_in_db = function(db, run_id, job, module, log_type, log_dump = list()) {
 			log_dump=EXCLUDED.log_dump,
 			is_interactive=EXCLUDED.is_interactive,
 			created_at=CURRENT_TIMESTAMP'
-		))
+	))
 
 	return(TRUE)
 }
@@ -169,30 +116,7 @@ log_finish_in_db = function(db, run_id, job, module, log_dump = list()) {
 		module = module,
 		log_type = 'job-success',
 		log_dump = log_dump
-		)
+	)
 
 	return(T)
-}
-
-
-
-
-#' Helper function to check row count of a table in Postgres
-#'
-#' @description
-#' Returns the number of rows in a table
-#'
-#' @param db The database connection object.
-#' @param tablename The name of the table.
-#'
-#' @importFrom DBI dbGetQuery
-#' @export
-get_rowcount = function(db, tablename) {
-
-	if (class(db) != 'PqConnection') stop('Parameter db must be a PqConnection object!')
-	if (!is.character(tablename)) stop('Parameter tablename must be a character!')
-
-	count = as.numeric(dbGetQuery(db, paste0('SELECT COUNT(*) AS count FROM ', tablename, ''))$count)
-
-	return(count)
 }
