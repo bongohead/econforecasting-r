@@ -10,7 +10,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'interest-rate-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
-BACKTEST_MONTHS = 48
+BACKTEST_MONTHS = 3
 
 ## Log Job ----------------------------------------------------------
 if (interactive() == FALSE) {
