@@ -22,3 +22,5 @@ CREATE MATERIALIZED  VIEW public.forecast_values_v2_latest AS (
 CREATE UNIQUE INDEX forecast_values_v2_latest_uk ON forecast_values_v2_latest (forecast, freq, varname, date);
 CREATE INDEX forecast_values_v2_latest_ix_forecast ON forecast_values_v2_latest (forecast);
 CREATE INDEX forecast_values_v2_latest_ix_varname ON forecast_values_v2_latest (varname);
+CREATE INDEX forecast_values_v2_latest_ix_freq ON forecast_values_v2_latest (freq);
+CREATE INDEX forecast_values_v2_latest_ix_date ON forecast_values_v2_latest (date);

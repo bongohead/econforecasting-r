@@ -1,11 +1,18 @@
-#' This gets historical data for website
+#' This gets historical data for website.
+#' Recommend: run daily after noon.
+
+#' Note: Table rebuild and full audit on 1/6/23.
+#' - The final structure is same as before but two rate variables where vdate significantly after date have
+#'   lost some data. Notably aaa and baa are now truncated at 2017.
+#' - BSBY has lost some data due to the 5 year pull range.
+#' - Weekly data has been correctly moved to 6 days preceding since FRED uses week-end data.
 
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'composite-model-get-hist'
 EF_DIR = Sys.getenv('EF_DIR')
-IMPORT_DATE_START = '2016-01-01' #'2007-01-01' Reduced 7/6/22 due to vintage date limit on ALFRED
+IMPORT_DATE_START = '2007-01-01' #'2007-01-01' Reduced 7/6/22 due to vintage date limit on ALFRED
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -22,11 +29,10 @@ library(tidyverse)
 library(data.table)
 library(readxl)
 library(httr)
+library(rvest)
 library(DBI)
 library(lubridate)
-library(jsonlite)
 library(roll)
-library(rvest)
 
 ## Load Connection Info ----------------------------------------------------------
 db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
@@ -100,23 +106,6 @@ local({
 })
 
 # Historical Data ----------------------------------------------------------
-get_fred_data(
-	'GDP',
-	api_key,
-	.freq = 'q',
-	.return_vintages = T,
-	.obs_start = IMPORT_DATE_START,
-	.verbose = T
-)
-
-get_fred_obs_with_vintage(
-	'GDP',
-	api_key,
-	.freq = 'q',
-	.obs_start = IMPORT_DATE_START,
-	.verbose = T
-)
-
 ## 1. FRED ----------------------------------------------------------
 local({
 
@@ -150,6 +139,7 @@ local({
 local({
 
 	treasury_data = c(
+		'https://home.treasury.gov/system/files/276/yield-curve-rates-2001-2010.csv',
 		'https://home.treasury.gov/system/files/276/yield-curve-rates-2011-2020.csv',
 		paste0(
 			'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/',
@@ -175,7 +165,8 @@ local({
 			value
 		) %>%
 		filter(., !is.na(value)) %>%
-		filter(., varname %in% filter(variable_params, hist_source == 'treas')$varname)
+		filter(., varname %in% filter(variable_params, hist_source == 'treas')$varname) %>%
+		filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
 
 	hist$raw$treas <<- treasury_data
 })
@@ -425,7 +416,7 @@ local({
 		bind_rows(
 			.,
 			filter(hist$raw$fred, !varname %in% unique(.$varname)),
-			filter(hist$raw$fred, !varname %in% unique(.$varname)),
+			filter(hist$raw$treas, !varname %in% unique(.$varname)),
 			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
 			filter(hist$raw$bloom, !varname %in% unique(.$varname)),
 			filter(hist$raw$afx, !varname %in% unique(.$varname)),
@@ -652,45 +643,21 @@ local({
 
 # Finalize ----------------------------------------------------------------
 
-
-new_df = hist$flat_final %>%
-	select(., vdate, form, freq, varname, date, value)
-
-old_df = collect(tbl(db, sql('SELECT * FROM forecast_hist_values')))
-old_df %>% filter(., vdate >= IMPORT_DATE_START & date >= IMPORT_DATE_START) -> old_df
-old_df %>% anti_join(new_df, by = c('varname', 'form', 'freq', 'date'))
-old_df %>% anti_join(new_df, by = c('varname', 'form', 'freq', 'date')) %>% filter(., date >= '2016-02-01')
-
 ## 1. SQL ----------------------------------------------------------------
 local({
 
 	message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = get_rowcount(db, 'forecast_hist_values')
-	message('***** Initial Count: ', initial_count)
-
-	sql_result =
+	# Store in SQL
+	hist_values =
 		hist$flat_final %>%
-		select(., vdate, form, freq, varname, date, value) %>%
-		as_tibble(.) %>%
-		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
-			create_insert_query(
-				x,
-				'forecast_hist_values',
-				'ON CONFLICT (vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
-			) %>%
-				dbExecute(db, .)
-		) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+		select(., vdate, form, freq, varname, date, value)
 
-	final_count = get_rowcount(db, 'forecast_hist_values')
-	message('***** Rows Added: ', final_count - initial_count)
+	rows_added_v2 = store_forecast_hist_values_v2(db, hist_values, .verbose = T)
 
-
+	# Log
 	log_data = list(
-		rows_added = final_count - initial_count,
+		rows_added = rows_added_v2,
 		last_vdate = max(hist$flat_final$vdate),
 		missing_varnames = variable_params$varname %>% .[!. %in% unique(hist$flat_final$varname)],
 		rows_pulled = nrow(hist$flat_final),

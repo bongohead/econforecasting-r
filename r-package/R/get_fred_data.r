@@ -127,7 +127,8 @@ get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '20
 		na.omit(.) %>%
 		transmute(
 			.,
-			date = as_date(date) - days({if (.freq == 'w') 7 else 0}),
+			# FRED weekly frequency is for week-ending value; switch to week starting value
+			date = as_date(date) - days({if (.freq == 'w') 6 else 0}),
 			vintage_date = as_date(realtime_start),
 			varname = series_id,
 			value = as.numeric(value)
