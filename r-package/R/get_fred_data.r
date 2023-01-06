@@ -83,7 +83,14 @@ get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '20
 		'&realtime_end=', today
 		)
 
-	vintage_dates = insistently(\(x) unlist(content(GET(vintage_dates_url))$vintage_dates), rate = rate_delay(30, 10), quiet = F)()
+	get_vintage_dates = function(vintage_dates_url) {
+		response = GET(vintage_dates_url)
+		if (http_error(response)) stop('Error')
+		unlist(content(response)$vintage_dates)
+	}
+
+	vintage_dates = insistently(get_vintage_dates, rate = rate_delay(30, 10), quiet = !.verbose)(vintage_dates_url)
+
 	vintage_date_groups = map(split(vintage_dates, ceiling(seq_along(vintage_dates)/max_vdates_per_fetch)), \(x) list(
 		start = head(x, 1),
 		end = tail(x, 1)
@@ -102,9 +109,15 @@ get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '20
 
 	if (.verbose == T) message(obs_urls)
 
+	get_obs = function(url) {
+		response = GET(url)
+		if (http_error(response)) stop('Error')
+		content(response, as = 'parsed')$observations
+	}
+
 	raw_obs = list_c(map(
 		obs_urls,
-		\(url) insistently(\(x) content(GET(url), as = 'parsed')$observations, rate = rate_delay(30, 10), quiet = F)()
+		\(url) insistently(get_obs, rate = rate_delay(30, 10), quiet = !.verbose)(url)
 		))
 
 	raw_obs %>%

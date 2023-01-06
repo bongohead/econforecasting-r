@@ -87,12 +87,11 @@ local({
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
-			create_insert_query(
+			dbExecute(db, create_insert_query(
 				x,
 				'forecast_hist_release_dates',
 				'ON CONFLICT (release, date) DO NOTHING'
-			) %>%
-				dbExecute(db, .)
+				))
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
@@ -101,6 +100,22 @@ local({
 })
 
 # Historical Data ----------------------------------------------------------
+get_fred_data(
+	'GDP',
+	api_key,
+	.freq = 'q',
+	.return_vintages = T,
+	.obs_start = IMPORT_DATE_START,
+	.verbose = T
+)
+
+get_fred_obs_with_vintage(
+	'GDP',
+	api_key,
+	.freq = 'q',
+	.obs_start = IMPORT_DATE_START,
+	.verbose = T
+)
 
 ## 1. FRED ----------------------------------------------------------
 local({
@@ -115,11 +130,10 @@ local({
 		imap_dfr(., function(x, i) {
 			message(str_glue('**** Pull {i}: {x$varname}'))
 			res =
-				get_fred_data(
+				get_fred_obs_with_vintage(
 					x$hist_source_key,
 					api_key,
 					.freq = x$hist_source_freq,
-					.return_vintages = T,
 					.obs_start = IMPORT_DATE_START,
 					.verbose = T
 				) %>%
@@ -132,7 +146,41 @@ local({
 	hist$raw$fred <<- fred_data
 })
 
-## 2. Yahoo Finance ----------------------------------------------------------
+## 2. TREAS ----------------------------------------------------------
+local({
+
+	treasury_data = c(
+		'https://home.treasury.gov/system/files/276/yield-curve-rates-2011-2020.csv',
+		paste0(
+			'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/',
+			2021:year(today('US/Eastern')),
+			'/all?type=daily_treasury_yield_curve&field_tdr_date_value=2023&page&_format=csv'
+			)
+		) %>%
+		map(., .progress = F, \(x) read_csv(x, col_types = 'c')) %>%
+		list_rbind(.) %>%
+		pivot_longer(., cols = -c('Date'), names_to = 'varname', values_to = 'value') %>%
+		separate(., col = 'varname', into = c('ttm_1', 'ttm_2'), sep = ' ') %>%
+		mutate(
+			.,
+			varname = paste0('t', str_pad(ttm_1, 2, pad = '0'), ifelse(ttm_2 == 'Mo', 'm', 'y')),
+			date = mdy(Date),
+		) %>%
+		transmute(
+			.,
+			varname,
+			freq = 'd',
+			date,
+			vdate = date,
+			value
+		) %>%
+		filter(., !is.na(value)) %>%
+		filter(., varname %in% filter(variable_params, hist_source == 'treas')$varname)
+
+	hist$raw$treas <<- treasury_data
+})
+
+## 3. Yahoo Finance ----------------------------------------------------------
 local({
 
 	message(str_glue('*** Importing Yahoo Finance Data | {format(now(), "%H:%M")}'))
@@ -170,7 +218,7 @@ local({
 	hist$raw$yahoo <<- yahoo_data
 })
 
-## 3. BLOOM  ----------------------------------------------------------
+## 4. BLOOM  ----------------------------------------------------------
 local({
 
 	bloom_data =
@@ -179,7 +227,7 @@ local({
 		keep(., ~ .$hist_source == 'bloom') %>%
 		map_dfr(., function(x) {
 
-			res = httr::GET(
+			res = GET(
 				paste0(
 					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
 					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
@@ -189,7 +237,7 @@ local({
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
 				)))
 			) %>%
-				httr::content(., 'parsed') %>%
+				content(., 'parsed') %>%
 				.[[1]] %>%
 				.$price %>%
 				map_dfr(., ~ as_tibble(.)) %>%
@@ -212,7 +260,7 @@ local({
 	hist$raw$bloom <<- bloom_data
 })
 
-## 4. AFX  ----------------------------------------------------------
+## 5. AFX  ----------------------------------------------------------
 local({
 
 	afx_data =
@@ -237,7 +285,7 @@ local({
 	hist$raw$afx <<- afx_data
 })
 
-## 5. ECB ---------------------------------------------------------------------
+## 6. ECB ---------------------------------------------------------------------
 local({
 
 	# Migrated to ECBESTRVOLWGTTRMDMNRT!
@@ -254,7 +302,7 @@ local({
 	hist$raw$ecb <<- estr_data
 })
 
-## 6. BOE ---------------------------------------------------------------------
+## 7. BOE ---------------------------------------------------------------------
 local({
 
 	# Bank rate
@@ -289,7 +337,7 @@ local({
 	hist$raw$boe <<- boe_data
 })
 
-## 7. Calculated Variables ----------------------------------------------------------
+## 8. Calculated Variables ----------------------------------------------------------
 local({
 
 	message('*** Adding Calculated Variables')
@@ -357,7 +405,7 @@ local({
 	hist$raw$calc <<- hist_calc
 })
 
-## 8. Verify ----------------------------------------------------------
+## 9. Verify ----------------------------------------------------------
 local({
 
 	missing_varnames = variable_params$varname %>% .[!. %in% unique(bind_rows(hist$raw)$varname)]
@@ -367,7 +415,7 @@ local({
 })
 
 
-## 9. Aggregate Frequencies ----------------------------------------------------------
+## 10. Aggregate Frequencies ----------------------------------------------------------
 local({
 
 	message(str_glue('*** Aggregating Monthly & Quarterly Data | {format(now(), "%H:%M")}'))
@@ -376,6 +424,7 @@ local({
 		hist$raw$calc %>%
 		bind_rows(
 			.,
+			filter(hist$raw$fred, !varname %in% unique(.$varname)),
 			filter(hist$raw$fred, !varname %in% unique(.$varname)),
 			filter(hist$raw$yahoo, !varname %in% unique(.$varname)),
 			filter(hist$raw$bloom, !varname %in% unique(.$varname)),
@@ -602,6 +651,15 @@ local({
 })
 
 # Finalize ----------------------------------------------------------------
+
+
+new_df = hist$flat_final %>%
+	select(., vdate, form, freq, varname, date, value)
+
+old_df = collect(tbl(db, sql('SELECT * FROM forecast_hist_values')))
+old_df %>% filter(., vdate >= IMPORT_DATE_START & date >= IMPORT_DATE_START) -> old_df
+old_df %>% anti_join(new_df, by = c('varname', 'form', 'freq', 'date'))
+old_df %>% anti_join(new_df, by = c('varname', 'form', 'freq', 'date')) %>% filter(., date >= '2016-02-01')
 
 ## 1. SQL ----------------------------------------------------------------
 local({
