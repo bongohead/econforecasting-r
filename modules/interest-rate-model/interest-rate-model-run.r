@@ -4,6 +4,10 @@
 #'  - Bloomberg data releases on day of
 #'  - AFX data releases with 1 day lag (8am)
 #' Historical vintage dates are assigned given these assumptions!
+#'
+#' TBD:
+#' - Merge TFUT
+#' - Add vintage testing for mortgage rates
 
 # Initialize ----------------------------------------------------------
 
@@ -1306,7 +1310,13 @@ local({
 
 	# Store in SQL
 	submodel_values =
-		bind_rows(submodels) %>%
+		bind_rows(
+			submodels$ice,
+			submodels$cme %>% filter(., !str_detect(varname, 't\\d\\d[m|y]')),
+			submodels$tdns,
+			submodels$cboe,
+			submodels$mor
+		) %>%
 		transmute(., forecast = 'int', form = 'd1', vdate, freq, varname, date, value)
 
 	rows_added_v1 = store_forecast_values_v1(db, submodel_values, .verbose = T)

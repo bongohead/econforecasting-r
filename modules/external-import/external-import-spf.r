@@ -201,30 +201,17 @@ local({
 ## Export SQL Server ------------------------------------------------------------------
 local({
 
-	initial_count = get_rowcount(db, 'forecast_values')
-	message('***** Initial Count: ', initial_count)
-
-	sql_result =
+	# Store in SQL
+	model_values =
 		raw_data %>%
-		transmute(., forecast, form, vdate, freq, varname, date, value) %>%
-		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
-			create_insert_query(
-				x,
-				'forecast_values',
-				'ON CONFLICT (forecast, form, vdate, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
-				) %>%
-				dbExecute(db, .)
-		) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+		transmute(., forecast, form, vdate, freq, varname, date, value)
 
-	final_count = get_rowcount(db, 'forecast_values')
-	message('***** Rows Added: ', final_count - initial_count)
+	rows_added_v1 = store_forecast_values_v1(db, model_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(db, model_values, .verbose = T)
 
 	# Log
 	log_data = list(
-		rows_added = final_count - initial_count,
+		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
 		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
 		)

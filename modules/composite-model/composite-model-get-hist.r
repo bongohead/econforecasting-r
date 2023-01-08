@@ -661,7 +661,7 @@ local({
 		last_vdate = max(hist$flat_final$vdate),
 		missing_varnames = variable_params$varname %>% .[!. %in% unique(hist$flat_final$varname)],
 		rows_pulled = nrow(hist$flat_final),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 100), collapse = '\n')
 	)
 	log_finish_in_db(db, run_id, JOB_NAME, 'composite-model', log_data)
 })
