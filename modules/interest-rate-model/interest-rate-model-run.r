@@ -716,7 +716,7 @@ local({
 		.$vdate
 
 	# Get available historical data at each vintage date (36 months of history)
-	hist_df_0 =
+	hist_df_unagg =
 		tibble(vdate = backtest_vdates) %>%
 		mutate(., floor_vdate = floor_date(vdate, 'month')) %>%
 		left_join(
@@ -733,7 +733,10 @@ local({
 			by = c('floor_vdate', 'floor_date')
 		) %>%
 		filter(., months_diff <= 36) %>%
-		mutate(., is_current_month = floor_vdate == floor_date) %>%
+		mutate(., is_current_month = floor_vdate == floor_date)
+
+	hist_df_0 =
+		hist_df_unagg %>%
 		group_split(., is_current_month) %>%
 		lapply(., function(df)
 			if (df$is_current_month[[1]] == TRUE) {
@@ -992,6 +995,82 @@ local({
 			tdns3 = .3 * (2 * t02y - t03m - t10y)
 		)
 
+	# https://en.wikipedia.org/wiki/Logistic_function
+	get_logistic_x0 = function(desired_y_intercept, k = 1) {
+		res = log(1/desired_y_intercept - 1)/k
+		return(res)
+	}
+	logistic = function(x, x0, k = 1) {
+		res = 1/(1 + exp(-1 * k * (x - x0)))
+		return(res)
+	}
+	# tibble(vdate = seq(from = as_date('2020-01-01'), to = as_date('2020-01-31'), by = '1 day')) %>%
+	# 	mutate(., z =logistic(day(vdate)/days_in_month(vdate), get_logistic_x0(.25, 4), k = 4))
+
+	# Join forecasts with historical data to smooth out bump between historical data and TDNS curve
+	hist_merged_df =
+		treasury_forecasts %>%
+		mutate(., months_ahead = interval(floor_date(vdate, 'months'), date) %/% months(1)) %>%
+		left_join(
+			.,
+			# Use hist proper mean of existing data
+			hist_df_unagg %>%
+				mutate(., date = floor_date) %>%
+				group_by(., vdate, varname, date) %>%
+				summarize(., value = mean(value), .groups = 'drop') %>%
+				# Keep lastest hist obs for each vdate
+				group_by(., vdate) %>%
+				filter(., date == max(date)) %>%
+				ungroup(.) %>%
+				transmute(., vdate, varname, date, last_hist = value),
+			by = c('vdate', 'varname', 'date')
+		) %>%
+		# Map weights with sigmoid function and fill down forecast month 0 histoical value for full vdate x varname
+		mutate(
+			.,
+			# Scale multiplier for origin month (.5 to 1).
+			# In the next step, this is the sigmoid curve's y-axis crossing point.
+			forecast_origin_y = logistic(day(vdate)/days_in_month(vdate), get_logistic_x0(.25, 4), k = 4),
+			# Goal: for f(x; x0) = 1/(1 + e^-k(x  - x0)) i.e. the logistic function,
+			# find x0 s.t. f(0; x0) = forecast_origin_y => x0 = log(1/.75 - 1)/k
+			forecast_weight =
+				# e.g., see y=(1/(1+e^-x)+.25)/1.25 - starts at .75
+				logistic(months_ahead, get_logistic_x0(forecast_origin_y, k = .5), k = .5) #log(1/forecast_origin_y - 1)/.5, .5)
+				# (1/(1 + 1 * exp(-1 * months_ahead)) + (forecast_origin_y - (log(1/forecast_origin_y - 1))))
+			) %>%
+		group_by(., vdate, varname) %>%
+		mutate(
+			.,
+			last_hist = zoo::na.locf(last_hist, na.rm = F),
+			last_hist_diff = ifelse(is.na(last_hist), NA, last_hist - value)
+			) %>%
+		ungroup(.) %>%
+		# A vdate x varname with have all NAs if no history for forecast month 0 was available
+		# (e.g. first day of the month)
+		mutate(., final_value = ifelse(
+			is.na(last_hist),
+			value,
+			forecast_weight * value + (1 - forecast_weight) * (value + last_hist_diff)
+			)) %>%
+		arrange(., desc(vdate))
+
+	# Test historical merge
+	hist_merged_df %>%
+		filter(., vdate == max(vdate)) %>%
+		filter(., date == min(date)) %>%
+		inner_join(., yield_curve_names_map, by = 'varname') %>%
+		arrange(., ttm) %>%
+		ggplot(.) +
+		geom_point(aes(x = ttm, y = final_value), color = 'green') +
+		geom_point(aes(x = ttm, y = value), color = 'blue') +
+		geom_point(aes(x = ttm, y = last_hist), color = 'black')
+
+
+	## WEIGHT OF MONTH 0 SHOULD DEPEND ON HOW FAR IT IS INTO TE MONTH
+	final_forecasts =
+		hist_merged_df %>%
+		transmute(., vdate, varname, freq = 'm', date, value = final_value)
+
 	tdns <<- list(
 		dns_coefs_hist = dns_coefs_hist,
 		dns_coefs_forecast = dns_coefs_forecast
@@ -1039,6 +1118,7 @@ local({
 # 	future_forecasts =
 # 		futures_df %>%
 # 		group_split(., vdate) %>%
+# 		tail(., 1) %>%
 # 		map(., .progress = T, function(df, i) {
 #
 # 			fit = gam(
@@ -1050,7 +1130,7 @@ local({
 # 				method = 'ML'
 # 				)
 #
-# 			final_df = mutate(df, gam_fit = fit$fitted.values, final_value = .6 * value + .4 * gam_fit)
+# 			final_df = mutate(df, gam_fit = fit$fitted.values, final_value = .5 * value + .5 * gam_fit)
 #
 # 			plot =
 # 				final_df %>%
@@ -1058,7 +1138,7 @@ local({
 # 				arrange(., ttm) %>%
 # 				ggplot(.) +
 # 				geom_line(aes(x = date, y = value), color = 'green') +
-# 				geom_point(aes(x = date, y = futures_value), color = 'black') +
+# 				geom_point(aes(x = date, y = futures_value), color = 'black', size = 5) +
 # 				geom_line(aes(x = date, y = mod_value), color = 'red') +
 # 				geom_line(aes(x = date, y = gam_fit), color = 'pink') +
 # 				geom_line(aes(x = date, y = final_value), color = 'blue')

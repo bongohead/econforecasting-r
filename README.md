@@ -9,11 +9,12 @@ This code is developed locally on a Windows machine and deployed locally to an U
 
 
 # CHANGELOG
-<<<<<<< HEAD
 
 ## [v2.00] (API Integration & Design Overhaul)
 - Add bond forecasts for international markets (EU, see ticket chain)
-=======
+- Added better logging system
+- Added integration to updated DB backend
+- Added backtesting to interest rate models and historical smoothing to Treasury yields 
 - Test: DL model ensembling (subject to random variation)
 
 ## [v2.00] (API Integration & Design Overhaul)

@@ -41,11 +41,11 @@ local({
 	message('***** FNMA dir: ', fnma_dir)
 
 	fnma_links =
-		httr::GET('https://www.fanniemae.com/research-and-insights/forecast/forecast-monthly-archive') %>%
-		httr::content(., type = 'parsed') %>%
+		GET('https://www.fanniemae.com/research-and-insights/forecast/forecast-monthly-archive') %>%
+		content(., type = 'parsed') %>%
 		xml2::read_html(.) %>%
 		rvest::html_nodes('div.fm-accordion ul li a') %>%
-		purrr::keep(., ~ str_detect(rvest::html_text(.), 'News Release| Forecast')) %>%
+		keep(., ~ str_detect(rvest::html_text(.), 'News Release| Forecast')) %>%
 		map_dfr(., ~ tibble(
 			url = str_trim(rvest::html_attr(., 'href')),
 			type = case_when(
@@ -98,7 +98,7 @@ local({
 	fnma_clean_macro =
 		fnma_details %>%
 		purrr::transpose(.) %>%
-		purrr::imap_dfr(., function(x, i) {
+		imap_dfr(., function(x, i) {
 
 			message(str_glue('Importing macro {i}'))
 
@@ -154,7 +154,7 @@ local({
 	fnma_clean_housing =
 		fnma_details %>%
 		purrr::transpose(.) %>%
-		purrr::imap_dfr(., function(x, i) {
+		imap_dfr(., function(x, i) {
 
 			message(str_glue('Importing housing {i}'))
 
