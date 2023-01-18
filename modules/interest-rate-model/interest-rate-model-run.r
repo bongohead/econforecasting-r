@@ -8,6 +8,8 @@
 #' TBD:
 #' - Merge TFUT
 #' - Add vintage testing for mortgage rates
+#'
+#' Audited 1/17/23
 
 # Initialize ----------------------------------------------------------
 
@@ -1076,7 +1078,7 @@ local({
 		dns_coefs_forecast = dns_coefs_forecast
 		)
 
-	submodels$tdns <<- treasury_forecasts
+	submodels$tdns <<- final_forecasts
 })
 
 

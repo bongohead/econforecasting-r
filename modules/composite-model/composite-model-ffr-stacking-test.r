@@ -6,7 +6,7 @@
 JOB_NAME = 'composite-model-monthly-dlog-stacking'
 EF_DIR = Sys.getenv('EF_DIR')
 TRAIN_VDATE_START = '2015-01-01'
-VARNAMES = c('unemp', 'ffr', 'lfpr')
+VARNAMES = c('unemp')
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -30,15 +30,8 @@ library(jsonlite)
 library(xgboost)
 
 ## Load Connection Info ----------------------------------------------------------
-source(file.path(EF_DIR, 'model-inputs', 'constants.r'))
-db = dbConnect(
-	RPostgres::Postgres(),
-	dbname = CONST$DB_DATABASE,
-	host = CONST$DB_SERVER,
-	port = 5432,
-	user = CONST$DB_USERNAME,
-	password = CONST$DB_PASSWORD
-)
+db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+run_id = log_start_in_db(db, JOB_NAME, 'composite-model')
 releases = list()
 hist = list()
 
@@ -48,85 +41,163 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'
 
 # Import Test Backdates ----------------------------------------------------------
 
-## Import Historical Data ----------------------------------------------------------
+## Import Monthly Historical Data ----------------------------------------------------------
 local({
-	
-	hist_data_monthly_d1 = tbl(db, sql(str_glue(
-		"SELECT val.varname, val.vdate, val.date, val.value, val.freq
-		FROM forecast_hist_values val
-		INNER JOIN forecast_variables v ON v.varname = val.varname
-		WHERE v.varname IN ({v}) AND freq IN ('m', 'q') AND form = 'd1'",
+
+	# Only keep EARLIEST release for each historical value
+	# This results in date being the unique row identifier
+	hist_data_d1 = tbl(db, sql(str_glue(
+		"
+		WITH t0 AS (
+			-- Pivot out d1 and d2
+			SELECT
+				t1.vdate, t1.freq, t1.varname, t1.date,
+				t1.value AS d1, t2.value AS d2
+			FROM (SELECT * FROM forecast_hist_values_v2 WHERE form = 'd1') t1
+			LEFT JOIN (SELECT * FROM forecast_hist_values_v2 WHERE form = 'd2') t2 ON (
+				t1.vdate = t2.vdate
+				AND t1.freq = t2.freq
+				AND t1.varname = t2.varname
+				AND t1.date = t2.date
+			)
+		)
+		-- Now aggregate out vdates to get the latest freq x date x varname combo
+		SELECT
+			freq, date, varname, MIN(vdate) as vdate, FIRST(d1, vdate) as value
+		FROM t0
+		WHERE varname IN ({v}) AND freq = 'm'
+		GROUP BY varname, freq, date
+		ORDER BY varname, freq, date
+		",
 		v = paste0(paste0('\'', VARNAMES, '\''), collapse = ',')
 		))) %>%
 		collect(.) %>%
-		# Only keep initial release for each historical value
-		# This results in date being the unique row identifier
-		group_by(., varname, date) %>%
-		filter(., vdate == min(vdate)) %>%
-		ungroup(.) %>%
 		arrange(., varname, date)
-	
-	hist_data_quarterly_d1 = 
-		hist_data_monthly_d1 %>%
-		mutate(., date = quarter(date, type = 'date_first')) %>%
-		group_by(., varname, date) %>%
-		summarize(., vdate = max(vdate), value = mean(value), n = n(), .groups = 'drop') %>%
-		filter(., n == 3) %>%
-		select(., -n) %>%
-		mutate(., freq = 'q') 
-	
+
 	# Apply stationary transformations
 	# TBD: see composite-model-get--hist for significantly faster & more memory-efficient stationary transforms
-	hist_data_monthly = 
-		hist_data_monthly_d1 %>%
+	hist_data_st =
+		hist_data_d1 %>%
 		group_split(., freq, varname) %>%
 		map_dfr(., function(x)
 			x %>%
 				arrange(., date) %>%
 				mutate(., value = diff1(value)) %>%
-				tail(., -1) 
-		)
-	
-	hist_data_quarterly = 
-		hist_data_quarterly_d1 %>%
-		group_split(., freq, varname) %>%
-		map_dfr(., function(x)
-			x %>%
-				arrange(., date) %>%
-				mutate(., value = diff1(value)) %>%
-				tail(., -1) 
-		)
-	
-	hist_data_d1 = bind_rows(hist_data_quarterly_d1, hist_data_monthly_d1)
-	hist_data = bind_rows(hist_data_quarterly, hist_data_monthly)
-	
+				tail(., -1)
+			)
+
 	hist_data_d1 <<- hist_data_d1
-	hist_data <<- hist_data
+	hist_data_st <<- hist_data_st
 })
 
 ## Import Forecasts ----------------------------------------------------------
 local({
-		
+
 	forecast_data_d1 = tbl(db, sql(str_glue(
-		"SELECT val.varname, val.forecast, val.vdate, val.date, val.value, val.freq
-		FROM forecast_values val
+		"
+		SELECT val.varname, val.forecast, val.vdate, val.date, val.d1 AS value, val.freq
+		FROM forecast_values_v2_all val
 		INNER JOIN forecast_variables v ON v.varname = val.varname
-		WHERE v.varname IN ({v}) AND freq IN ('m', 'q') AND form = 'd1'
+		WHERE
+			v.varname IN ({v}) AND freq IN ('m', 'q')
 			AND vdate >= '{TRAIN_VDATE_START}'
-		ORDER BY val.varname, val.vdate, val.date",
+		ORDER BY val.varname, val.vdate, val.date
+		",
 		v = paste0(paste0('\'', VARNAMES, '\''), collapse = ',')
 		))) %>%
 		collect(.)
-	
+
+	# If quarterly, guess monthly forecasts via interpolation of missing vintages
+	forecast_data_d1_q_raw =
+		forecast_data_d1 %>%
+		filter(., freq == 'q') %>%
+		select(., -freq) %>%
+		rename(., forecast_quarter_date = date)
+
+	forecast_data_d1_q_months =
+		forecast_data_d1_q_raw %>%
+		group_split(., varname, vdate, forecast) %>%
+		lapply(., function(x)
+			tibble(forecast_month_date = seq(
+				from = min(x$forecast_quarter_date),
+				to = max(x$forecast_quarter_date) + months(2),
+				by = '1 month'
+				)) %>%
+				bind_cols(varname = x$varname[[1]], vdate = x$vdate[[1]], forecast = x$forecast[[1]], .)
+			) %>%
+		list_rbind(.) %>%
+		mutate(
+			.,
+			forecast_quarter_date = floor_date(forecast_month_date, 'quarter'),
+			month_n = interval(forecast_quarter_date, forecast_month_date) %/% months(1) + 1
+		)
+
+
+	forecast_data_d1_q_months %>%
+		left_join(., forecast_data_d1_q_raw, by = c('varname', 'forecast', 'vdate', 'forecast_quarter_date')) %>%
+		left_join(
+			.,
+			transmute(
+				hist_data_d1,
+				varname, hist_month_date = date, hist_quarter_date = floor_date(date, 'quarter'),
+				hist_value = value, hist_vdate = vdate
+				),
+			join_by(varname, forecast_month_date == hist_month_date)
+		) %>%
+		# Add a column for a hist val for the month if known
+		mutate(., known_hist_val = ifelse(vdate >= hist_vdate, hist_value, NA)) %>%
+		# Now pivot such that each row uniquely identifies a quarter forecast (for a given vdate x varname)
+		# with columns identifying histories for month 0, month 1, month 2
+		pivot_wider(
+			.,
+			id_cols = c(varname, vdate, forecast, forecast_quarter_date, value),
+			names_from = month_n,
+			values_from = known_hist_val,
+			names_prefix = 'known_month_'
+			) %>%
+		# Now interpolate missing values
+		mutate(., interp_vals = map(purrr::transpose(.), function(r) {
+			is_na_hist = is.na(c(r$known_month_1, r$known_month_2, r$known_month_3))
+			res =  {
+				# If no hist
+				if (all(is_na_hist)) c(r$value, r$value, r$value)
+				# If first hist
+				else if (!is_na_hist[1] & is_na_hist[2] & is_na_hist[3])
+					c(r$known_month_1, (3 * r$value - r$known_month_1)/2, (3 * r$value - r$known_month_1)/2)
+				# If first 2 hist
+				else if (!is_na_hist[1] & !is_na_hist[2] & is_na_hist[3])
+					c(r$known_month_1, r$known_month_2, r$value * 3 - r$known_month_1 - r$known_month_2)
+				# If all hist
+				else if (!is_na_hist[1] & !is_na_hist[2] & !is_na_hist[3])
+					c(r$known_month_1, r$known_month_2, r$known_month_3)
+				else stop('Data error')
+			}
+			return(set_names(res, paste0('interp_month_', 1:3)))
+		})) %>%
+		unnest_wider(., interp_vals) %>%
+		select(., -starts_with('known')) %>%
+		pivot_longer(
+			.,
+			cols = starts_with('interp'),
+			values_to = 'forecast_month_val',
+			names_to = 'forecast_month_date'
+			) %>%
+		mutate(
+			.,
+			forecast_month_date = forecast_quarter_date + months(as.integer(str_sub(forecast_month_date, -1)) - 1)
+			)
+		# Now add splinal smoothers
+
+
 	## Stationary Transformers
 	forecast_data =
 		forecast_data_d1 %>%
 		group_split(., varname, vdate, freq) %>%
 		imap(., function(x, i) {
-			
+
 			x_freq = x$freq[[1]]
 			x_varname = x$varname[[1]]
-			
+
 			hist_bind =
 				hist_data_d1 %>%
 				filter(
@@ -134,14 +205,14 @@ local({
 					date == min(x$date) - {if (x_freq == 'q') months(3) else months(1)},
 					freq == x_freq,
 					varname == x_varname
-					)
-			
+				)
+
 			if (nrow(hist_bind) != 1) {
 				message('Error on iteration ', i)
 				print(x)
 				return(NULL)
 			}
-			
+
 			bind_rows(hist_bind, x) %>%
 				arrange(., date) %>%
 				mutate(., value = diff1(value)) %>%
@@ -151,20 +222,47 @@ local({
 		compact(.) %>%
 		bind_rows(.)
 
+
 	forecast_data_d1 <<- forecast_data_d1
 	forecast_data <<- forecast_data
 })
 
 ## Import Release Schedule ----------------------------------------------------------
 local({
-	
+
 	# We can guess release times that are upcoming
 	# This will be later used to determine which releases are upcoming but not yet released
-	
-	release_data =
-		tibble(date = seq(from = as_date('2015-01-01'), to = ceiling_date(today(), 'month') + years(10), by = '1 month')) %>%
-		mutate(., release_date = date)
-	
+	release_lag =
+		hist_data %>%
+		group_by(., varname, freq) %>%
+		summarize(., release_lag = ceiling(as.integer(mean(vdate - date), 'days')), .groups = 'drop')
+
+	# Only include data not already forecasted
+	# release_data =
+	monthly_possible_releases = expand_grid(
+		date = seq(
+			from = floor_date(today(), 'months') - years(1),
+			to = floor_date(today(), 'months') + years(10),
+			by = '1 month'
+			),
+		varname = unique(forecast_data$varname),
+		freq = 'm'
+		)
+
+	quarterly_possible_releases = expand_grid(
+		date = seq(
+			from = floor_date(today(), 'quarter') - years(1),
+			to = floor_date(today(), 'quarter') + years(10),
+			by = '1 quarter'
+		),
+		varname = unique(forecast_data$varname),
+		freq = 'q'
+	)
+
+	bind_rows(monthly_possible_releases, quarterly_possible_releases) %>%
+		anti_join(., hist_data, by = c('varname', 'date', 'freq'))
+
+
 	release_data <<- release_data
 })
 
@@ -203,15 +301,15 @@ arima_forecasts =
 			.[, value.l1 := shift(value, 1, type = 'lag')] %>%
 			.[, constant := 1] %>%
 			.[2:nrow(.)]
-		
+
 		input_df_cleaned = input_df #[!year(date) == 2020]
-		
+
 		x_mat = as.matrix(input_df_cleaned[, c('value.l1', 'constant')])
-		
+
 		y_mat = as.matrix(input_df_cleaned[, 'value'])
-		
+
 		coef_mat = solve(t(x_mat) %*% x_mat) %*% t(x_mat) %*% y_mat
-		
+
 		## 20 period forecasts
 		data.table(
 			varname = x$varname[[1]],
@@ -234,7 +332,7 @@ constant_forecasts =
 	keep(., ~ nrow(.) >= 5) %>%
 	lapply(., function(x) {
 		input_df = x[order(date)]
-		
+
 		## 20 period forecasts
 		data.table(
 			varname = x$varname[[1]],
@@ -254,7 +352,7 @@ ma_forecasts =
 	keep(., ~ nrow(.) >= 5) %>%
 	lapply(., function(x) {
 		input_df = x[order(date)]
-		
+
 		## 20 period forecasts
 		data.table(
 			varname = x$varname[[1]],
@@ -270,17 +368,12 @@ ma_forecasts =
 
 forecast_data_final = bind_rows(forecast_data, arima_forecasts, constant_forecasts, ma_forecasts)
 
-## Dynamic Factor Model Forecasts (TBD) ----------------------------------------------------------
-
-
-## TVP-AR (TBD) ----------------------------------------------------------
-
-
 
 # Combine Models ----------------------------------------------------------
 
 ## Prep Train Data ----------------------------------------------------------
-train_data =
+
+train_data_0 =
 	merge(
 		as.data.table(forecast_data_final),
 		rename(as.data.table(hist_data), hist_vdate = vdate, hist_value = value),
@@ -288,38 +381,69 @@ train_data =
 		all = FALSE,
 		allow.cartesian = TRUE
 	) %>%
-	.[, c('error', 'days_before_release') := list(hist_value - value, as.numeric(hist_vdate - vdate))] %>%
-	.[days_before_release >= 1] %>%
-	.[vdate >= TRAIN_VDATE_START] %>%
-	# .[, c('hist_vdate', 'hist_value') := NULL] %>%
-	# Only keep initial release for each historical value
-	# For each obs date, get the forecast & vdates
-	split(., by = c('date', 'varname')) %>%
-	lapply(., function(x)
-		x %>%
-			dcast(., days_before_release ~ forecast, value.var = 'value') %>%
-			merge(
-				data.table(days_before_release = seq(max(.$days_before_release), 1, -1)),
+	as_tibble(.) %>%
+	filter(., as.numeric(hist_vdate - vdate, 'days') >= 1 & vdate >= TRAIN_VDATE_START)
+
+train_data =
+	train_data_0 %>%
+	group_by(., varname, freq) %>%
+	group_split(.) %>%
+	map(., .progress = T, function(x) {
+		res =
+			# Create grid of 300 days trailing before each obs release date for each forecast
+			expand_grid(
+				forecast = unique(x$forecast),
+				days_before_release = 1:300,
+				x %>%
+					group_by(., date, hist_vdate) %>%
+					summarize(., hist_vdate = unique(hist_vdate), hist_value = unique(hist_value), .groups = 'drop') %>%
+					arrange(., date),
+				) %>%
+			mutate(., realdate = date - days(days_before_release)) %>%
+			# Now join the closest forecast to each date
+			left_join(
 				.,
-				by = 'days_before_release',
-				all = TRUE
-			) %>%
-			.[order(-days_before_release)] %>%
-			.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
-			melt(., id.vars = 'days_before_release', value.name = 'value', variable.name = 'forecast', na.rm = T) %>%
-			.[,
-				c('varname', 'date', 'hist_vdate', 'hist_value') :=
-					list(x$varname[[1]], x$date[[1]], x$hist_vdate[[1]], x$hist_value[[1]])
-			]
-	) %>%
-	rbindlist(.) %>%
-	dcast(., varname + date + hist_vdate + hist_value + days_before_release ~ forecast, value.var = 'value')
+				transmute(x, forecast, date, forecast_vdate = vdate, forecast_value = value),
+				join_by(forecast, date, closest(realdate >= forecast_vdate))
+				) %>%
+			mutate(
+				.,
+				forecast_age = as.integer(realdate - forecast_vdate),
+				varname = x$varname[[1]],
+				freq = x$freq[[1]]
+				)
+
+		return(res)
+	}) %>%
+	list_rbind(.) %>%
+	na.omit(.) %>%
+	pivot_wider(
+		.,
+		id_cols = c('varname', 'date', 'hist_vdate', 'hist_value', 'realdate', 'days_before_release'),
+		names_from = forecast,
+		values_from = c(forecast_value, forecast_age)
+	)
 
 train_data %>%
 	filter(., date == max(date)) %>%
 	print(.)
 
 ## Prep Test Data ----------------------------------------------------------
+
+# Get data that is forecasted & has a prospective release date, but no historical data
+anti_join(
+	inner_join(forecast_data_final, release_data, by = 'date'),
+	rename(hist_data, hist_vdate = vdate, hist_value = value),
+	by = c('varname', 'date', 'freq')
+	) %>%
+	filter(., date >= today() - years(1)) %>%
+	# Use estimated release dates
+	mutate(., days_before_release = as.numeric(release_date - vdate, 'days')) %>%
+
+
+
+
+
 test_data =
 	# TBD: Get data that is forecasted & has a prospective release date, but no historical data
 	anti_join(
@@ -327,8 +451,12 @@ test_data =
 		rename(hist_data, hist_vdate = vdate, hist_value = value),
 		by = c('varname', 'date', 'freq')
 	) %>%
-	filter(., date >= '2015-01-01') %>%
-	mutate(., days_before_release = as.numeric(release_date - vdate)) %>%
+	filter(., date >= today() - years(1)) %>%
+	mutate(., days_before_release = as.numeric(release_date - vdate, 'days'))
+
+
+
+%>%
 	as.data.table(.) %>%
 	split(., by = c('date', 'varname')) %>%
 	lapply(., function(x)
@@ -359,13 +487,13 @@ train_varnames =
 	VARNAMES
 
 trees = lapply(train_varnames, function(this_varname) {
-	
+
 	input_data =
 		train_data %>%
 		.[varname == this_varname] #%>%
 		# .[!year(date) %in% c(2020)]
 		# .[!date %in% as_date(c('2020-04-01', '2020-07-01'))]
-	
+
 	tree = xgboost::xgboost(
 		data =
 			input_data %>%
@@ -386,7 +514,7 @@ trees = lapply(train_varnames, function(this_varname) {
 		#,
 		# monotone_constraints = '(0,1,1,1,1,1,1)'
 	)
-	
+
 	return(tree)
 }) %>%
 	set_names(., train_varnames)
@@ -397,7 +525,7 @@ trees = lapply(train_varnames, function(this_varname) {
 # i.e. dates that haven't been forecasted yet at all
 test_results = lapply(train_varnames, function(this_varname) {
 	message(this_varname)
-	
+
 	oos_values =
 		predict(
 			trees[[this_varname]],
@@ -406,14 +534,14 @@ test_results = lapply(train_varnames, function(this_varname) {
 				.[, days_before_release := fifelse(days_before_release >= 1000, 1000, days_before_release)] %>%
 				as.matrix(.)
 		)
-	
+
 	predicted_values =
 		test_data %>%
 		.[varname == this_varname] %>%
 		as_tibble(.) %>%
 		mutate(., vdate = release_date - days_before_release, predict = oos_values) %>%
 		filter(., vdate <= today())
-	
+
 	# predicted_values %>%
 	# 	# transmute(., varname, date, release_date, days_before_release, vdate, predict) %>%
 	# 	filter(., varname %in% c('gdp', 'pce') & date == min(date)) %>%
@@ -428,7 +556,7 @@ test_results %>%
 	select(., vdate, date, predict) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
 	arrange(., desc(vdate)) %>%
-	print(., n = 100) 
+	print(., n = 100)
 
 ## Reverse-Transform ----------------------------------------------------------
 test_results_d1 =
@@ -438,13 +566,13 @@ test_results_d1 =
 	filter(., vdate >= today()) %>%
 	group_split(., vdate, varname) %>%
 	imap(., function(x, i) {
-		
+
 		hist_value = filter(hist_data_d1, varname == x$varname[[1]], freq == 'm' & date == min(x$date) - months(1))$value
 
 		if (length(hist_value) != 1) {
 			stop('Error on index ', i)
 		}
-		
+
 		x %>%
 			mutate(., predict = undiff(predict, 1, hist_value)) %>%
 			return(.)
@@ -456,21 +584,21 @@ test_results_d1 %>%
 	select(., vdate, date, predict) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
 	arrange(., desc(vdate)) %>%
-	print(., n = 100)  %>% 
+	print(., n = 100)  %>%
 	View(.)
 
 # Finalize ----------------------------------------------------------
 
 ## SQL ----------------------------------------------------------
 local({
-	
+
 	forecast_values =
 		test_results %>%
 		transmute(., forecast = 'comp', form = 'd1', vdate, freq = 'q', varname, date, value = predict)
-	
+
 	initial_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Initial Count: ', initial_count)
-	
+
 	sql_result =
 		forecast_values %>%
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
@@ -484,10 +612,10 @@ local({
 				dbExecute(db, .)
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
-	
+
 	final_count = as.numeric(dbGetQuery(db, 'SELECT COUNT(*) AS count FROM forecast_values')$count)
 	message('***** Rows Added: ', final_count - initial_count)
-	
+
 	tribble(
 		~ logname, ~ module, ~ log_date, ~ log_group, ~ log_info,
 		JOB_NAME, 'composite-model', today(), 'job-success',

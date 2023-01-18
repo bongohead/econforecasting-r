@@ -5,10 +5,10 @@
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
-JOB_NAME = 'composite-model-stacking'
+JOB_NAME = 'composite-model-monthly-stacking'
 EF_DIR = Sys.getenv('EF_DIR')
 TRAIN_VDATE_START = '2010-01-01'
-VARNAMES = c('gdp', 'pce', 'pdi')
+VARNAMES = c('unemp')
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -44,9 +44,9 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'
 ## Import Historical Data ----------------------------------------------------------
 hist_data = tbl(db, sql(
 	"SELECT val.varname, val.vdate, val.date, val.value
-	FROM forecast_hist_values_v2 val
+	FROM forecast_hist_values val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE release = 'BEA.GDP' AND freq = 'q' AND form = 'd1' AND v.varname NOT IN ('cbi', 'nx', 'ngdp')"
+	WHERE freq = 'm' AND form = 'd1'"
 	)) %>%
 	collect(.) %>%
 	# Only keep initial release for each historical value
@@ -58,10 +58,10 @@ hist_data = tbl(db, sql(
 
 ## Import Forecasts ----------------------------------------------------------
 forecast_data = tbl(db, sql(
-	"SELECT val.varname, val.forecast, val.vdate, val.date, val.d1 AS value
-	FROM forecast_values_v2_all val
+	"SELECT val.varname, val.forecast, val.vdate, val.date, val.value
+	FROM forecast_values val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
-	WHERE release = 'BEA.GDP' AND freq = 'q' AND v.varname NOT IN ('cbi', 'nx', 'ngdp')"
+	WHERE freq = 'm' AND form = 'd1'"
 	)) %>%
 	collect(.)
 
