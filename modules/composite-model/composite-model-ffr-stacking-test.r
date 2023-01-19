@@ -1,4 +1,7 @@
-#' This gets historical data for website
+#' This generates composite forecasts for monthly datasets!
+#'
+#' It ingests forecasts (both monthly and quarterly) as well as historical data
+#   for variables with monthly history.
 
 # Initialize ----------------------------------------------------------
 
@@ -6,7 +9,7 @@
 JOB_NAME = 'composite-model-monthly-dlog-stacking'
 EF_DIR = Sys.getenv('EF_DIR')
 TRAIN_VDATE_START = '2015-01-01'
-VARNAMES = c('unemp')
+VARNAMES = c('unemp', 'ffr')
 
 ## Cron Log ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -24,9 +27,7 @@ library(data.table)
 library(readxl)
 library(httr)
 library(DBI)
-library(RPostgres)
 library(lubridate)
-library(jsonlite)
 library(xgboost)
 
 ## Load Connection Info ----------------------------------------------------------
@@ -93,7 +94,7 @@ local({
 ## Import Forecasts ----------------------------------------------------------
 local({
 
-	forecast_data_d1 = tbl(db, sql(str_glue(
+	forecast_data_d1_all = tbl(db, sql(str_glue(
 		"
 		SELECT val.varname, val.forecast, val.vdate, val.date, val.d1 AS value, val.freq
 		FROM forecast_values_v2_all val
@@ -109,7 +110,7 @@ local({
 
 	# If quarterly, guess monthly forecasts via interpolation of missing vintages
 	forecast_data_d1_q_raw =
-		forecast_data_d1 %>%
+		forecast_data_d1_all %>%
 		filter(., freq == 'q') %>%
 		select(., -freq) %>%
 		rename(., forecast_quarter_date = date)
@@ -132,8 +133,8 @@ local({
 			month_n = interval(forecast_quarter_date, forecast_month_date) %/% months(1) + 1
 		)
 
-
-	forecast_data_d1_q_months %>%
+	forecast_data_d1_q =
+		forecast_data_d1_q_months %>%
 		left_join(., forecast_data_d1_q_raw, by = c('varname', 'forecast', 'vdate', 'forecast_quarter_date')) %>%
 		left_join(
 			.,
@@ -188,24 +189,34 @@ local({
 			)
 		# Now add splinal smoothers
 
+	forecast_data_d1 = bind_rows(
+		forecast_data_d1_all %>%
+			filter(., freq == 'm') %>%
+			select(., -freq),
+		forecast_data_d1_q %>%
+			transmute(
+				.,
+				varname,
+				forecast,
+				vdate,
+				date = forecast_month_date,
+				value = forecast_month_val
+			)
+		)
+
 
 	## Stationary Transformers
-	forecast_data =
+	forecast_data_st =
 		forecast_data_d1 %>%
-		group_split(., varname, vdate, freq) %>%
-		imap(., function(x, i) {
+		group_split(., varname, vdate) %>%
+		imap(., .progress = T, function(x, i) {
 
-			x_freq = x$freq[[1]]
 			x_varname = x$varname[[1]]
 
 			hist_bind =
 				hist_data_d1 %>%
-				filter(
-					.,
-					date == min(x$date) - {if (x_freq == 'q') months(3) else months(1)},
-					freq == x_freq,
-					varname == x_varname
-				)
+				filter(., date == min(x$date) - months(1) & freq == 'm' & varname == x_varname) %>%
+				select(., -freq)
 
 			if (nrow(hist_bind) != 1) {
 				message('Error on iteration ', i)
@@ -220,11 +231,11 @@ local({
 				return(.)
 		}) %>%
 		compact(.) %>%
-		bind_rows(.)
+		list_rbind(.)
 
 
 	forecast_data_d1 <<- forecast_data_d1
-	forecast_data <<- forecast_data
+	forecast_data_st <<- forecast_data_st
 })
 
 ## Import Release Schedule ----------------------------------------------------------
@@ -245,23 +256,12 @@ local({
 			to = floor_date(today(), 'months') + years(10),
 			by = '1 month'
 			),
-		varname = unique(forecast_data$varname),
-		freq = 'm'
+		varname = unique(forecast_data$varname)
 		)
 
-	quarterly_possible_releases = expand_grid(
-		date = seq(
-			from = floor_date(today(), 'quarter') - years(1),
-			to = floor_date(today(), 'quarter') + years(10),
-			by = '1 quarter'
-		),
-		varname = unique(forecast_data$varname),
-		freq = 'q'
-	)
-
-	bind_rows(monthly_possible_releases, quarterly_possible_releases) %>%
-		anti_join(., hist_data, by = c('varname', 'date', 'freq'))
-
+	release_data =
+		monthly_possible_releases %>%
+		anti_join(., hist_data_d1, by = c('varname', 'date'))
 
 	release_data <<- release_data
 })
