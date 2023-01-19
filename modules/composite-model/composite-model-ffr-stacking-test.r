@@ -64,7 +64,7 @@ local({
 		)
 		-- Now aggregate out vdates to get the latest freq x date x varname combo
 		SELECT
-			freq, date, varname, MIN(vdate) as vdate, FIRST(d1, vdate) as value
+			date, varname, MIN(vdate) as vdate, FIRST(d1, vdate) as value
 		FROM t0
 		WHERE varname IN ({v}) AND freq = 'm'
 		GROUP BY varname, freq, date
@@ -79,7 +79,7 @@ local({
 	# TBD: see composite-model-get--hist for significantly faster & more memory-efficient stationary transforms
 	hist_data_st =
 		hist_data_d1 %>%
-		group_split(., freq, varname) %>%
+		group_split(., varname) %>%
 		map_dfr(., function(x)
 			x %>%
 				arrange(., date) %>%
@@ -215,8 +215,7 @@ local({
 
 			hist_bind =
 				hist_data_d1 %>%
-				filter(., date == min(x$date) - months(1) & freq == 'm' & varname == x_varname) %>%
-				select(., -freq)
+				filter(., date == min(x$date) - months(1) & varname == x_varname)
 
 			if (nrow(hist_bind) != 1) {
 				message('Error on iteration ', i)
@@ -244,8 +243,8 @@ local({
 	# We can guess release times that are upcoming
 	# This will be later used to determine which releases are upcoming but not yet released
 	release_lag =
-		hist_data %>%
-		group_by(., varname, freq) %>%
+		hist_data_d1 %>%
+		group_by(., varname) %>%
 		summarize(., release_lag = ceiling(as.integer(mean(vdate - date), 'days')), .groups = 'drop')
 
 	# Only include data not already forecasted
@@ -256,12 +255,15 @@ local({
 			to = floor_date(today(), 'months') + years(10),
 			by = '1 month'
 			),
-		varname = unique(forecast_data$varname)
+		varname = unique(forecast_data_d1$varname)
 		)
 
 	release_data =
 		monthly_possible_releases %>%
-		anti_join(., hist_data_d1, by = c('varname', 'date'))
+		anti_join(., hist_data_d1, by = c('varname', 'date')) %>%
+		left_join(., release_lag, by = 'varname') %>%
+		mutate(., hist_vdate = date + release_lag) %>%
+		select(., -release_lag)
 
 	release_data <<- release_data
 })
@@ -270,8 +272,7 @@ local({
 
 ## Prep Data (Monthly) ----------------------------------------------------------
 model_data =
-	hist_data %>%
-	filter(., freq == 'm') %>%
+	hist_data_d1 %>%
 	as.data.table(.) %>%
 	split(., by = c('varname')) %>%
 	lapply(., function(x)  {
@@ -322,8 +323,7 @@ arima_forecasts =
 		)
 	}) %>%
 	rbindlist(.) %>%
-	.[, forecast := 'arima'] %>%
-	.[, freq := 'm']
+	.[, forecast := 'arima']
 
 ## Constant Forecasts (Monthly) ----------------------------------------------------------
 constant_forecasts =
@@ -342,8 +342,7 @@ constant_forecasts =
 		)
 	}) %>%
 	rbindlist(.) %>%
-	.[, forecast := 'constant'] %>%
-	.[, freq := 'm']
+	.[, forecast := 'constant']
 
 ## MA Forecasts (Monthly) ----------------------------------------------------------
 ma_forecasts =
@@ -362,31 +361,32 @@ ma_forecasts =
 		)
 	}) %>%
 	rbindlist(.) %>%
-	.[, forecast := 'ma'] %>%
-	.[, freq := 'm']
+	.[, forecast := 'ma']
 
 
-forecast_data_final = bind_rows(forecast_data, arima_forecasts, constant_forecasts, ma_forecasts)
+forecast_data_final = bind_rows(forecast_data_d1, arima_forecasts, constant_forecasts, ma_forecasts)
 
 
 # Combine Models ----------------------------------------------------------
 
 ## Prep Train Data ----------------------------------------------------------
-
 train_data_0 =
 	merge(
 		as.data.table(forecast_data_final),
-		rename(as.data.table(hist_data), hist_vdate = vdate, hist_value = value),
-		by = c('varname', 'date', 'freq'),
+		rename(as.data.table(hist_data_d1), hist_vdate = vdate, hist_value = value),
+		by = c('varname', 'date'),
 		all = FALSE,
 		allow.cartesian = TRUE
 	) %>%
 	as_tibble(.) %>%
 	filter(., as.numeric(hist_vdate - vdate, 'days') >= 1 & vdate >= TRAIN_VDATE_START)
+####
+#' Fix realdate calculation in both this and and test version!
 
+####
 train_data =
 	train_data_0 %>%
-	group_by(., varname, freq) %>%
+	group_by(., varname) %>%
 	group_split(.) %>%
 	map(., .progress = T, function(x) {
 		res =
@@ -409,8 +409,7 @@ train_data =
 			mutate(
 				.,
 				forecast_age = as.integer(realdate - forecast_vdate),
-				varname = x$varname[[1]],
-				freq = x$freq[[1]]
+				varname = x$varname[[1]]
 				)
 
 		return(res)
@@ -431,54 +430,84 @@ train_data %>%
 ## Prep Test Data ----------------------------------------------------------
 
 # Get data that is forecasted & has a prospective release date, but no historical data
-anti_join(
-	inner_join(forecast_data_final, release_data, by = 'date'),
-	rename(hist_data, hist_vdate = vdate, hist_value = value),
-	by = c('varname', 'date', 'freq')
-	) %>%
-	filter(., date >= today() - years(1)) %>%
-	# Use estimated release dates
-	mutate(., days_before_release = as.numeric(release_date - vdate, 'days')) %>%
-
-
-
-
+test_data_0 =
+	release_data %>%
+	left_join(., forecast_data_final, by = c('date', 'varname'), multiple = 'all')
 
 test_data =
-	# TBD: Get data that is forecasted & has a prospective release date, but no historical data
-	anti_join(
-		inner_join(forecast_data_final, release_data, by = 'date'),
-		rename(hist_data, hist_vdate = vdate, hist_value = value),
-		by = c('varname', 'date', 'freq')
-	) %>%
-	filter(., date >= today() - years(1)) %>%
-	mutate(., days_before_release = as.numeric(release_date - vdate, 'days'))
-
-
-
-%>%
-	as.data.table(.) %>%
-	split(., by = c('date', 'varname')) %>%
-	lapply(., function(x)
-		x %>%
-			dcast(., days_before_release ~ forecast, value.var = 'value') %>%
-			merge(
-				data.table(days_before_release = seq(max(.$days_before_release), 1, -1)),
-				.,
-				by = 'days_before_release',
-				all = TRUE
+	test_data_0 %>%
+	group_by(., varname) %>%
+	group_split(.) %>%
+	map(., .progress = T, function(x) {
+		res =
+			# Create grid of 300 days trailing before each obs release date for each forecast
+			expand_grid(
+				forecast = unique(x$forecast),
+				days_before_release = 1:300,
+				x %>%
+					group_by(., date, hist_vdate) %>%
+					summarize(., hist_vdate = unique(hist_vdate), .groups = 'drop') %>%
+					arrange(., date),
 			) %>%
-			.[order(-days_before_release)] %>%
-			.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
-			melt(., id.vars = 'days_before_release', value.name = 'value', variable.name = 'forecast', na.rm = T) %>%
-			.[,
-				c('varname', 'date', 'release_date') :=
-					list(x$varname[[1]], x$date[[1]], x$release_date[[1]])
-			]
-	) %>%
-	rbindlist(.) %>%
-	# .[, vdate := release_date - days_before_release] %>%
-	dcast(., varname + date + release_date + days_before_release ~ forecast, value.var = 'value')
+			mutate(., realdate = date - days(days_before_release)) %>%
+			# Now join the closest forecast to each date
+			left_join(
+				.,
+				transmute(x, forecast, date, forecast_vdate = vdate, forecast_value = value),
+				join_by(forecast, date, closest(realdate >= forecast_vdate))
+			) %>%
+			mutate(
+				.,
+				forecast_age = as.integer(realdate - forecast_vdate),
+				varname = x$varname[[1]]
+			)
+
+		return(res)
+	}) %>%
+	list_rbind(.) %>%
+	na.omit(.) %>%
+	pivot_wider(
+		.,
+		id_cols = c('varname', 'date', 'hist_vdate', 'realdate', 'days_before_release'),
+		names_from = forecast,
+		values_from = c(forecast_value, forecast_age)
+	)
+
+# test_data =
+# 	# TBD: Get data that is forecasted & has a prospective release date, but no historical data
+# 	anti_join(
+# 		inner_join(forecast_data_final, release_data, by = 'date'),
+# 		rename(hist_data, hist_vdate = vdate, hist_value = value),
+# 		by = c('varname', 'date', 'freq')
+# 	) %>%
+# 	filter(., date >= today() - years(1)) %>%
+# 	mutate(., days_before_release = as.numeric(release_date - vdate, 'days'))
+#
+#
+#
+# %>%
+# 	as.data.table(.) %>%
+# 	split(., by = c('date', 'varname')) %>%
+# 	lapply(., function(x)
+# 		x %>%
+# 			dcast(., days_before_release ~ forecast, value.var = 'value') %>%
+# 			merge(
+# 				data.table(days_before_release = seq(max(.$days_before_release), 1, -1)),
+# 				.,
+# 				by = 'days_before_release',
+# 				all = TRUE
+# 			) %>%
+# 			.[order(-days_before_release)] %>%
+# 			.[, colnames(.) := lapply(.SD, function(x) zoo::na.locf(x, na.rm = F)), .SDcols = colnames(.)] %>%
+# 			melt(., id.vars = 'days_before_release', value.name = 'value', variable.name = 'forecast', na.rm = T) %>%
+# 			.[,
+# 				c('varname', 'date', 'release_date') :=
+# 					list(x$varname[[1]], x$date[[1]], x$release_date[[1]])
+# 			]
+# 	) %>%
+# 	rbindlist(.) %>%
+# 	# .[, vdate := release_date - days_before_release] %>%
+# 	dcast(., varname + date + release_date + days_before_release ~ forecast, value.var = 'value')
 
 
 ## Train Model ----------------------------------------------------------
@@ -488,35 +517,45 @@ train_varnames =
 
 trees = lapply(train_varnames, function(this_varname) {
 
-	input_data =
+	input_df =
 		train_data %>%
-		.[varname == this_varname] #%>%
+		filter(., varname == this_varname)
 		# .[!year(date) %in% c(2020)]
 		# .[!date %in% as_date(c('2020-04-01', '2020-07-01'))]
 
+	x_mat =
+		input_df %>%
+		select(
+			.,
+			days_before_release,
+			starts_with('forecast_value'),
+			starts_with('forecast_date')
+		) %>%
+		mutate(
+			.,
+			days_before_release = ifelse(days_before_release >= 1000, 1000, days_before_release),
+		) %>%
+		as.matrix(.)
+
 	tree = xgboost::xgboost(
-		data =
-			input_data %>%
-			transmute(
-				.,
-				days_before_release = ifelse(days_before_release >= 1000, 1000, days_before_release),
-				arima, cb, cbo, fnma, ma, now, spf, wsj
-			) %>%
-			as.matrix(.),
-		label = input_data$hist_value,
+		data = x_mat,
+		label = input_df$hist_value,
 		verbose = 2,
 		max_depth = 10,
 		print_every_n = 50,
-		nthread = 4,
-		nrounds = 500,
+		nthread = 6,
+		nrounds = 1000,
 		objective = 'reg:squarederror',
-		booster = 'gblinear'
+		booster = 'gbtree'
 		#,
 		# monotone_constraints = '(0,1,1,1,1,1,1)'
 	)
 
-	return(tree)
-}) %>%
+	return(list(
+		tree = tree,
+		coefs = colnames(x_mat)
+		))
+	}) %>%
 	set_names(., train_varnames)
 
 
@@ -524,22 +563,22 @@ trees = lapply(train_varnames, function(this_varname) {
 # Predicts values from test data,
 # i.e. dates that haven't been forecasted yet at all
 test_results = lapply(train_varnames, function(this_varname) {
+
 	message(this_varname)
 
 	oos_values =
 		predict(
-			trees[[this_varname]],
-			test_data[varname == this_varname] %>%
-				.[, c('days_before_release', 'arima', 'cb', 'cbo', 'fnma', 'ma', 'now', 'spf', 'wsj')] %>%
-				.[, days_before_release := fifelse(days_before_release >= 1000, 1000, days_before_release)] %>%
+			trees[[this_varname]]$tree,
+			test_data %>%
+				filter(., varname == this_varname) %>%
+				select(., all_of(trees[[this_varname]]$coefs)) %>%
 				as.matrix(.)
-		)
+			)
 
 	predicted_values =
 		test_data %>%
-		.[varname == this_varname] %>%
-		as_tibble(.) %>%
-		mutate(., vdate = release_date - days_before_release, predict = oos_values) %>%
+		filter(., varname == this_varname) %>%
+		mutate(., vdate = realdate, predict = oos_values) %>%
 		filter(., vdate <= today())
 
 	# predicted_values %>%
@@ -548,7 +587,7 @@ test_results = lapply(train_varnames, function(this_varname) {
 	# 	pivot_wider(., names_from = varname, values_from = predict) %>%
 	# 	View(.)
 	return(predicted_values)
-}) %>%
+	}) %>%
 	bind_rows(.)
 
 test_results %>%
