@@ -16,7 +16,7 @@
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'interest-rate-model-run'
 EF_DIR = Sys.getenv('EF_DIR')
-BACKTEST_MONTHS = 3
+BACKTEST_MONTHS = 36
 
 ## Log Job ----------------------------------------------------------
 if (interactive() == FALSE) {
@@ -133,12 +133,13 @@ local({
 
 			res = GET(
 				url,
-				add_headers(get_standard_headers(c(
+				add_headers((c(
 					'Host' = 'www.bloomberg.com',
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND'),
 					'Accept' = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-					'User-Agent' = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:108.0) Gecko/20100101 Firefox/108.0'
-					)))
+					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0'
+					))),
+				set_cookies(seen_uk=1, exp_pref='AMER')
 				) %>%
 				content(., 'parsed') %>%
 				.[[1]] %>%
@@ -155,7 +156,7 @@ local({
 				na.omit(.)
 
 			# Add sleep due to bot detection
-			Sys.sleep(runif(1, 3, 5))
+			Sys.sleep(runif(6, 3, 5))
 
 			return(res)
 		}) %>%
@@ -868,7 +869,7 @@ local({
 
 
 	# For each vintage date, gets:
-	#  monthly returns (annualized & compounded) up to 10 years (minus ffr) using TDNS
+	#  monthly returns (annualized & compounded) up to 10 years (minus FFR) using TDNS
 	#  decomposition to enforce smoothness, reweighted with historical values (via spline)
 	# For each vdate, use the last possible historical date (b1, b2, b3) for TDNS.
 	fitted_curve =
@@ -977,6 +978,19 @@ local({
 		filter(., date == floor_date(today(), 'months')) %>%
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = value, color = varname))
+
+	treasury_forecasts %>%
+		pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
+		mutate(., spread = t10y - t02y) %>%
+		mutate(., months_ahead = interval(vdate, date) %/% months(1)) %>%
+		select(., vdate, date, spread, months_ahead) %>%
+		group_by(., vdate, months_ahead) %>%
+		summarize(., spread = mean(spread), .groups = 'drop') %>%
+		arrange(., vdate, months_ahead) %>%
+		filter(., months_ahead %in% c(0, 12, 36, 60)) %>%
+		ggplot(.) +
+		geom_line(aes(x = vdate, y = spread, color = as.factor(months_ahead))) +
+		labs(Title = 'Forecasted 10-2 Spread (Months Ahead)', x = 'vdate', y = 'spread')
 
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
