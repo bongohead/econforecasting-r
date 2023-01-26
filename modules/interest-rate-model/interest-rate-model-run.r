@@ -688,7 +688,7 @@ local({
 	#' This relies heavily on expectations theory weighted to federal funds rate;
 	#' Consider taking a weighted average with Treasury futures directly
 	#' (see CME micro futures)
-	#'
+	#' https://www.bis.org/publ/qtrpdf/r_qt1809h.htm
 	message('***** Adding Calculated Variables')
 
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
@@ -979,6 +979,7 @@ local({
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = value, color = varname))
 
+	# Check spread history
 	treasury_forecasts %>%
 		pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
 		mutate(., spread = t10y - t02y) %>%
@@ -991,6 +992,8 @@ local({
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = spread, color = as.factor(months_ahead))) +
 		labs(Title = 'Forecasted 10-2 Spread (Months Ahead)', x = 'vdate', y = 'spread')
+
+
 
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
@@ -1082,10 +1085,72 @@ local({
 		geom_point(aes(x = ttm, y = last_hist), color = 'black')
 
 
-	## WEIGHT OF MONTH 0 SHOULD DEPEND ON HOW FAR IT IS INTO TE MONTH
+	## TBD: WEIGHT OF MONTH 0 SHOULD DEPEND ON HOW FAR IT IS INTO TE MONTH
 	final_forecasts =
 		hist_merged_df %>%
 		transmute(., vdate, varname, freq = 'm', date, value = final_value)
+
+
+	# These forecasts only account for expectations theory without accounting for
+	# https://www.bis.org/publ/qtrpdf/r_qt1809h.htm
+	# Get historical term premium
+	term_prems_raw = collect(tbl(db, sql(
+		"SELECT vdate, varname, date, d1 AS value
+		FROM forecast_values_v2_all
+		WHERE forecast = 'spf' AND varname IN ('t03m', 't10y')"
+	)))
+
+	# Get long-term spreads forecast
+	spreads = lapply(c('tbill', 'tbond'), function(var) {
+		GET(
+			paste0(
+				'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+				'survey-of-professional-forecasters/data-files/files/median_', var, '_level.xlsx?la=en'
+				),
+			write_disk(file.path(tempdir(), paste0(var, '.xlsx')), overwrite = TRUE)
+			)
+		readxl::read_excel(file.path(tempdir(), paste0(var, '.xlsx')), na = '#N/A', sheet = 'Median_Level') %>%
+			select(., c('YEAR', 'QUARTER', paste0(str_to_upper(var), 'D'))) %>%
+			na.omit(.) %>%
+			transmute(
+				.,
+				reldate = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q'),
+				varname = {if (var == 'tbill') 't03m_lt' else 't10y_lt'},
+				value = .[[paste0(str_to_upper(var), 'D')]]
+				)
+		}) %>%
+		list_rbind(.) %>%
+		# Guess release dates
+		left_join(., term_prems_raw %>% group_by(., vdate) %>% summarize(., reldate = min(date)), by = 'reldate') %>%
+		pivot_wider(., id_cols = vdate, names_from = varname, values_from = value) %>%
+		mutate(., spread = t10y_lt - t03m_lt)
+
+	# For 10-year forward forecast, use long-term spread forecast
+	# Exact interpolatoin at 10-3 10 years ahead
+
+	# Get historical diffs for each vdate using 36 month lags
+	# Get relative ratio of historical diffs to 10-3 year forecast to generate spread forecasts (from 3mo) for all variables
+	# Then reweight these back in time towards other
+	hist_df %>% filter(., vdate == max(vdate)) %>% pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>% summarize(., t06m_spread = mean(t06m - t03m))
+
+
+	# term_prems =
+	# 	term_prems_raw %>%
+	# 	pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
+	# 	mutate(., survey_spread = t10y - t03m)
+	#
+	# expectations_prems =
+	# 	final_forecasts %>%
+	# 	filter(., varname %in% c('t03m', 't10y')) %>%
+	# 	pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
+	# 	mutate(., expectations_spread = t10y - t03m, date_quarterly = floor_date(date, 'quarter'))
+	#
+	# expectations_prems %>%
+	# 	left_join(., term_prems, join_by(closest(vdate >= vdate), date_quarterly == date)) %>%
+	# 	na.omit(.) %>%
+	# 	mutate(., term_premium = survey_spread - expectations_spread) %>%
+	# 	View(.)
+
 
 	tdns <<- list(
 		dns_coefs_hist = dns_coefs_hist,
