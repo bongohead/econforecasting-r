@@ -1101,7 +1101,7 @@ local({
 	)))
 
 	# Get long-term spreads forecast
-	spreads = lapply(c('tbill', 'tbond'), function(var) {
+	forecast_spreads = lapply(c('tbill', 'tbond'), function(var) {
 		GET(
 			paste0(
 				'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
@@ -1128,10 +1128,30 @@ local({
 	# For 10-year forward forecast, use long-term spread forecast
 	# Exact interpolatoin at 10-3 10 years ahead
 
-	# Get historical diffs for each vdate using 36 month lags
+	# Get mean historical spreads for each vdate using 36 month lags
 	# Get relative ratio of historical diffs to 10-3 year forecast to generate spread forecasts (from 3mo) for all variables
 	# Then reweight these back in time towards other
-	hist_df %>% filter(., vdate == max(vdate)) %>% pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>% summarize(., t06m_spread = mean(t06m - t03m))
+	hist_df %>%
+		filter(., vdate == max(vdate)) %>%
+		{left_join(
+			filter(., varname != 't03m') %>% transmute(., date, vdate, ttm, varname, value),
+			filter(., varname == 't03m') %>% transmute(., date, vdate, t03m = value),
+			by = c('vdate', 'date')
+			)} %>%
+		mutate(., spread = value - t03m) %>%
+		group_by(., vdate, varname, ttm) %>%
+		summarize(., mean_spread_above_3m = mean(spread), .groups = 'drop') %>%
+		arrange(., ttm) %>%
+		left_join(
+			.,
+			transmute(forecast_spreads, hist_vdate = vdate, varname = 't10y', hist_spread = spread),
+			join_by(closest(vdate >= hist_vdate), varname)
+		)
+		# Scale to difference between 0 - e.g. .872//.4
+	# %>%
+
+		pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
+		summarize(., t06m_spread = mean(t06m - t03m))
 
 
 	# term_prems =
