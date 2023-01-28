@@ -501,7 +501,7 @@ local({
 
 	barchart_sources =
 		# 3 year history + max of 5 year forecast
-		tibble(date = seq(floor_date(today() - months(BACKTEST_MONTHS), 'month'), length.out = (3 + 5) * 12, by = '1 month')) %>%
+		tibble(date = seq(floor_date(today() - months(BACKTEST_MONTHS), 'month'), length.out = (3+5)*12, by = '1 month')) %>%
 		mutate(., year = year(date), month = month(date)) %>%
 		left_join(
 			.,
@@ -689,7 +689,7 @@ local({
 	#' Consider taking a weighted average with Treasury futures directly
 	#' (see CME micro futures)
 	#' https://www.bis.org/publ/qtrpdf/r_qt1809h.htm
-	message('***** Adding Calculated Variables')
+	message('***** Adding Treasury Forecasts')
 
 	# Create tibble mapping tyield_3m to 3, tyield_1y to 12, etc.
 	yield_curve_names_map =
@@ -708,7 +708,7 @@ local({
 		submodels$cme %>%
 		filter(., varname == 'ffr') %>%
 		transmute(., ffr = value, vdate, date) %>%
-		# Only backtest vdates with at least 36 months of ffr forecasts
+		# Only backtest vdates with at least 36 months of FFR forecasts
 		group_by(., vdate) %>%
 		mutate(., vdate_forecasts = n()) %>%
 		filter(., vdate_forecasts >= 36) %>%
@@ -718,14 +718,14 @@ local({
 		summarize(.) %>%
 		.$vdate
 
-	# Get available historical data at each vintage date (36 months of history)
+	# Get available historical data at each vintage date, up to 36 months of history
 	hist_df_unagg =
 		tibble(vdate = backtest_vdates) %>%
 		mutate(., floor_vdate = floor_date(vdate, 'month')) %>%
 		left_join(
 			.,
 			fred_data %>% mutate(., floor_date = floor_date(date, 'month')),
-			# Only pulls dates that are strictly less than the vdate (1 day EFFR delay in FRED)
+			# !! Only pulls dates that are strictly less than the vdate (1 day EFFR delay in FRED)
 			join_by(vdate > date)
 			) %>%
 		# Get floor month diff
@@ -765,8 +765,7 @@ local({
 	hist_df =
 		filter(hist_df_0, varname %in% yield_curve_names_map$varname) %>%
 		right_join(., yield_curve_names_map, by = 'varname') %>%
-		left_join(
-			.,
+		left_join(.,
 			transmute(filter(hist_df_0, varname == 'ffr'), vdate, date, ffr = value),
 			by = c('vdate', 'date')
 			) %>%
@@ -837,20 +836,13 @@ local({
 			})
 
 	# Get historical DNS fits by vintage date
-	dns_fit_hist = map_dfr(optim_lambdas, \(x) get_dns_fit(df = x$train_df, x$lambda, return_all = TRUE))
+	dns_fit_hist = map_dfr(optim_lambdas, \(x) get_dns_fit(df = x$train_df, x$lambda, return_all = T))
 
 	# Get historical DNS hists by vintage date
 	dns_coefs_hist =
 		dns_fit_hist %>%
 		group_by(., vdate, date) %>%
-		summarize(
-			.,
-			lambda = unique(lambda),
-			tdns1 = unique(b1),
-			tdns2 = unique(b2),
-			tdns3 = unique(b3),
-			.groups = 'drop'
-			)
+		summarize(., lambda = unique(lambda), tdns1 = unique(b1), tdns2 = unique(b2), tdns3 = unique(b3), .groups = 'drop')
 
 	# Check fits for last 12 vintage date (last historical fit for each vintage)
 	dns_fit_plots =
@@ -897,7 +889,7 @@ local({
 			by = c('vdate', 'ttm')
 		) %>%
 		group_split(., vdate) %>%
-		map(., function(x)
+		map(., .progress = T, function(x)
 			x %>%
 				mutate(
 					.,
@@ -905,7 +897,7 @@ local({
 						c(.$yield_hist[1:360], rep(tail(keep(.$yield_hist, \(x) !is.na(x)), 1), 120)),
 						method = 'natural',
 						),
-					annualized_yield = .6 * annualized_yield_dns + .4 * spline_fit,
+					annualized_yield = .5 * annualized_yield_dns + .5 * spline_fit,
 					# Get dns_coefs yield
 					cum_return = (1 + annualized_yield/100)^(ttm/12)
 					)
@@ -930,7 +922,7 @@ local({
 	# Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
 	# and for each, iterate over the original "ttms" 1, 2, 3,
 	# ..., 120 and for each forecast the cumulative return for the yttm period ahead.
-	treasury_forecasts =
+	expectations_forecasts =
 		yield_curve_names_map$ttm %>%
 		lapply(., function(yttm)
 			fitted_curve %>%
@@ -961,26 +953,26 @@ local({
 		transmute(., vdate, varname, freq = 'm', date, value = value + ffr)
 
 	# Plot point forecasts
-	treasury_forecasts %>%
+	expectations_forecasts %>%
 		filter(., vdate == max(vdate)) %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = varname)) +
 		labs(title = 'Current forecast')
 
 	# Plot curve forecasts
-	treasury_forecasts %>%
+	expectations_forecasts %>%
 		filter(., vdate == max(vdate)) %>%
 		left_join(., yield_curve_names_map, by = 'varname') %>%
 		hchart(., 'line', hcaes(x = ttm, y = value, color = date, group = date))
 
 	# Plot forecasts over time for current period
-	treasury_forecasts %>%
+	expectations_forecasts %>%
 		filter(., date == floor_date(today(), 'months')) %>%
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = value, color = varname))
 
 	# Check spread history
-	treasury_forecasts %>%
+	expectations_forecasts %>%
 		pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
 		mutate(., spread = t10y - t02y) %>%
 		mutate(., months_ahead = interval(vdate, date) %/% months(1)) %>%
@@ -991,9 +983,7 @@ local({
 		filter(., months_ahead %in% c(0, 12, 36, 60)) %>%
 		ggplot(.) +
 		geom_line(aes(x = vdate, y = spread, color = as.factor(months_ahead))) +
-		labs(Title = 'Forecasted 10-2 Spread (Months Ahead)', x = 'vdate', y = 'spread')
-
-
+		labs(title = 'Forecasted 10-2 Spread (Months Ahead)', x = 'vdate', y = 'spread')
 
 	# Calculate TDNS1, TDNS2, TDNS3 forecasts
 	# Forecast vintage date should be bound to historical data vintage
@@ -1002,7 +992,7 @@ local({
 	# Calculated TDNS2: -1 * (t10y - t03m)
 	# Calculated TDNS3: .3 * (2*t02y - t03m - t10y)
 	dns_coefs_forecast =
-		treasury_forecasts %>%
+		expectations_forecasts %>%
 		select(., vdate, varname, date, value) %>%
 		pivot_wider(id_cols = c('vdate', 'date'), names_from = 'varname', values_from = 'value') %>%
 		transmute(
@@ -1023,12 +1013,13 @@ local({
 		res = 1/(1 + exp(-1 * k * (x - x0)))
 		return(res)
 	}
-	# tibble(vdate = seq(from = as_date('2020-01-01'), to = as_date('2020-01-31'), by = '1 day')) %>%
-	# 	mutate(., z =logistic(day(vdate)/days_in_month(vdate), get_logistic_x0(.25, 4), k = 4))
 
 	# Join forecasts with historical data to smooth out bump between historical data and TDNS curve
+	# TBD: Instead of merging against last_hist, it should be adjusted by the difference between the last_hist
+	# and the last forecast for that last_hist
+	# Use logistic smoother to reduce weight over time
 	hist_merged_df =
-		treasury_forecasts %>%
+		expectations_forecasts %>%
 		mutate(., months_ahead = interval(floor_date(vdate, 'months'), date) %/% months(1)) %>%
 		left_join(
 			.,
@@ -1044,26 +1035,28 @@ local({
 				transmute(., vdate, varname, date, last_hist = value),
 			by = c('vdate', 'varname', 'date')
 		) %>%
-		# Map weights with sigmoid function and fill down forecast month 0 histoical value for full vdate x varname
-		mutate(
-			.,
-			# Scale multiplier for origin month (.5 to 1).
-			# In the next step, this is the sigmoid curve's y-axis crossing point.
-			forecast_origin_y = logistic(day(vdate)/days_in_month(vdate), get_logistic_x0(.25, 4), k = 4),
-			# Goal: for f(x; x0) = 1/(1 + e^-k(x  - x0)) i.e. the logistic function,
-			# find x0 s.t. f(0; x0) = forecast_origin_y => x0 = log(1/.75 - 1)/k
-			forecast_weight =
-				# e.g., see y=(1/(1+e^-x)+.25)/1.25 - starts at .75
-				logistic(months_ahead, get_logistic_x0(forecast_origin_y, k = .5), k = .5) #log(1/forecast_origin_y - 1)/.5, .5)
-				# (1/(1 + 1 * exp(-1 * months_ahead)) + (forecast_origin_y - (log(1/forecast_origin_y - 1))))
-			) %>%
 		group_by(., vdate, varname) %>%
 		mutate(
 			.,
 			last_hist = zoo::na.locf(last_hist, na.rm = F),
 			last_hist_diff = ifelse(is.na(last_hist), NA, last_hist - value)
-			) %>%
+		) %>%
 		ungroup(.) %>%
+
+		# Map weights with sigmoid function and fill down forecast month 0 histoical value for full vdate x varname
+		mutate(
+			.,
+			# Scale multiplier for origin month (.5 to 1).
+			# In the next step, this is the sigmoid curve's y-axis crossing point.
+			# Swap to k = 1 in both logistic functions to force smoothness (original 4, .5)
+			forecast_origin_y = logistic((1 - day(vdate)/days_in_month(vdate)), get_logistic_x0(.5, k = 2), k = 2),
+			# Goal: for f(x; x0) = 1/(1 + e^-k(x  - x0)) i.e. the logistic function,
+			# find x0 s.t. f(0; x0) = forecast_origin_y => x0 = log(1/.75 - 1)/k
+			forecast_weight =
+				# e.g., see y=(1/(1+e^-x)+.25)/1.25 - starts at .75
+				logistic(months_ahead, get_logistic_x0(forecast_origin_y, k = 2), k = 2) #log(1/forecast_origin_y - 1)/.5, .5)
+				# (1/(1 + 1 * exp(-1 * months_ahead)) + (forecast_origin_y - (log(1/forecast_origin_y - 1))))
+			) %>%
 		# A vdate x varname with have all NAs if no history for forecast month 0 was available
 		# (e.g. first day of the month)
 		mutate(., final_value = ifelse(
@@ -1073,16 +1066,43 @@ local({
 			)) %>%
 		arrange(., desc(vdate))
 
+	hist_merged_df %>%
+		filter(., date == floor_date(today('US/Eastern'), 'month'), varname == 't10y') %>%
+		ggplot(.) +
+		geom_line(aes(x = vdate, y = forecast_weight, color = format(vdate, '%Y%m'))) +
+		labs(title = 'Forecast weights for this months forecast over time')
+
+	hist_merged_df %>%
+		filter(., vdate == max(vdate), varname == 't30y') %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = forecast_weight)) +
+		labs(title = 'Forecast weights generated on this vdate for future forecasts')
+
 	# Test historical merge
 	hist_merged_df %>%
-		filter(., vdate == max(vdate)) %>%
+		filter(., vdate %in% head(unique(hist_merged_df$vdate), 10)) %>%
+		group_by(., vdate) %>%
 		filter(., date == min(date)) %>%
 		inner_join(., yield_curve_names_map, by = 'varname') %>%
 		arrange(., ttm) %>%
 		ggplot(.) +
 		geom_point(aes(x = ttm, y = final_value), color = 'green') +
 		geom_point(aes(x = ttm, y = value), color = 'blue') +
-		geom_point(aes(x = ttm, y = last_hist), color = 'black')
+		geom_point(aes(x = ttm, y = last_hist), color = 'black') +
+		facet_wrap(vars(vdate)) +
+		labs(title = 'Forecasts - last 10 vdates', subtitle = 'green = joined, blue = unjoined_forecast, black = hist')
+
+	# Test historical merge
+	hist_merged_df %>%
+		filter(., vdate == max(vdate) & date <= today() + years(1)) %>%
+		inner_join(., yield_curve_names_map, by = 'varname') %>%
+		arrange(., ttm) %>%
+		ggplot(.) +
+		geom_point(aes(x = ttm, y = final_value), color = 'green') +
+		geom_point(aes(x = ttm, y = value), color = 'blue') +
+		geom_point(aes(x = ttm, y = last_hist), color = 'black') +
+		facet_wrap(vars(date)) +
+		labs(title = 'Forecasts - 1vdate', subtitle = 'green = joined, blue = unjoined_forecast, black = hist')
 
 
 	## TBD: WEIGHT OF MONTH 0 SHOULD DEPEND ON HOW FAR IT IS INTO TE MONTH
@@ -1128,11 +1148,20 @@ local({
 	# For 10-year forward forecast, use long-term spread forecast
 	# Exact interpolatoin at 10-3 10 years ahead
 
-	# Get mean historical spreads for each vdate using 36 month lags
+	# 1. At each historical vdate, get the trailing 36-month historical spread between all Treasuries with the 3m yield
+	# 2. Get the relative ratio of these historical spreads relative to the 10-3 spread (%diff from 0)
+	# 3. Get the forecasted SPF long-term spread for the latest forecast available at each historical vdate
+	# 4. Compare the forecast SPF long-term spread to the hist_spread_ratio
+	# - Ex. Hist 10-3 spread = .5; hist 30-3 spread = 2 => 4x multiplier (spread_ratio)
+	# - Forecast 10-3 spread = 1; want to get forecast 30-3; so multiply historical spread_ratio * 1
+
+	if (!all(sort(unique(historical_ratios$vdate)) == sort(backtest_vdates))) {
+		stop ('Error: lost vintage dates!')
+	}
 	# Get relative ratio of historical diffs to 10-3 year forecast to generate spread forecasts (from 3mo) for all variables
 	# Then reweight these back in time towards other
-	hist_df %>%
-		filter(., vdate == max(vdate)) %>%
+	historical_ratios =
+		hist_df %>%
 		{left_join(
 			filter(., varname != 't03m') %>% transmute(., date, vdate, ttm, varname, value),
 			filter(., varname == 't03m') %>% transmute(., date, vdate, t03m = value),
@@ -1142,16 +1171,42 @@ local({
 		group_by(., vdate, varname, ttm) %>%
 		summarize(., mean_spread_above_3m = mean(spread), .groups = 'drop') %>%
 		arrange(., ttm) %>%
+		{left_join(
+			filter(., varname != 't10y') %>% transmute(., vdate, varname, ttm, mean_spread_above_3m),
+			filter(., varname == 't10y') %>% transmute(., vdate, t10y_mean_spread_above_3m = mean_spread_above_3m),
+			by = c('vdate')
+		)} %>%
+		mutate(., hist_spread_ratio_to_10_3 = case_when(
+			t10y_mean_spread_above_3m <= 0 ~ max(0, mean_spread_above_3m),
+			mean_spread_above_3m <= 0 ~ 0,
+			TRUE ~ mean_spread_above_3m /t10y_mean_spread_above_3m
+			)) %>%
+		# Sanity check
+		mutate(., hist_spread_ratio_to_10_3 = ifelse(hist_spread_ratio_to_10_3 > 3, 3, hist_spread_ratio_to_10_3)) %>%
+		arrange(., vdate)
+
+	forecast_lt_spreads %>%
+		ggplot(.) +
+		geom_line(aes(x = vdate, y = forecast_lt_spread, color = varname))
+
+	forecast_lt_spreads =
+		historical_ratios %>%
+		select(., vdate, ttm, varname, hist_spread_ratio_to_10_3) %>%
 		left_join(
 			.,
-			transmute(forecast_spreads, hist_vdate = vdate, varname = 't10y', hist_spread = spread),
-			join_by(closest(vdate >= hist_vdate), varname)
-		)
-		# Scale to difference between 0 - e.g. .872//.4
-	# %>%
+			transmute(forecast_spreads, hist_vdate = vdate, forecast_spread_10_3 = spread),
+			join_by(closest(vdate >= hist_vdate))
+		) %>%
+		mutate(., forecast_lt_spread = hist_spread_ratio_to_10_3 * forecast_spread_10_3) %>%
+		select(., vdate, varname, forecast_lt_spread)
 
-		pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
-		summarize(., t06m_spread = mean(t06m - t03m))
+	# LT spread forecasts by date
+	final_forecasts %>%
+		filter(., varname != 't03m') %>%
+		left_join(., forecast_lt_spreads, by = c('varname', 'vdate')) %>%
+		left_join(., final_forecasts %>% filter(., varname == 't03m'), by = c('vdate', 'date'))
+
+	# Now join back onto forecast data
 
 
 	# term_prems =
