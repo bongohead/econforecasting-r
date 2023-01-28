@@ -1049,7 +1049,7 @@ local({
 			# Scale multiplier for origin month (.5 to 1).
 			# In the next step, this is the sigmoid curve's y-axis crossing point.
 			# Swap to k = 1 in both logistic functions to force smoothness (original 4, .5)
-			forecast_origin_y = logistic((1 - day(vdate)/days_in_month(vdate)), get_logistic_x0(.5, k = 2), k = 2),
+			forecast_origin_y = logistic((1 - day(vdate)/days_in_month(vdate)), get_logistic_x0(1/3, k = 2), k = 2),
 			# Goal: for f(x; x0) = 1/(1 + e^-k(x  - x0)) i.e. the logistic function,
 			# find x0 s.t. f(0; x0) = forecast_origin_y => x0 = log(1/.75 - 1)/k
 			forecast_weight =
@@ -1078,7 +1078,7 @@ local({
 		geom_line(aes(x = date, y = forecast_weight)) +
 		labs(title = 'Forecast weights generated on this vdate for future forecasts')
 
-	# Test historical merge
+	# Test plot 1
 	hist_merged_df %>%
 		filter(., vdate %in% head(unique(hist_merged_df$vdate), 10)) %>%
 		group_by(., vdate) %>%
@@ -1092,7 +1092,7 @@ local({
 		facet_wrap(vars(vdate)) +
 		labs(title = 'Forecasts - last 10 vdates', subtitle = 'green = joined, blue = unjoined_forecast, black = hist')
 
-	# Test historical merge
+	# Test plot 2
 	hist_merged_df %>%
 		filter(., vdate == max(vdate) & date <= today() + years(1)) %>%
 		inner_join(., yield_curve_names_map, by = 'varname') %>%
@@ -1106,7 +1106,7 @@ local({
 
 
 	## TBD: WEIGHT OF MONTH 0 SHOULD DEPEND ON HOW FAR IT IS INTO TE MONTH
-	final_forecasts =
+	merged_forecasts =
 		hist_merged_df %>%
 		transmute(., vdate, varname, freq = 'm', date, value = final_value)
 
@@ -1154,10 +1154,6 @@ local({
 	# 4. Compare the forecast SPF long-term spread to the hist_spread_ratio
 	# - Ex. Hist 10-3 spread = .5; hist 30-3 spread = 2 => 4x multiplier (spread_ratio)
 	# - Forecast 10-3 spread = 1; want to get forecast 30-3; so multiply historical spread_ratio * 1
-
-	if (!all(sort(unique(historical_ratios$vdate)) == sort(backtest_vdates))) {
-		stop ('Error: lost vintage dates!')
-	}
 	# Get relative ratio of historical diffs to 10-3 year forecast to generate spread forecasts (from 3mo) for all variables
 	# Then reweight these back in time towards other
 	historical_ratios =
@@ -1185,9 +1181,9 @@ local({
 		mutate(., hist_spread_ratio_to_10_3 = ifelse(hist_spread_ratio_to_10_3 > 3, 3, hist_spread_ratio_to_10_3)) %>%
 		arrange(., vdate)
 
-	forecast_lt_spreads %>%
-		ggplot(.) +
-		geom_line(aes(x = vdate, y = forecast_lt_spread, color = varname))
+	if (!all(sort(unique(historical_ratios$vdate)) == sort(backtest_vdates))) {
+		stop ('Error: lost vintage dates!')
+	}
 
 	forecast_lt_spreads =
 		historical_ratios %>%
@@ -1200,11 +1196,18 @@ local({
 		mutate(., forecast_lt_spread = hist_spread_ratio_to_10_3 * forecast_spread_10_3) %>%
 		select(., vdate, varname, forecast_lt_spread)
 
+	forecast_lt_spreads %>%
+		ggplot(.) +
+		geom_line(aes(x = vdate, y = forecast_lt_spread, color = varname))
+
 	# LT spread forecasts by date
-	final_forecasts %>%
+	expectations_forecasts %>%
 		filter(., varname != 't03m') %>%
-		left_join(., forecast_lt_spreads, by = c('varname', 'vdate')) %>%
-		left_join(., final_forecasts %>% filter(., varname == 't03m'), by = c('vdate', 'date'))
+		select(., vdate, varname, date, value) %>%
+		left_join(., forecast_lt_spreads, by = c('varname', 'vdate'))
+
+	# %>%
+	# 	left_join(., expectations_forecasts %>% filter(., varname == 't03m'), by = c('vdate', 'date'))
 
 	# Now join back onto forecast data
 
