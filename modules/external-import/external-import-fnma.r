@@ -107,9 +107,10 @@ local({
 				pages = '1',
 				flavor = 'stream',
 				# Below needed to prevent split wrapping columns correctly https://www.fanniemae.com/media/42376/display
-				column_tol = -2
+				column_tol = -2,
+				edge_tol = 60
 				#table_areas = list('100, 490, 700, 250')
-			)[0]$df %>%
+				)[0]$df %>%
 				as_tibble(.)
 
 			col_names =
@@ -162,8 +163,9 @@ local({
 				x$housing_forecast_path,
 				pages = '1',
 				flavor = 'stream',
-				column_tol = -1
-			)[0]$df %>%
+				column_tol = -1,
+				edge_tol = 60
+				)[0]$df %>%
 				as_tibble(.)
 
 			col_names =
@@ -236,7 +238,7 @@ local({
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 50), collapse = '\n')
 	)
 	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
 })

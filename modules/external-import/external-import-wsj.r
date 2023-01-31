@@ -136,7 +136,7 @@ local({
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 50), collapse = '\n')
 	)
 	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
 })

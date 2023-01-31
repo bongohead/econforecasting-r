@@ -950,7 +950,7 @@ local({
 			) %>%
 		# Only include forecasts where the ffr vdate was within 7 days of tyield vdate
 		filter(., interval(ffr_vdate, vdate) %/% days(1) <= 7) %>%
-		transmute(., vdate, varname, freq = 'm', date, value = value + ffr)
+		transmute(., vdate, varname, date, value = value + ffr)
 
 	# Plot point forecasts
 	expectations_forecasts %>%
@@ -1004,6 +1004,137 @@ local({
 			tdns3 = .3 * (2 * t02y - t03m - t10y)
 		)
 
+
+	## Now add historical ratios in for LT term premia
+
+	# For 10-year forward forecast, use long-term spread forecast
+	# Exact interpolatoin at 10-3 10 years ahead
+	# These forecasts only account for expectations theory without accounting for
+	# https://www.bis.org/publ/qtrpdf/r_qt1809h.htm
+	# Get historical term premium
+	term_prems_raw = collect(tbl(db, sql(
+		"SELECT vdate, varname, date, d1 AS value
+		FROM forecast_values_v2_all
+		WHERE forecast = 'spf' AND varname IN ('t03m', 't10y')"
+	)))
+
+	# Get long-term spreads forecast
+	forecast_spreads = lapply(c('tbill', 'tbond'), function(var) {
+		GET(
+			paste0(
+				'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+				'survey-of-professional-forecasters/data-files/files/median_', var, '_level.xlsx?la=en'
+			),
+			write_disk(file.path(tempdir(), paste0(var, '.xlsx')), overwrite = TRUE)
+		)
+		readxl::read_excel(file.path(tempdir(), paste0(var, '.xlsx')), na = '#N/A', sheet = 'Median_Level') %>%
+			select(., c('YEAR', 'QUARTER', paste0(str_to_upper(var), 'D'))) %>%
+			na.omit(.) %>%
+			transmute(
+				.,
+				reldate = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q'),
+				varname = {if (var == 'tbill') 't03m_lt' else 't10y_lt'},
+				value = .[[paste0(str_to_upper(var), 'D')]]
+			)
+		}) %>%
+		list_rbind(.) %>%
+		# Guess release dates
+		left_join(., term_prems_raw %>% group_by(., vdate) %>% summarize(., reldate = min(date)), by = 'reldate') %>%
+		pivot_wider(., id_cols = vdate, names_from = varname, values_from = value) %>%
+		mutate(., spread = t10y_lt - t03m_lt) %>%
+		arrange(., vdate) %>%
+		mutate(., spread = zoo::rollmean(spread, 2, fill = NA, align = 'right')) %>%
+		tail(., -1)
+
+
+	# 1. At each historical vdate, get the trailing 36-month historical spread between all Treasuries with the 3m yield
+	# 2. Get the relative ratio of these historical spreads relative to the 10-3 spread (%diff from 0)
+	# 3. Get the forecasted SPF long-term spread for the latest forecast available at each historical vdate
+	# 4. Compare the forecast SPF long-term spread to the hist_spread_ratio
+	# - Ex. Hist 10-3 spread = .5; hist 30-3 spread = 2 => 4x multiplier (spread_ratio)
+	# - Forecast 10-3 spread = 1; want to get forecast 30-3; so multiply historical spread_ratio * 1
+	# Get relative ratio of historical diffs to 10-3 year forecast to generate spread forecasts (from 3mo) for all variables
+	# Then reweight these back in time towards other
+	historical_ratios =
+		hist_df %>%
+		{left_join(
+			filter(., varname != 't03m') %>% transmute(., date, vdate, ttm, varname, value),
+			filter(., varname == 't03m') %>% transmute(., date, vdate, t03m = value),
+			by = c('vdate', 'date')
+		)} %>%
+		mutate(., spread = value - t03m) %>%
+		group_by(., vdate, varname, ttm) %>%
+		summarize(., mean_spread_above_3m = mean(spread), .groups = 'drop') %>%
+		arrange(., ttm) %>%
+		{left_join(
+			transmute(., vdate, varname, ttm, mean_spread_above_3m),
+			filter(., varname == 't10y') %>% transmute(., vdate, t10y_mean_spread_above_3m = mean_spread_above_3m),
+			by = c('vdate')
+		)} %>%
+		mutate(., hist_spread_ratio_to_10_3 = case_when(
+			t10y_mean_spread_above_3m <= 0 ~ max(0, mean_spread_above_3m),
+			mean_spread_above_3m <= 0 ~ 0,
+			TRUE ~ mean_spread_above_3m /t10y_mean_spread_above_3m
+		)) %>%
+		# Sanity check
+		mutate(., hist_spread_ratio_to_10_3 = ifelse(hist_spread_ratio_to_10_3 > 3, 3, hist_spread_ratio_to_10_3)) %>%
+		arrange(., vdate)
+
+	if (!all(sort(unique(historical_ratios$vdate)) == sort(backtest_vdates))) {
+		stop ('Error: lost vintage dates!')
+	}
+
+	# Why so many *discontinuous* drops
+	forecast_lt_spreads =
+		historical_ratios %>%
+		select(., vdate, ttm, varname, hist_spread_ratio_to_10_3) %>%
+		left_join(
+			.,
+			transmute(forecast_spreads, hist_vdate = vdate, forecast_spread_10_3 = spread),
+			join_by(closest(vdate >= hist_vdate))
+		) %>%
+		mutate(., forecast_lt_spread = hist_spread_ratio_to_10_3 * forecast_spread_10_3) %>%
+		select(., vdate, varname, forecast_spread_10_3, forecast_lt_spread)
+
+	forecast_lt_spreads %>%
+		ggplot(.) +
+		geom_line(aes(x = vdate, y = forecast_lt_spread, color = varname)) +
+		geom_point(aes(x = vdate, y = forecast_spread_10_3, color = varname))
+
+
+	# LT spread forecasts by date
+	adj_forecasts_raw =
+		expectations_forecasts %>%
+		filter(., varname != 't03m') %>%
+		left_join(
+			.,
+			transmute(filter(expectations_forecasts, varname == 't03m'), vdate, date, t03m = value),
+			by = c('vdate', 'date')
+		) %>%
+		mutate(
+			.,
+			months_ahead = interval(floor_date(vdate, 'months'), date) %/% months(1),
+			lt_weight = ifelse(months_ahead >= 60, .5, months_ahead/60 * .5),
+			spread = value - t03m
+			) %>%
+		left_join(., forecast_lt_spreads, by = c('varname', 'vdate')) %>%
+		mutate(., adj_spread = (1 - lt_weight) * spread + lt_weight * forecast_lt_spread) %>%
+		mutate(., adj_value = adj_spread + t03m)
+
+	adj_forecasts_raw %>%
+		pivot_longer(., cols = c(value, adj_value)) %>%
+		filter(., vdate == max(vdate)) %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = name)) +
+		facet_wrap(vars(varname))
+
+	adj_forecasts =
+		adj_forecasts_raw %>%
+		transmute(., vdate, varname, date, value = adj_value) %>%
+		bind_rows(., filter(expectations_forecasts, varname == 't03m')) %>%
+		arrange(., vdate, varname, date)
+
+
 	# https://en.wikipedia.org/wiki/Logistic_function
 	get_logistic_x0 = function(desired_y_intercept, k = 1) {
 		res = log(1/desired_y_intercept - 1)/k
@@ -1019,7 +1150,7 @@ local({
 	# and the last forecast for that last_hist
 	# Use logistic smoother to reduce weight over time
 	hist_merged_df =
-		expectations_forecasts %>%
+		adj_forecasts %>%
 		mutate(., months_ahead = interval(floor_date(vdate, 'months'), date) %/% months(1)) %>%
 		left_join(
 			.,
@@ -1104,138 +1235,32 @@ local({
 		facet_wrap(vars(date)) +
 		labs(title = 'Forecasts - 1vdate', subtitle = 'green = joined, blue = unjoined_forecast, black = hist')
 
-
 	## TBD: WEIGHT OF MONTH 0 SHOULD DEPEND ON HOW FAR IT IS INTO TE MONTH
 	merged_forecasts =
 		hist_merged_df %>%
 		transmute(., vdate, varname, freq = 'm', date, value = final_value)
 
-
-	# These forecasts only account for expectations theory without accounting for
-	# https://www.bis.org/publ/qtrpdf/r_qt1809h.htm
-	# Get historical term premium
-	term_prems_raw = collect(tbl(db, sql(
-		"SELECT vdate, varname, date, d1 AS value
-		FROM forecast_values_v2_all
-		WHERE forecast = 'spf' AND varname IN ('t03m', 't10y')"
-	)))
-
-	# Get long-term spreads forecast
-	forecast_spreads = lapply(c('tbill', 'tbond'), function(var) {
-		GET(
-			paste0(
-				'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
-				'survey-of-professional-forecasters/data-files/files/median_', var, '_level.xlsx?la=en'
-				),
-			write_disk(file.path(tempdir(), paste0(var, '.xlsx')), overwrite = TRUE)
-			)
-		readxl::read_excel(file.path(tempdir(), paste0(var, '.xlsx')), na = '#N/A', sheet = 'Median_Level') %>%
-			select(., c('YEAR', 'QUARTER', paste0(str_to_upper(var), 'D'))) %>%
-			na.omit(.) %>%
-			transmute(
-				.,
-				reldate = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q'),
-				varname = {if (var == 'tbill') 't03m_lt' else 't10y_lt'},
-				value = .[[paste0(str_to_upper(var), 'D')]]
-				)
-		}) %>%
-		list_rbind(.) %>%
-		# Guess release dates
-		left_join(., term_prems_raw %>% group_by(., vdate) %>% summarize(., reldate = min(date)), by = 'reldate') %>%
-		pivot_wider(., id_cols = vdate, names_from = varname, values_from = value) %>%
-		mutate(., spread = t10y_lt - t03m_lt)
-
-	# For 10-year forward forecast, use long-term spread forecast
-	# Exact interpolatoin at 10-3 10 years ahead
-
-	# 1. At each historical vdate, get the trailing 36-month historical spread between all Treasuries with the 3m yield
-	# 2. Get the relative ratio of these historical spreads relative to the 10-3 spread (%diff from 0)
-	# 3. Get the forecasted SPF long-term spread for the latest forecast available at each historical vdate
-	# 4. Compare the forecast SPF long-term spread to the hist_spread_ratio
-	# - Ex. Hist 10-3 spread = .5; hist 30-3 spread = 2 => 4x multiplier (spread_ratio)
-	# - Forecast 10-3 spread = 1; want to get forecast 30-3; so multiply historical spread_ratio * 1
-	# Get relative ratio of historical diffs to 10-3 year forecast to generate spread forecasts (from 3mo) for all variables
-	# Then reweight these back in time towards other
-	historical_ratios =
-		hist_df %>%
-		{left_join(
-			filter(., varname != 't03m') %>% transmute(., date, vdate, ttm, varname, value),
-			filter(., varname == 't03m') %>% transmute(., date, vdate, t03m = value),
-			by = c('vdate', 'date')
-			)} %>%
-		mutate(., spread = value - t03m) %>%
-		group_by(., vdate, varname, ttm) %>%
-		summarize(., mean_spread_above_3m = mean(spread), .groups = 'drop') %>%
-		arrange(., ttm) %>%
-		{left_join(
-			filter(., varname != 't10y') %>% transmute(., vdate, varname, ttm, mean_spread_above_3m),
-			filter(., varname == 't10y') %>% transmute(., vdate, t10y_mean_spread_above_3m = mean_spread_above_3m),
-			by = c('vdate')
-		)} %>%
-		mutate(., hist_spread_ratio_to_10_3 = case_when(
-			t10y_mean_spread_above_3m <= 0 ~ max(0, mean_spread_above_3m),
-			mean_spread_above_3m <= 0 ~ 0,
-			TRUE ~ mean_spread_above_3m /t10y_mean_spread_above_3m
-			)) %>%
-		# Sanity check
-		mutate(., hist_spread_ratio_to_10_3 = ifelse(hist_spread_ratio_to_10_3 > 3, 3, hist_spread_ratio_to_10_3)) %>%
-		arrange(., vdate)
-
-	if (!all(sort(unique(historical_ratios$vdate)) == sort(backtest_vdates))) {
-		stop ('Error: lost vintage dates!')
-	}
-
-	forecast_lt_spreads =
-		historical_ratios %>%
-		select(., vdate, ttm, varname, hist_spread_ratio_to_10_3) %>%
-		left_join(
-			.,
-			transmute(forecast_spreads, hist_vdate = vdate, forecast_spread_10_3 = spread),
-			join_by(closest(vdate >= hist_vdate))
-		) %>%
-		mutate(., forecast_lt_spread = hist_spread_ratio_to_10_3 * forecast_spread_10_3) %>%
-		select(., vdate, varname, forecast_lt_spread)
-
-	forecast_lt_spreads %>%
+	merged_forecasts %>%
+		filter(., vdate == max(vdate)) %>%
 		ggplot(.) +
-		geom_line(aes(x = vdate, y = forecast_lt_spread, color = varname))
+		geom_line(aes(x = date, y = value)) +
+		facet_wrap(vars(varname))
 
-	# LT spread forecasts by date
-	expectations_forecasts %>%
-		filter(., varname != 't03m') %>%
-		select(., vdate, varname, date, value) %>%
-		left_join(., forecast_lt_spreads, by = c('varname', 'vdate'))
-
-	# %>%
-	# 	left_join(., expectations_forecasts %>% filter(., varname == 't03m'), by = c('vdate', 'date'))
-
-	# Now join back onto forecast data
-
-
-	# term_prems =
-	# 	term_prems_raw %>%
-	# 	pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
-	# 	mutate(., survey_spread = t10y - t03m)
-	#
-	# expectations_prems =
-	# 	final_forecasts %>%
-	# 	filter(., varname %in% c('t03m', 't10y')) %>%
-	# 	pivot_wider(., id_cols = c(vdate, date), names_from = varname, values_from = value) %>%
-	# 	mutate(., expectations_spread = t10y - t03m, date_quarterly = floor_date(date, 'quarter'))
-	#
-	# expectations_prems %>%
-	# 	left_join(., term_prems, join_by(closest(vdate >= vdate), date_quarterly == date)) %>%
-	# 	na.omit(.) %>%
-	# 	mutate(., term_premium = survey_spread - expectations_spread) %>%
-	# 	View(.)
-
+	bind_rows(
+		expectations_forecasts %>% filter(., vdate == max(vdate)) %>% mutate(., type = 'expectations'),
+		adj_forecasts %>% filter(., vdate == max(vdate)) %>% mutate(., type = 'adj'),
+		merged_forecasts %>% filter(., vdate == max(vdate)) %>% mutate(., type = 'merged')
+		) %>%
+		ggplot(.) +
+		geom_line(aes(x = date, y = value, color = type)) +
+		facet_wrap(vars(varname))
 
 	tdns <<- list(
 		dns_coefs_hist = dns_coefs_hist,
 		dns_coefs_forecast = dns_coefs_forecast
 		)
 
-	submodels$tdns <<- final_forecasts
+	submodels$tdns <<- merged_forecasts
 })
 
 

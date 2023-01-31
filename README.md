@@ -10,12 +10,14 @@ This code is developed locally on a Windows machine and deployed locally to an U
 
 # CHANGELOG
 
+## [v2.01]
+- Added FNMA fixes 
+
 ## [v2.00] (API Integration & Design Overhaul)
-- Add bond forecasts for international markets (EU, see ticket chain)
+- Added bond forecasts for international markets (EU, see ticket chain)
 - Added better logging system
 - Added integration to updated DB backend
 - Added backtesting to interest rate models and historical smoothing to Treasury yields 
-- Test: DL model ensembling (subject to random variation)
 
 ## [v2.00] (API Integration & Design Overhaul)
 - Added bond forecasts for international markets (EU, see ticket chain)
@@ -24,7 +26,6 @@ This code is developed locally on a Windows machine and deployed locally to an U
 - Added improved logging system
 - Fixed purrr v1.0 and dplyr 1.1 migration breaks
 - Fixed broken nowcast model issues
->>>>>>> be85b4aa8e3f41f9e2e5c1f07d67dc4e76f65888
 
 ## [v1.04] (Misc Bugfixes) 
 - Fixed bug related to einf forecasts missing latest vintage
