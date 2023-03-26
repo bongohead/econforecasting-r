@@ -31,6 +31,7 @@ get_secrets = function(path_to_secrets_file, validate_keys = c()) {
 #' @param path_to_secrets_file The path to the secrets file.
 #'
 #' @importFrom yaml read_yaml
+#'
 #' @export
 get_secret = function(key, path_to_secrets_file) {
 

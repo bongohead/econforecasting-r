@@ -7,6 +7,7 @@
 #' @param tablename The name of the table.
 #'
 #' @importFrom DBI dbGetQuery
+#'
 #' @export
 get_rowcount = function(db, tablename) {
 
@@ -29,6 +30,7 @@ get_rowcount = function(db, tablename) {
 #' @import dplyr
 #' @importFrom tidyr unite
 #' @importFrom DBI dbQuoteString ANSI
+#'
 #' @export
 create_insert_query = function(df, tblname, .append = '') {
 
@@ -65,6 +67,7 @@ create_insert_query = function(df, tblname, .append = '') {
 #' @importFrom dplyr mutate group_split
 #' @importFrom purrr map_dbl
 #' @importFrom DBI dbExecute
+#'
 #' @export
 store_forecast_values_v1 = function(db, df, .verbose = F) {
 
@@ -114,6 +117,7 @@ store_forecast_values_v1 = function(db, df, .verbose = F) {
 #' @importFrom purrr map_dbl
 #' @importFrom DBI dbExecute
 #' @importFrom lubridate today
+#'
 #' @export
 store_forecast_values_v2 = function(db, df, .verbose = F) {
 

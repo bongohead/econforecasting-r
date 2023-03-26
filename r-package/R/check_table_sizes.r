@@ -1,10 +1,11 @@
 #' Check largest table sizes in Postgres database.
 #'
-#' @conn A PostgreSQL DBI connection.
+#' @param conn A PostgreSQL DBI connection.
 #'
 #' @return A data frame of table sizes.
 #'
 #' @import dplyr
+
 #' @export
 check_table_sizes = function(conn) {
 
@@ -20,7 +21,7 @@ check_table_sizes = function(conn) {
 
 		FROM (
 			SELECT
-			pg_catalog.pg_namespace.nspname           AS schema_name,
+			pg_catalog.pg_namespace.nspname AS schema_name,
 			relname,
 			pg_relation_size(pg_catalog.pg_class.oid) AS table_size
 

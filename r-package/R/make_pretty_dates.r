@@ -9,13 +9,14 @@
 #'
 #' @import dplyr
 #' @importFrom lubridate quarter month year
+#'
 #' @export
 to_pretty_date = function(x, frequency) {
 
 	if (frequency %in% c('q', 'quarter')) {
-		paste0(lubridate::year(x), 'Q', lubridate::quarter(x))
+		paste0(year(x), 'Q', quarter(x))
 	} else if (frequency %in% c('m', 'month')) {
-		paste0(lubridate::year(x), 'M', str_pad(lubridate::month(x), 2, pad = '0'))
+		paste0(year(x), 'M', str_pad(month(x), 2, pad = '0'))
 	} else {
 		stop('Argument "frequency" must be one of "q", "quarter", "m", "month".')
 	}
@@ -30,6 +31,7 @@ to_pretty_date = function(x, frequency) {
 #'
 #' @import dplyr
 #' @importFrom stringr str_sub str_locate str_pad
+#'
 #' @export
 from_pretty_date = function(x, frequency) {
 
