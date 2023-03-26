@@ -1,38 +1,30 @@
+#' Validated 3/26/23
+
 # Initialize ----------------------------------------------------------
+
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'external-import-einf'
-EF_DIR = Sys.getenv('EF_DIR')
-
-## Log Job ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
 
 ## Load Libs ----------------------------------------------------------
-library(tidyverse)
-library(jsonlite)
-library(httr)
-library(rvest)
-library(DBI)
-library(RPostgres)
 library(econforecasting)
-library(lubridate)
+library(tidyverse)
+library(httr2)
+library(rvest)
+library(DBI, include.only = 'dbDisconnect')
+library(readxl, include.only = 'read_excel')
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'interest-rate-model')
-
+load_env(Sys.getenv('EF_DIR'))
+if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
+pg = connect_pg()
+run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 
 # Import ------------------------------------------------------------------
 
 ## Get Data ------------------------------------------------------------------
 local({
 
-	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	api_key = Sys.getenv('FRED_API_KEY')
 
 	# Note: Cleveland Fed gives one-year forward rates
 	# Combine these with historical data to calculate historical one-year trailing rates
@@ -45,69 +37,30 @@ local({
 	# Get vintage dates for each release
 
 	## Latest vintage date - sometime the archives page doesn't have the latest data (Aug 2022)
-	vintage_dates = paste0(
-		'https://api.stlouisfed.org/fred/release/dates?release_id=10',
-		'&api_key=', api_key,
-		'&file_type=json'
-		) %>%
-		GET(.) %>%
-		content(.) %>%
+	vintage_dates = request(paste0(
+		'https://api.stlouisfed.org/fred/release/dates?release_id=10&api_key=', api_key, '&file_type=json'
+		)) %>%
+		req_perform %>%
+		resp_body_json %>%
 		.$release_dates %>%
-		map(., ~ .$date) %>%
+		map(., \(x) x$date) %>%
 		unlist(., recursive = F) %>%
-		as_date(.) %>%
-		keep(., ~ . > as_date('2010-01-01'))
-
-	# Deprecated 10/20/2022 due to source site update
-	# vintage_dates_0 =
-	# 	httr::GET(paste0(
-	# 		'https://www.clevelandfed.org/en/our-research/',
-	# 		'indicators-and-data/inflation-expectations.aspx'
-	# 	)) %>%
-	# 	httr::content(.) %>%
-	# 	rvest::html_nodes('#RightAsideSPL > div > p') %>%
-	# 	keep(., ~ str_detect(html_text(.), 'Last updated')) %>%
-	# 	.[[1]] %>%
-	# 	html_text(.) %>%
-	# 	str_replace(., 'Last updated', '') %>%
-	# 	mdy(.)
-	#
-	# vintage_dates_1 =
-	# 	httr::GET(paste0(
-	# 		'https://www.clevelandfed.org/en/our-research/',
-	# 		'indicators-and-data/inflation-expectations/archives.aspx'
-	# 	)) %>%
-	# 	httr::content(.) %>%
-	# 	rvest::html_nodes('div[itemprop="text"] ul li') %>%
-	# 	keep(., ~ length(rvest::html_nodes(., 'a.download')) == 1) %>%
-	# 	map_chr(., ~ str_extract(rvest::html_text(.), '(?<=released ).*')) %>%
-	# 	mdy(.)
-	#
-	# vintage_dates_2 =
-	# 	httr::GET(paste0(
-	# 		'https://www.clevelandfed.org/en/our-research/',
-	# 		'indicators-and-data/inflation-expectations/inflation-expectations-archives.aspx'
-	# 	)) %>%
-	# 	httr::content(.) %>%
-	# 	rvest::html_nodes('ul.topic-list li time') %>%
-	# 	map_chr(., ~ rvest::html_text(.)) %>%
-	# 	mdy(.)
+		as_date %>%
+		keep(., \(x) x > as_date('2010-01-01'))
 
 	vdate_map =
 		tibble(vdate = vintage_dates) %>%
 		mutate(., vdate0 = floor_date(vdate, 'months')) %>%
-		group_by(., vdate0) %>% summarize(., vdate = max(vdate)) %>%
+		group_by(., vdate0) %>%
+		summarize(., vdate = max(vdate), .groups = 'drop') %>%
 		arrange(., vdate0)
 
 	# Now parse data and get inflation expectations
 	einf_final =
-		readxl::read_excel(file.path(tempdir(), 'inf.xlsx'), sheet = 'Expected Inflation') %>%
+		read_excel(file.path(tempdir(), 'inf.xlsx'), sheet = 'Expected Inflation') %>%
 		rename(., vdate0 = 'Model Output Date') %>%
 		pivot_longer(., -vdate0, names_to = 'ttm', values_to = 'yield') %>%
-		mutate(
-			.,
-			vdate0 = as_date(vdate0), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12
-		) %>%
+		mutate(., vdate0 = as_date(vdate0), ttm = as.numeric(str_replace(str_sub(ttm, 1, 2), ' ', '')) * 12) %>%
 		# Correct vdates
 		inner_join(., vdate_map, by = 'vdate0') %>%
 		select(., -vdate0) %>%
@@ -135,7 +88,7 @@ local({
 			date,
 			value = yttm_ahead_annualized_yield,
 		) %>%
-		na.omit(.)
+		na.omit
 
 	einf_chart =
 		einf_final %>%
@@ -145,13 +98,14 @@ local({
 
 	print(einf_chart)
 
-
 	# einf_final represents one-year trailing rates
-
 	# For each vintage_date, get the historical data for the last 12 months available at that vintage
-	hist_data =
-		get_fred_data('CPIAUCSL', api_key, .return_vintages = T) %>%
-		transmute(., date, vdate = vintage_date, value)
+	hist_data = transmute(
+		get_fred_data('CPIAUCSL', api_key, .return_vintages = T),
+		date,
+		vdate = vintage_date,
+		value
+		)
 
 	einf_results =
 		einf_final %>%
@@ -197,7 +151,7 @@ local({
 					index = 1:nrow(.)
 					) %>%
 				# Get CPI values
-				purrr::reduce(
+				reduce(
 					# From first non-NA row to last
 					filter(., !is.na(monthly_growth))$index[[1]]:nrow(.),
 					function(accum, row) {
@@ -226,26 +180,25 @@ local({
 })
 
 
-## Export to SQL ------------------------------------------------------------------
+## Export Forecasts ------------------------------------------------------------------
 local({
 
 	# Store in SQL
-	model_values =
-		raw_data %>%
-		transmute(., forecast, form = 'd1', vdate, freq, varname, date, value)
+	model_values = transmute(raw_data, forecast, form = 'd1', vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(db, model_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(db, model_values, .verbose = T)
+	rows_added_v1 = store_forecast_values_v1(pg, model_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(pg, model_values, .verbose = T)
 
 	# Log
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
 	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
+
+	log_finish_in_db(pg, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------
-dbDisconnect(db)
+dbDisconnect(pg)
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))

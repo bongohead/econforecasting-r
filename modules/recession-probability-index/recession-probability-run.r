@@ -2,8 +2,8 @@
 #'
 #' The idea here is to first create some standalone recession probability indicators (& import some);
 #' then weight them according to OFC (optimal forecast weighting)
-#' 
-#' 
+#'
+#'
 #'
 
 # Initialize ----------------------------------------------------------
@@ -50,32 +50,32 @@ submodels = list()
 
 
 ## 10-2 Year Spread --------------------------------------------------------
-local({
-	
-	
-	
-	
-	submodels$10_2y_spread <<- 
-})
-
-
-## SPF Survey --------------------------------------------------------
-local({
-	
-	
-	
-	
-	submodels$10_2y_spread <<- 
-})
-
-
-## WSJ Survey --------------------------------------------------------
-local({
-	
-	
-	
-	
-	submodels$10_2y_spread <<- 
-})
-
-
+# local({
+#
+#
+#
+#
+# 	submodels$10_2y_spread <<-
+# })
+#
+#
+# ## SPF Survey --------------------------------------------------------
+# local({
+#
+#
+#
+#
+# 	submodels$10_2y_spread <<-
+# })
+#
+#
+# ## WSJ Survey --------------------------------------------------------
+# local({
+#
+#
+#
+#
+# 	submodels$10_2y_spread <<-
+# })
+#
+#

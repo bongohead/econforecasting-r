@@ -1,31 +1,23 @@
+#' Validated 3/26/23
+
 # Initialize ----------------------------------------------------------
+
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'external-import-wsj'
-EF_DIR = Sys.getenv('EF_DIR')
-
-## Log Job ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
 
 ## Load Libs ----------------------------------------------------------
-library(tidyverse)
-library(jsonlite)
-library(httr)
-library(rvest)
-library(DBI)
-library(RPostgres)
 library(econforecasting)
-library(lubridate)
+library(tidyverse)
+library(httr2)
+library(rvest)
+library(DBI, include.only = 'dbDisconnect')
+library(readxl, include.only = c('excel_sheets', 'read_excel'))
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'external-import')
-
+load_env(Sys.getenv('EF_DIR'))
+if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
+pg = connect_pg()
+run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 
 # Import ------------------------------------------------------------------
 
@@ -33,7 +25,7 @@ run_id = log_start_in_db(db, JOB_NAME, 'external-import')
 local({
 
 	message('**** WSJ Survey')
-	message('***** Last Import Oct 22')
+	message('***** Last Import Jan 23')
 
 	wsj_params = tribble(
 		~ submodel, ~ fullname,
@@ -46,66 +38,65 @@ local({
 		# 'wsj_ms', 'Morgan Stanley'
 	)
 
-	xl_path = file.path(EF_DIR, 'modules', 'external-import', 'external-import-wsj.xlsx')
+	xl_path = file.path(Sys.getenv('EF_DIR'), 'modules', 'external-import', 'external-import-wsj.xlsx')
 
-	wsj_data =
-		readxl::excel_sheets(xl_path) %>%
-		keep(., ~ str_extract(., '[^_]+') == 'wsj') %>%
-		map_dfr(., function(sheetname) {
+	wsj_data_0 = map(keep(excel_sheets(xl_path), \(x) str_extract(x, '[^_]+') == 'wsj'), function(sheetname) {
 
-			vdate = str_extract(sheetname, '(?<=_).*')
+		vdate = str_extract(sheetname, '(?<=_).*')
 
-			col_names = suppressMessages(readxl::read_excel(
-				xl_path,
-				sheet = sheetname,
-				col_names = F,
-				.name_repair = 'universal',
-				n_max = 2
+		col_names = suppressMessages(read_excel(
+			xl_path,
+			sheet = sheetname,
+			col_names = F,
+			.name_repair = 'universal',
+			n_max = 2
 			)) %>%
-				replace(., is.na(.), '') %>%
-				{paste0(.[1,], '-', .[2,])}
+			replace(., is.na(.), '') %>%
+			{paste0(.[1,], '-', .[2,])}
 
-			if (length(unique(col_names)) != length(col_names)) stop('WSJ Input Error!')
+		if (length(unique(col_names)) != length(col_names)) stop('WSJ Input Error!')
 
-			readxl::read_excel(
-				xl_path,
-				sheet = sheetname,
-				col_names = col_names,
-				skip = 2
+		read_excel(
+			xl_path,
+			sheet = sheetname,
+			col_names = col_names,
+			skip = 2
+		) %>%
+			pivot_longer(
+				cols = -'-Forecast',
+				names_to = 'varname_date',
+				values_to = 'value'
 			) %>%
-				pivot_longer(
-					cols = -'-Forecast',
-					names_to = 'varname_date',
-					values_to = 'value'
-				) %>%
-				transmute(
-					vdate = as_date(vdate),
-					fullname = .$'-Forecast',
-					varname = str_extract(varname_date, '[^-]+'),
-					date = from_pretty_date(str_extract(varname_date, '(?<=-).*'), 'q'),
-					value
-				) %>%
-				inner_join(., wsj_params, by = 'fullname') %>%
-				transmute(., submodel, varname, freq = 'q', vdate, date, value)
-		}) %>%
-		na.omit(.) %>%
-		group_split(., submodel, varname, freq, vdate) %>%
-		purrr::imap_dfr(., function(z, i) {
-			tibble(
-				date = seq(from = min(z$date, na.rm = T), to = max(z$date, na.rm = T), by = '3 months')
+			transmute(
+				vdate = as_date(vdate),
+				fullname = .$'-Forecast',
+				varname = str_extract(varname_date, '[^-]+'),
+				date = from_pretty_date(str_extract(varname_date, '(?<=-).*'), 'q'),
+				value
 			) %>%
-				left_join(., z, by = 'date') %>%
-				mutate(., value = zoo::na.approx(value)) %>%
-				transmute(
-					.,
-					submodel = unique(z$submodel),
-					varname = unique(z$varname),
-					freq = unique(z$freq),
-					vdate = unique(z$vdate),
-					date,
-					value
-				)
+			inner_join(., wsj_params, by = 'fullname') %>%
+			transmute(., submodel, varname, freq = 'q', vdate, date, value)
 		}) %>%
+		list_rbind %>%
+		na.omit
+
+	wsj_data = imap(group_split(wsj_data_0, submodel, varname, freq, vdate), function(z, i) {
+		tibble(
+			date = seq(from = min(z$date, na.rm = T), to = max(z$date, na.rm = T), by = '3 months')
+			) %>%
+			left_join(., z, by = 'date') %>%
+			mutate(., value = zoo::na.approx(value)) %>%
+			transmute(
+				.,
+				submodel = unique(z$submodel),
+				varname = unique(z$varname),
+				freq = unique(z$freq),
+				vdate = unique(z$vdate),
+				date,
+				value
+			)
+		}) %>%
+		list_rbind %>%
 		transmute(
 			.,
 			forecast = 'wsj',
@@ -121,26 +112,25 @@ local({
 })
 
 
-## Export SQL Server ------------------------------------------------------------------
+## Export Forecasts ------------------------------------------------------------------
 local({
 
 	# Store in SQL
-	model_values =
-		raw_data %>%
-		transmute(., forecast, form, vdate, freq, varname, date, value)
+	model_values = transmute(raw_data, forecast, form, vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(db, model_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(db, model_values, .verbose = T)
+	rows_added_v1 = store_forecast_values_v1(pg, model_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(pg, model_values, .verbose = T)
 
 	# Log
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 50), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
 	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
+
+	log_finish_in_db(pg, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------
-dbDisconnect(db)
+dbDisconnect(pg)
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))

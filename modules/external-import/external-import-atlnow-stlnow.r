@@ -1,42 +1,31 @@
+#' Validated 3/26/23
+
 # Initialize ----------------------------------------------------------
+
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'external-import-atlnow-stlnow'
-EF_DIR = Sys.getenv('EF_DIR')
-
-## Log Job ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
 
 ## Load Libs ----------------------------------------------------------
-library(tidyverse)
-library(jsonlite)
-library(httr)
-library(rvest)
-library(DBI)
 library(econforecasting)
-library(lubridate)
+library(tidyverse)
+library(DBI, include.only = 'dbDisconnect')
 
-## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'external-import')
-
+## Load Env & Logging ----------------------------------------------------------
+load_env(Sys.getenv('EF_DIR'))
+if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
+pg = connect_pg()
+run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 
 # Import ------------------------------------------------------------------
 
-
 ## Get GDP Release Dates ---------------------------------------------------
 hist_data =
-	collect(tbl(db, sql(
+	get_query(pg, sql(
 		"SELECT val.varname, val.vdate, val.date, val.value
 		FROM forecast_hist_values val
 		INNER JOIN forecast_variables v ON v.varname = val.varname
 		WHERE form = 'd1' AND  v.varname = 'gdp'"
-		))) %>%
+		)) %>%
 	group_by(., date) %>%
 	{inner_join(
 		filter(., vdate == min(vdate)) %>% transmute(., date, first_vdate = vdate, first_value = value),
@@ -49,7 +38,7 @@ hist_data =
 ## Get ATL + STL Forecasts ---------------------------------------------------
 local({
 
-	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	api_key = Sys.getenv('FRED_API_KEY')
 
 	fred_sources = tribble(
 		~ forecast, ~ varname, ~ fred_key,
@@ -58,24 +47,21 @@ local({
 		'stlnow', 'gdp', 'STLENI'
 	)
 
-	fred_data =
-		fred_sources %>%
-		purrr::transpose(.) %>%
-		lapply(., function(x) {
-			get_fred_data(x$fred_key, api_key, .freq = 'q', .return_vintages = T) %>%
-				filter(., date >= as_date('2020-01-01')) %>%
-				transmute(
-					.,
-					forecast = x$forecast,
-					form = 'd1',
-					freq = 'q',
-					varname = x$varname,
-					vdate = vintage_date,
-					date,
-					value
-					)
+	fred_data = lapply(df_to_list(fred_sources), function(x) {
+		get_fred_data(x$fred_key, api_key, .freq = 'q', .return_vintages = T) %>%
+			filter(., date >= as_date('2020-01-01')) %>%
+			transmute(
+				.,
+				forecast = x$forecast,
+				form = 'd1',
+				freq = 'q',
+				varname = x$varname,
+				vdate = vintage_date,
+				date,
+				value
+				)
 		}) %>%
-		bind_rows(.)
+		list_rbind(.)
 
 	fred_data <<- fred_data
 })
@@ -125,25 +111,23 @@ local({
 	raw_data <<- raw_data
 })
 
-## Export SQL Server ------------------------------------------------------------------
+## Export Forecasts ------------------------------------------------------------------
 local({
 
 	# Store in SQL
-	model_values =
-		raw_data %>%
-		transmute(., forecast, form, vdate, freq, varname, date, value)
+	model_values = transmute(raw_data, forecast, form, vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(db, model_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(db, model_values, .verbose = T)
-
+	rows_added_v1 = store_forecast_values_v1(pg, model_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(pg, model_values, .verbose = T)
 
 	# Log
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
 	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
+
+	log_finish_in_db(pg, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------

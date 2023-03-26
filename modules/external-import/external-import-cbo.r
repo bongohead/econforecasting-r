@@ -1,50 +1,38 @@
+#' Validated 3/26/23
+
 # Initialize ----------------------------------------------------------
+
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'external-import-cbo'
-EF_DIR = Sys.getenv('EF_DIR')
-
-## Log Job ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
 
 ## Load Libs ----------------------------------------------------------
-library(tidyverse)
-library(jsonlite)
-library(httr)
-library(rvest)
-library(DBI)
 library(econforecasting)
-library(lubridate)
+library(tidyverse)
+library(httr2)
+library(rvest)
+library(DBI, include.only = 'dbDisconnect')
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'external-import')
-
+load_env(Sys.getenv('EF_DIR'))
+if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
+pg = connect_pg()
+run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 
 # Import ------------------------------------------------------------------
 
 ## Get Data ------------------------------------------------------------------
 local({
 
-	cbo_vintages =
-		map(0:2, function(page)
-			paste0('https://www.cbo.gov/data/publications-with-data-files?page=', page, '') %>%
-				httr::GET(.) %>%
-				httr::content(.) %>%
-				rvest::html_nodes('#block-cbo-cbo-system-main div.item-list > ul > li') %>%
-				keep(
-					.,
-					~ str_detect(rvest::html_text(rvest::html_node(., 'span.views-field-title')), coll('Economic Outlook'))
-				) %>%
-				map_chr(., ~ rvest::html_text(rvest::html_node(., 'div.views-field-field-display-date')))
+	cbo_vintages = map(0:2, function(page)
+		request(paste0('https://www.cbo.gov/data/publications-with-data-files?page=', page, '')) %>%
+			req_perform %>%
+			resp_body_html %>%
+			html_nodes('#block-cbo-cbo-system-main div.item-list > ul > li') %>%
+			keep(., \(x) str_detect(html_text(html_node(x, 'span.views-field-title')), coll('Economic Outlook'))) %>%
+			map_chr(., \(x) html_text(html_node(x, 'div.views-field-field-display-date')))
 		) %>%
-		unlist(.) %>%
-		mdy(.) %>%
+		unlist %>%
+		mdy %>%
 		tibble(release_date = .) %>%
 		group_by(., month(release_date), year(release_date)) %>%
 		summarize(., release_date = min(release_date), .groups = 'drop') %>%
@@ -52,13 +40,13 @@ local({
 		arrange(., release_date)
 
 	url_params =
-		httr::GET('https://www.cbo.gov/data/budget-economic-data') %>%
-		httr::content(., type = 'parsed') %>%
-		xml2::read_html(.) %>%
-		rvest::html_nodes('div .view-content') %>%
+		request('https://www.cbo.gov/data/budget-economic-data') %>%
+		req_perform %>%
+		resp_body_html %>%
+		html_nodes('div .view-content') %>%
 		.[[9]] %>%
-		rvest::html_nodes(., 'a') %>%
-		map_dfr(., function(x) tibble(date = rvest::html_text(x), url = rvest::html_attr(x, 'href'))) %>%
+		html_nodes(., 'a') %>%
+		map_dfr(., \(x) tibble(date = html_text(x), url = html_attr(x, 'href'))) %>%
 		transmute(., date = mdy(paste0(str_sub(date, 1, 3), ' 1 ' , str_sub(date, -4))), url) %>%
 		mutate(., date = as_date(date)) %>%
 		inner_join(., cbo_vintages %>% mutate(., date = floor_date(release_date, 'months')), by = 'date') %>%
@@ -92,46 +80,44 @@ local({
 		)
 
 
-	cbo_data =
-		url_params %>%
-		purrr::transpose(.) %>%
-		imap_dfr(., function(x, i) {
+	cbo_data = imap(df_to_list(url_params), function(x, i) {
 
-			download.file(x$url, file.path(tempdir(), 'cbo.xlsx'), mode = 'wb', quiet = TRUE)
+		download.file(x$url, file.path(tempdir(), 'cbo.xlsx'), mode = 'wb', quiet = TRUE)
 
-			# Not all spreadsheets start at the same row
-			skip_rows =
-				suppressMessages(readxl::read_excel(
-					file.path(tempdir(), 'cbo.xlsx'),
-					sheet = '1. Quarterly',
-					skip = 0
-				)) %>%
-				mutate(., idx = 1:nrow(.)) %>%
-				filter(., .[[1]] == 'Output') %>%
-				{.$idx - 1}
+		# Not all spreadsheets start at the same row
+		skip_rows =
+			suppressMessages(readxl::read_excel(
+				file.path(tempdir(), 'cbo.xlsx'),
+				sheet = '1. Quarterly',
+				skip = 0
+			)) %>%
+			mutate(., idx = 1:nrow(.)) %>%
+			filter(., .[[1]] == 'Output') %>%
+			{.$idx - 1}
 
-			xl =
-				suppressMessages(readxl::read_excel(
-					file.path(tempdir(), 'cbo.xlsx'),
-					sheet = '1. Quarterly',
-					skip = skip_rows
-				)) %>%
-				rename(., cbo_category = 1, cbo_name = 2, cbo_name_2 = 3, cbo_units = 4) %>%
-				mutate(., cbo_name = ifelse(is.na(cbo_name), cbo_name_2, cbo_name)) %>%
-				select(., -cbo_name_2) %>%
-				tidyr::fill(., cbo_category, .direction = 'down') %>%
-				tidyr::fill(., cbo_name, .direction = 'down') %>%
-				na.omit(.)
+		xl =
+			suppressMessages(readxl::read_excel(
+				file.path(tempdir(), 'cbo.xlsx'),
+				sheet = '1. Quarterly',
+				skip = skip_rows
+			)) %>%
+			rename(., cbo_category = 1, cbo_name = 2, cbo_name_2 = 3, cbo_units = 4) %>%
+			mutate(., cbo_name = ifelse(is.na(cbo_name), cbo_name_2, cbo_name)) %>%
+			select(., -cbo_name_2) %>%
+			tidyr::fill(., cbo_category, .direction = 'down') %>%
+			tidyr::fill(., cbo_name, .direction = 'down') %>%
+			na.omit
 
-			xl %>%
-				inner_join(., cbo_params, by = c('cbo_category', 'cbo_name', 'cbo_units')) %>%
-				select(., -cbo_category, -cbo_name, -cbo_units) %>%
-				pivot_longer(., -varname, names_to = 'date') %>%
-				mutate(., date = from_pretty_date(date, 'q')) %>%
-				filter(., date >= as_date(x$vdate)) %>%
-				mutate(., vdate = as_date(x$vdate))
+		xl %>%
+			inner_join(., cbo_params, by = c('cbo_category', 'cbo_name', 'cbo_units')) %>%
+			select(., -cbo_category, -cbo_name, -cbo_units) %>%
+			pivot_longer(., -varname, names_to = 'date') %>%
+			mutate(., date = from_pretty_date(date, 'q')) %>%
+			filter(., date >= as_date(x$vdate)) %>%
+			mutate(., vdate = as_date(x$vdate))
 
 		}) %>%
+		list_rbind %>%
 		transmute(
 			.,
 			forecast = 'cbo',
@@ -150,26 +136,25 @@ local({
 })
 
 
-## Export SQL Server ------------------------------------------------------------------
+## Export Forecasts ------------------------------------------------------------------
 local({
 
 	# Store in SQL
-	model_values =
-		raw_data %>%
-		transmute(., forecast, form, vdate, freq, varname, date, value)
+	model_values = transmute(raw_data, forecast, form, vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(db, model_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(db, model_values, .verbose = T)
+	rows_added_v1 = store_forecast_values_v1(pg, model_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(pg, model_values, .verbose = T)
 
 	# Log
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
 	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
+
+	log_finish_in_db(pg, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------
-dbDisconnect(db)
+dbDisconnect(pg)
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))

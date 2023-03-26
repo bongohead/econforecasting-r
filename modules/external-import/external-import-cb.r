@@ -1,30 +1,22 @@
+#' Validated 3/26/23
+
 # Initialize ----------------------------------------------------------
+
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'external-import-cb'
-EF_DIR = Sys.getenv('EF_DIR')
-
-## Log Job ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
 
 ## Load Libs ----------------------------------------------------------
-library(tidyverse)
-library(jsonlite)
-library(httr)
-library(rvest)
-library(DBI)
 library(econforecasting)
-library(lubridate)
+library(tidyverse)
+library(httr2)
+library(rvest)
+library(DBI, include.only = 'dbDisconnect')
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'external-import')
-
+load_env(Sys.getenv('EF_DIR'))
+if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
+pg = connect_pg()
+run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 
 # Import ------------------------------------------------------------------
 
@@ -46,19 +38,19 @@ local({
 		) %>%
 		mutate(., fullname = str_to_lower(fullname))
 
-	httr::set_config(config(ssl_verifypeer = FALSE))
-
 	html_content =
-		GET('https://www.conference-board.org/research/us-forecast/us-forecast') %>%
-		content(.)
+		request('https://www.conference-board.org/research/us-forecast/us-forecast') %>%
+		req_perform %>%
+		resp_body_html
 
 	vintage_date =
 		html_content %>%
 		html_element(., '#productTypeText') %>%
-		html_text(.) %>%
+		html_text %>%
 		str_extract(., '[^|]+') %>%
-		str_trim(.) %>%
-		readr::parse_date(., format = '%B %d, %Y')
+		str_trim %>%
+		fast_strptime(., format = '%B %d, %Y') %>%
+		as_date
 
 	iframe_src = html_content %>% html_element(., '#chConferences iframe') %>% html_attr(., 'src')
 	table_content = paste0(iframe_src, 'dataset.csv') %>% read_tsv(., col_names = F)
@@ -67,9 +59,9 @@ local({
 	headers_fixed =
 		table_content %>%
 		.[1:2, ] %>%
-		t(.) %>%
-		as.data.frame(.) %>%
-		as_tibble(.) %>%
+		t %>%
+		as.data.frame %>%
+		as_tibble %>%
 		fill(., V1, .direction = 'down') %>%
 		mutate(., V2 = str_replace_all(V2, c('IV Q' = 'Q4', 'III Q' = 'Q3', 'II Q' = 'Q2', 'I Q' = 'Q1'))) %>%
 		mutate(., col_index = 1:nrow(.), quarter = ifelse(is.na(V1) | is.na(V2), NA, paste0(V1, V2))) %>%
@@ -106,26 +98,25 @@ local({
 })
 
 
-## Export SQL Server ------------------------------------------------------------------
+## Export Forecasts ------------------------------------------------------------------
 local({
 
 	# Store in SQL
-	model_values =
-		raw_data %>%
-		transmute(., forecast, form, vdate, freq, varname, date, value)
+	model_values = transmute(raw_data, forecast, form, vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(db, model_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(db, model_values, .verbose = T)
+	rows_added_v1 = store_forecast_values_v1(pg, model_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(pg, model_values, .verbose = T)
 
 	# Log
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
 	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'external-import', log_data)
+
+	log_finish_in_db(pg, run_id, JOB_NAME, 'external-import', log_data)
 })
 
 ## Finalize ------------------------------------------------------------------
-dbDisconnect(db)
+dbDisconnect(pg)
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
