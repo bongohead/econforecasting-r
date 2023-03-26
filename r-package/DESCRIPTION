@@ -1,12 +1,12 @@
 Package: econforecasting
 Type: Package
-Title: Forecasting for Economic Time Series
-Version: 0.2.0
+Title: Helper functions
+Version: 2.02
 Authors@R: 
     c(person(given = "Charles",
              family = "Ye",
              role = c("aut", "cre"),
-             email = "charles@cmefi.com"))
+             email = "charles@econforecasting.com"))
 Description: Provides miscellaneous functions for forecasting and analysis of economic time series. 
 License: GPL (>= 3)
 Imports:

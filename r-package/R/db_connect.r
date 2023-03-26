@@ -50,11 +50,10 @@ get_pg_table_sizes = function(db) {
 
 	res = get_query(db, sql(
 		"SELECT
-		schema_name,
-		relname,
-		pg_size_pretty(table_size) AS size,
-		table_size
-
+			schema_name,
+			relname,
+			pg_size_pretty(table_size) AS size,
+			table_size
 		FROM (
 			SELECT
 				pg_catalog.pg_namespace.nspname AS schema_name,

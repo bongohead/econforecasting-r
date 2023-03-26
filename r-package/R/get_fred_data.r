@@ -10,7 +10,9 @@
 #'
 #' @return A data frame of data
 #'
-#' @import dplyr purrr httr lubridate
+#' @import dplyr purrr httr2
+#' @importFrom lubridate with_tz now as_date
+#'
 #' @export
 get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FALSE, .vintage_date = NULL, .obs_start = '2000-01-01', .verbose = FALSE) {
 
@@ -31,21 +33,22 @@ get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FA
 
 	if (.verbose == TRUE) message(url)
 
-	url %>%
-		httr::RETRY('GET', url = ., times = 10, timeout(30)) %>%
-		httr::content(., as = 'parsed') %>%
+	request(url) %>%
+		req_perform %>%
+		resp_body_json %>%
 		.$observations %>%
-		purrr::map_dfr(., function(x) as_tibble(x)) %>%
-		dplyr::filter(., value != '.') %>%
-		na.omit(.) %>%
-		dplyr::transmute(
+		map(., as_tibble) %>%
+		list_rbind %>%
+		filter(., value != '.') %>%
+		na.omit %>%
+		transmute(
 			.,
 			date = as_date(date),
 			vintage_date = as_date(realtime_start),
 			varname = series_id,
 			value = as.numeric(value)
 		) %>%
-		{if(.return_vintages == TRUE) . else dplyr::select(., -vintage_date)} %>%
+		{if(.return_vintages == TRUE) . else select(., -vintage_date)} %>%
 		return(.)
 }
 
@@ -67,7 +70,9 @@ get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FA
 #'  Note that since FRED returns weekly data in the form of week-ending dates, we subtract 7 days off the date to
 #'  convert them into week beginning dates.
 #'
-#' @import dplyr purrr httr lubridate
+#' @import dplyr purrr httr2
+#' @importFrom lubridate with_tz now as_date
+#'
 #' @export
 get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .verbose = F)  {
 
@@ -84,9 +89,9 @@ get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '20
 		)
 
 	get_vintage_dates = function(vintage_dates_url) {
-		response = GET(vintage_dates_url)
-		if (http_error(response)) stop('Error')
-		unlist(content(response)$vintage_dates)
+		response = req_perform(request(vintage_dates_url))
+		if (resp_is_error(response)) stop('Error')
+		unlist(resp_body_json(response)$vintage_dates)
 	}
 
 	vintage_dates = insistently(get_vintage_dates, rate = rate_delay(30, 10), quiet = !.verbose)(vintage_dates_url)
@@ -110,9 +115,9 @@ get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '20
 	if (.verbose == T) message(obs_urls)
 
 	get_obs = function(url) {
-		response = GET(url)
-		if (http_error(response)) stop('Error')
-		content(response, as = 'parsed')$observations
+		response = req_perform(request(url))
+		if (resp_is_error(response)) stop('Error')
+		resp_body_json(response)$observations
 	}
 
 	raw_obs = list_c(map(
@@ -121,10 +126,10 @@ get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '20
 		))
 
 	raw_obs %>%
-		map(., \(x) as_tibble(x)) %>%
-		list_rbind(.) %>%
+		map(., as_tibble) %>%
+		list_rbind %>%
 		filter(., value != '.') %>%
-		na.omit(.) %>%
+		na.omit %>%
 		transmute(
 			.,
 			# FRED weekly frequency is for week-ending value; switch to week starting value
@@ -153,7 +158,9 @@ get_fred_obs_with_vintage = function(series_id, api_key, .freq, .obs_start = '20
 #'  Note that since FRED returns weekly data in the form of week-ending dates, we subtract 7 days off the date to
 #'  convert them into week beginning dates.
 #'
-#' @import dplyr purrr httr lubridate
+#' @import dplyr purrr httr2
+#' @importFrom lubridate with_tz now as_date
+#'
 #' @export
 get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .verbose = F)  {
 
@@ -172,13 +179,17 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 
 	if (.verbose == T) message(obs_url)
 
-	raw_obs = insistently(\(x) content(GET(obs_url), as = 'parsed')$observations, rate = rate_delay(30, 10), quiet = F)()
+	raw_obs = insistently(
+		\(x) resp_body_json(req_perform(request(vintage_dates_url)))$observations,
+		rate = rate_delay(30, 10),
+		quiet = F
+		)()
 
 	raw_obs %>%
-		map(., \(x) as_tibble(x)) %>%
-		list_rbind(.) %>%
+		map(., as_tibble) %>%
+		list_rbind %>%
 		filter(., value != '.') %>%
-		na.omit(.) %>%
+		na.omit %>%
 		transmute(
 			.,
 			date = as_date(date) - days({if (.freq == 'w') 7 else 0}),
@@ -187,7 +198,6 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 		) %>%
 		return(.)
 }
-
 
 # get_treasury_data = function() {
 # 	treasury_data = c(
