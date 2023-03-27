@@ -15,6 +15,7 @@ rereddit-dump
 # Secrets
 constants.r
 constants.yaml
+.env
 
 # Flat files
 uszips.csv
