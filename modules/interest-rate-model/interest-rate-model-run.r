@@ -15,23 +15,12 @@
 
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'interest-rate-model-run'
-EF_DIR = Sys.getenv('EF_DIR')
 BACKTEST_MONTHS = 36
-
-## Log Job ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
 
 ## Load Libs ----------------------------------------------------------
 library(econforecasting)
 library(tidyverse)
-library(lubridate)
-library(httr)
+library(httr2)
 library(rvest)
 library(highcharter)
 library(DBI)
@@ -42,13 +31,16 @@ library(furrr, include.only = c('future_map'))
 library(future, include.only = c('plan', 'multisession'))
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'interest-rate-model')
+load_env(Sys.getenv('EF_DIR'))
+if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
+pg = connect_pg()
+run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
+
 hist = list()
 submodels = list()
 
 ## Load Variable Defs ----------------------------------------------------------'
-input_sources = as_tibble(dbGetQuery(db, 'SELECT * FROM interest_rate_model_variables'))
+input_sources = get_query(pg, 'SELECT * FROM interest_rate_model_variables')
 
 # Historical Data ----------------------------------------------------------
 
