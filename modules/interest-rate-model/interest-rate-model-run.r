@@ -559,10 +559,10 @@ local({
 		req_perform %>%
 		get_cookies(., T)
 
-	barchart_data = map(barchart_sources, function(x) {
+	barchart_data = map(barchart_sources_valid, function(x) {
 
-		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
-		Sys.sleep(runif(1, .4, 1))
+		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}, {now()}'))
+		Sys.sleep(runif(1, 2, 5))
 
 		http_response =
 			request(paste0(
@@ -570,7 +570,6 @@ local({
 				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
 				'&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration'
 			)) %>%
-			req_retry(max_tries = 10) %>%
 			add_standard_headers %>%
 			list_merge(., headers = list(
 				'X-XSRF-TOKEN' = URLdecode(str_extract(cookies$`XSRF-TOKEN`, '(?<==).*')),
@@ -1047,8 +1046,9 @@ local({
 			'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
 			'survey-of-professional-forecasters/data-files/files/median_', var, '_level.xlsx?la=en'
 			)) %>%
-			req_perform(., path = file.path(tempdir(), paste0(var, '.xlsx'))) %>%
-			readxl::read_excel(file.path(tempdir(), paste0(var, '.xlsx')), na = '#N/A', sheet = 'Median_Level') %>%
+			req_perform(., path = file.path(tempdir(), paste0(var, '.xlsx')))
+
+		readxl::read_excel(file.path(tempdir(), paste0(var, '.xlsx')), na = '#N/A', sheet = 'Median_Level') %>%
 			select(., c('YEAR', 'QUARTER', paste0(str_to_upper(var), 'D'))) %>%
 			na.omit %>%
 			transmute(
@@ -1194,7 +1194,6 @@ local({
 			last_hist_diff = ifelse(is.na(last_hist), NA, last_hist - value)
 		) %>%
 		ungroup(.) %>%
-
 		# Map weights with sigmoid function and fill down forecast month 0 histoical value for full vdate x varname
 		mutate(
 			.,
@@ -1612,7 +1611,7 @@ local({
 	log_data = list(
 		rows_added = rows_added_v2,
 		last_vdate = max(submodel_values$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 100), collapse = '\n')
+		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
 	)
 	log_finish_in_db(pg, run_id, JOB_NAME, 'interest-rate-model', log_data)
 
