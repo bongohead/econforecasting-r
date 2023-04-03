@@ -180,7 +180,7 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 	if (.verbose == T) message(obs_url)
 
 	raw_obs = insistently(
-		\(x) resp_body_json(req_perform(request(vintage_dates_url)))$observations,
+		\(x) resp_body_json(req_perform(request(obs_url)))$observations,
 		rate = rate_delay(30, 10),
 		quiet = F
 		)()

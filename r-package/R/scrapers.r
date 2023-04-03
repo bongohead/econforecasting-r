@@ -33,6 +33,71 @@ get_standard_headers = function(args_list = c()) {
 	joined_headers
 }
 
+#' Get a list of standard headers
+#'
+#' @description
+#' Adds a vector of standard headers into httr2 request object.
+#'  Call req_headers() afterwards to add additional headers; note that headers here will be overwritten if the
+#'  names are identical.
+#'
+#' @param req An httr2 request object
+#'
+#' @importFrom httr2 req_headers
+#'
+#' @export
+add_standard_headers = function(req) {
+
+	if (class(req) != 'httr2_request') stop('Argument "req" must be an httr2 request object!')
+
+	random_user_agent = sample(c(
+		# Chrome W10
+		'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+		# Firefox Linux
+		'Mozilla/5.0 (X11; Linux x86_64; rv:107.0) Gecko/20100101 Firefox/107.0',
+		# Firefox Windows
+		'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:107.0) Gecko/20100101 Firefox/107.0'
+	), 1)
+
+	req2 = req_headers(
+		req,
+		'User-Agent' = random_user_agent,
+		'Accept-Encoding' = 'gzip, deflate, br',
+		'Accept-Language' ='en-US,en;q=0.5',
+		'Cache-Control'='no-cache',
+		'Connection'='keep-alive',
+		'Pragma' = 'no-cache',
+		'DNT' = '1'
+	)
+
+	return(req2)
+}
+
+#' Get cookies from an httr2 response object
+#'
+#' @param split Boolean; set T to split each cookie, F to return a single character
+#'
+#' @export
+get_cookies = function(response, split = T) {
+
+	if (class(response) != 'httr2_response') stop('Argument "response" must be an httr2 response object!')
+
+	cookie_objs = (response$headers[names(response$headers) == 'set-cookie'])
+	cookie_names = str_extract(as.character(cookie_objs), "[^=]+")
+	cookie_bodies = str_extract(as.character(cookie_objs), "(?<==).*")
+	cookie_values = sapply(str_split(cookie_bodies, ';'), \(x) x[[1]])
+
+	if (split == T) {
+
+		return(setNames(as.list(paste0(cookie_names, '=', cookie_values)), cookie_names))
+
+	} else {
+
+		return(paste0(paste0(cookie_names, '=', cookie_values), collapse = '; '))
+	}
+
+}
+
+
 #' Sends parallel requests with retry
 #'
 #' @param reqs A list of httr2 request objects
@@ -80,3 +145,4 @@ send_parallel_requests = function(reqs, .allowed_retries = 10, .pool = curl::new
 
 	return(retry_requests(reqs))
 }
+

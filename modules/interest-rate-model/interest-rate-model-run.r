@@ -52,18 +52,18 @@ local({
 	# Note that only a single vintage date is pulled (last available value for each data point).
 	# This assumes for rate historical data there are no revisions
 	message('***** Importing FRED Data')
-	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	api_key = Sys.getenv('FRED_API_KEY')
 
 	fred_data =
 		input_sources %>%
-		purrr::transpose(.)	%>%
-		keep(., ~ .$hist_source == 'fred') %>%
+		df_to_list	%>%
+		keep(., \(x) x$hist_source == 'fred') %>%
 		imap(., function(x, i) {
 			message(str_glue('Pull {i}: {x$varname}'))
 			get_fred_obs(x$hist_source_key, api_key, .freq = x$hist_source_freq, .obs_start = '2010-01-01', .verbose = F) %>%
 				transmute(., varname = x$varname, freq = x$hist_source_freq, date, value)
 			}) %>%
-		list_rbind(.) %>%
+		list_rbind %>%
 		# For simplicity, assume all data with daily frequency is released the same day.
 		# Only weekly/monthly data keeps the true vintage date.
 		mutate(., vdate = case_when(
@@ -87,7 +87,7 @@ local({
 			)
 		) %>%
 		map(., .progress = F, \(x) read_csv(x, col_types = 'c')) %>%
-		list_rbind(.) %>%
+		list_rbind %>%
 		pivot_longer(., cols = -c('Date'), names_to = 'varname', values_to = 'value') %>%
 		separate(., col = 'varname', into = c('ttm_1', 'ttm_2'), sep = ' ') %>%
 		mutate(
@@ -114,29 +114,32 @@ local({
 
 	bloom_data =
 		input_sources %>%
-		purrr::transpose(.) %>%
-		keep(., ~ .$hist_source == 'bloom') %>%
+		df_to_list %>%
+		keep(., \(x) x$hist_source == 'bloom') %>%
 		map(., function(x) {
 
-			url = str_glue(
+			req = request(str_glue(
 				'https://www.bloomberg.com/markets2/api/history/{x$hist_source_key}%3AIND/PX_LAST?',
 				'timeframe=5_YEAR&period=daily&volumePeriod=daily'
-				)
+				))
 
-			res = GET(
-				url,
-				add_headers((c(
+			res =
+				req %>%
+				req_headers(
 					'Host' = 'www.bloomberg.com',
 					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND'),
 					'Accept' = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-					'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0'
-					))),
-				set_cookies(seen_uk=1, exp_pref='AMER')
-				) %>%
-				content(., 'parsed') %>%
+					`User-Agent` = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0',
+					`Set-Cookie` = 'seen_uk=1',
+					`Set-Cookie` = 'exp_pref=AMER'
+					) %>%
+				req_retry(max_tries = 5) %>%
+				req_perform %>%
+				resp_body_json %>%
 				.[[1]] %>%
 				.$price %>%
-				map_dfr(., \(row) as_tibble(row)) %>%
+				map(., \(row) as_tibble(row)) %>%
+				list_rbind %>%
 				transmute(
 					.,
 					varname = x$varname,
@@ -145,14 +148,14 @@ local({
 					vdate = date,
 					value
 					) %>%
-				na.omit(.)
+				na.omit
 
 			# Add sleep due to bot detection
 			Sys.sleep(runif(6, 3, 5))
 
 			return(res)
 		}) %>%
-		list_rbind(.)
+		list_rbind
 
 	hist$bloom <<- bloom_data
 })
@@ -161,14 +164,17 @@ local({
 local({
 
 	afx_data =
-		GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
-		content(., 'parsed') %>%
+		request('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
+		req_retry(max_tries = 5) %>%
+		req_perform %>%
+		resp_body_json %>%
 		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
-		map_dfr(., function(x)
+		map(., function(x)
 			as_tibble(x) %>%
 				select(., all_of(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y'))) %>%
-				mutate(., across(-date, function(x) as.numeric(x)))
+				mutate(., across(-date, \(y) as.numeric(y)))
 			) %>%
+		list_rbind %>%
 		mutate(., date = ymd(date)) %>%
 		pivot_longer(., -date, names_to = 'varname_scrape', values_to = 'value') %>%
 		inner_join(
@@ -199,9 +205,11 @@ local({
 		'ukbankrate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
 	)
 
-	boe_data = lapply(purrr::transpose(boe_keys), function(x)
-		GET(x$url) %>%
-			content(., 'parsed', encoding = 'UTF-8') %>%
+	boe_data = lapply(df_to_list(boe_keys), function(x)
+		request(x$url) %>%
+			req_retry(max_tries = 5) %>%
+			req_perform %>%
+			resp_body_html %>%
 			html_node(., '#stats-table') %>%
 			html_table(.) %>%
 			set_names(., c('date', 'value')) %>%
@@ -240,7 +248,7 @@ local({
 		# vdate is the same as date
 		mutate(., vdate = date, form = 'd1')
 
-	initial_count = get_rowcount(db, 'interest_rate_model_input_values')
+	initial_count = get_rowcount(pg, 'interest_rate_model_input_values')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -248,7 +256,7 @@ local({
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
-			dbExecute(db, create_insert_query(
+			dbExecute(pg, create_insert_query(
 				x,
 				'interest_rate_model_input_values',
 				'ON CONFLICT (vdate, form, varname, freq, date) DO UPDATE SET value=EXCLUDED.value'
@@ -256,7 +264,7 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	message('***** Rows Added: ', get_rowcount(db, 'interest_rate_model_input_values') - initial_count)
+	message('***** Rows Added: ', get_rowcount(pg, 'interest_rate_model_input_values') - initial_count)
 
 	hist_values <<- hist_values
 })
@@ -306,43 +314,46 @@ local({
 	# 			))
 	# 	})
 
-	ice_raw_data =
-		ice_codes %>%
-		purrr::transpose(.) %>%
-		map_dfr(., function(x) {
+	ice_raw_data = list_rbind(map(df_to_list(ice_codes), function(x) {
 
-			# Get top-level expiration IDs
-			GET(str_glue(
+		# Get top-level expiration IDs
+		expiration_ids = request(str_glue(
+			'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
+			'getContractsAsJson=&productId={x$product_id}&hubId={x$hub_id}'
+			)) %>%
+			req_retry(max_tries = 5) %>%
+			req_perform %>%
+			resp_body_json %>%
+			# Filter out packs & bundles
+			keep(., ~ str_detect(.$marketStrip, 'Pack|Bundle', negate = T)) %>%
+			map(., function(z) tibble(
+				date = floor_date(parse_date(z$marketStrip, '%b%y'), 'months'),
+				market_id = as.character(z$marketId)
+			)) %>%
+			list_rbind
+
+		# Iterate through the expiration IDs
+		list_rbind(map(df_to_list(expiration_ids), function(z)
+			request(str_glue(
 				'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
-				'getContractsAsJson=&productId={x$product_id}&hubId={x$hub_id}'
+				'getHistoricalChartDataAsJson=&marketId={z$market_id}&historicalSpan=2'
 				)) %>%
-				content(., as = 'parsed') %>%
-				# Filter out packs & bundles
-				keep(., ~ str_detect(.$marketStrip, 'Pack|Bundle', negate = T)) %>%
-				map_dfr(., function(z) tibble(
-					date = floor_date(parse_date(z$marketStrip, '%b%y'), 'months'),
-					market_id = as.character(z$marketId)
-				)) %>%
-				# Iterate through the expiration IDs
-				purrr::transpose(.) %>%
-				map_dfr(., function(z)
-					GET(str_glue(
-						'https://www.theice.com/marketdata/DelayedMarkets.shtml?',
-						'getHistoricalChartDataAsJson=&marketId={z$market_id}&historicalSpan=2'
-						)) %>%
-						content(., as = 'parsed') %>%
-						.$bars %>%
-						{tibble(vdate = map_chr(., ~ .[[1]]), value = map_dbl(., ~ .[[2]]))} %>%
-						transmute(
-							.,
-							varname = x$varname,
-							expiry = x$expiry,
-							date = as_date(z$date),
-							vdate = as_date(parse_date_time(vdate, orders = '%a %b %d %H:%M:%S %Y'), tz = 'ET'),
-							value = 100 - value
-							)
+				req_retry(max_tries = 5) %>%
+				req_perform %>%
+				resp_body_json %>%
+				.$bars %>%
+				{tibble(vdate = map_chr(., ~ .[[1]]), value = map_dbl(., ~ .[[2]]))} %>%
+				transmute(
+					.,
+					varname = x$varname,
+					expiry = x$expiry,
+					date = as_date(z$date),
+					vdate = as_date(parse_date_time(vdate, orders = '%a %b %d %H:%M:%S %Y'), tz = 'ET'),
+					value = 100 - value
 					)
-			})
+			))
+
+		}))
 
 	ice_data =
 		ice_raw_data %>%
@@ -350,7 +361,7 @@ local({
 		group_by(varname, vdate, date) %>%
 		filter(., expiry == min(expiry)) %>%
 		arrange(., date) %>%
-		ungroup(.) %>%
+		ungroup %>%
 		# Get rid of forecasts for old observations
 		filter(., date >= floor_date(vdate, 'month')) %>%
 		transmute(., varname, freq = 'm', vdate, date, value)
@@ -405,63 +416,68 @@ local({
 	# CME Group Data
 	message('Starting CME data scrape...')
 	cme_cookie =
-		GET('https://www.cmegroup.com/', add_headers(get_standard_headers())) %>%
-		cookies(.) %>%
-		as_tibble(.) %>%
-		filter(., name == 'ak_bmsc') %>%
-		.$value
+		request('https://www.cmegroup.com/') %>%
+		add_standard_headers %>%
+		req_perform %>%
+		get_cookies(., T) %>%
+		.$ak_bmsc
 
 	# Get CME Vintage Date
 	last_trade_date =
-		GET(
-			paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/305/G?quoteCodes=null&_='),
-			add_headers(get_standard_headers(c(
-				'Cookie'= cme_cookie,
-				'Host' = 'www.cmegroup.com'
-			)))
-		) %>% content(., 'parsed') %>% .$tradeDate %>% parse_date_time(., 'd-b-Y') %>% as_date(.)
+		request('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/305/G?quoteCodes=null&_=') %>%
+		add_standard_headers %>%
+		list_merge(., headers = list('Host' = 'www.cmegroup.com', 'Cookie' = cme_cookie)) %>%
+		req_perform %>%
+		resp_body_json %>%
+		.$tradeDate %>%
+		parse_date_time(., 'd-b-Y') %>%
+		as_date(.)
 
 	# See https://www.federalreserve.gov/econres/feds/files/2019014pap.pdf for CME futures model
 	# SOFR 3m tenor./
-	cme_raw_data =
-		tribble(
-			~ varname, ~ cme_id,
-			'ffr', '305',
-			'sofr', '8462',
-			'sofr', '8463',
-			'bsby', '10038',
-			't02y', '10048',
-			't05y', '10049',
-			't10y', '10050',
-			't30y', '10051'
-		) %>%
-		purrr::transpose(.) %>%
-		map_dfr(., function(var)
-			GET(
-				paste0('https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/', var$cme_id, '/G?quoteCodes=null&_='),
-				add_headers(get_standard_headers(c(
-					'Cookie'= cme_cookie,
-					'Host' = 'www.cmegroup.com'
-					)))
-				) %>%
-				httr::content(., as = 'parsed') %>%
-				.$quotes %>%
-				map_dfr(., function(x) {
-					if (x$priorSettle %in% c('0.000', '0.00', '-')) return() # Whack bug in CME website
-					tibble(
-						vdate = last_trade_date,
-						date = ymd(x$expirationDate),
-						value = {
-							if (str_detect(var$varname, '^t\\d\\dy$')) as.numeric(x$priorSettle)
-							else 100 - as.numeric(x$priorSettle)
-							},
-						varname = var$varname,
-						cme_id = var$cme_id
-					)
-				})
-			)
+	cme_search_space = tribble(
+		~ varname, ~ cme_id,
+		'ffr', '305',
+		'sofr', '8462',
+		'sofr', '8463',
+		'bsby', '10038',
+		't02y', '10048',
+		't05y', '10049',
+		't10y', '10050',
+		't30y', '10051'
+	)
 
-	log_dump_in_db(db, run_id, JOB_NAME, 'interest-rate-model', list(cme_raw_data = cme_raw_data))
+	cme_raw_data = list_rbind(map(df_to_list(cme_search_space), function(var) {
+
+		quotes = request(paste0(
+			'https://www.cmegroup.com/CmeWS/mvc/Quotes/Future/',
+			var$cme_id,
+			'/G?quoteCodes=null&_='
+			)) %>%
+			add_standard_headers %>%
+			list_merge(., headers = list('Host' = 'www.cmegroup.com', 'Cookie' = cme_cookie)) %>%
+			req_perform %>%
+			resp_body_json %>%
+			.$quotes
+
+		res = list_rbind(map(quotes, function(x) {
+			if (x$priorSettle %in% c('0.000', '0.00', '-')) return() # Related bug in CME website
+			tibble(
+				vdate = last_trade_date,
+				date = ymd(x$expirationDate),
+				value = {
+					if (str_detect(var$varname, '^t\\d\\dy$')) as.numeric(x$priorSettle)
+					else 100 - as.numeric(x$priorSettle)
+				},
+				varname = var$varname,
+				cme_id = var$cme_id
+			)
+		}))
+
+		return(res)
+	}))
+
+	log_dump_in_db(pg, run_id, JOB_NAME, 'interest-rate-model', list(cme_raw_data = cme_raw_data))
 
 	cme_raw_data %>%
 		arrange(., date) %>%
@@ -472,11 +488,12 @@ local({
 		cme_raw_data %>%
 		# Now use only one-month SOFR futures if it's the only available data
 		group_split(varname, date) %>%
-		map_dfr(., function(x) {
+		map(., function(x) {
 			if (x$varname[[1]] == 'sofr' & nrow(x) == 2 & '8463' %in% x$cme_id) filter(x, cme_id == '8463')
 			else if (nrow(x) == 1) x
 			else stop('Error - Multiple Duplicates for non SOFR Values')
 		}) %>%
+		list_rbind %>%
 		arrange(., date) %>%
 		# Get rid of forecasts for old observations
 		filter(., date >= floor_date(last_trade_date, 'month') & value != 100) %>%
@@ -493,7 +510,11 @@ local({
 
 	barchart_sources =
 		# 3 year history + max of 5 year forecast
-		tibble(date = seq(floor_date(today() - months(BACKTEST_MONTHS), 'month'), length.out = (3+5)*12, by = '1 month')) %>%
+		tibble(date = seq(
+			floor_date(today() - months(BACKTEST_MONTHS), 'month'),
+			length.out = (3+5)*12,
+			by = '1 month'
+			)) %>%
 		mutate(., year = year(date), month = month(date)) %>%
 		left_join(
 			.,
@@ -516,53 +537,58 @@ local({
 		filter(., months_out <= max_months_out) %>%
 		transmute(., varname, code, date) %>%
 		arrange(., date) %>%
-		purrr::transpose(.)
+		df_to_list
 
 	# Check ahead of time whether the source is valid
 	# This is a lot faster then checking it during the actual scraping process
 	barchart_sources_valid = keep(barchart_sources, .progress = T, function(source) {
-		GET(paste0('https://instruments-prod.aws.barchart.com/instruments/search/', source$code, '?region=us')) %>%
-			content(.) %>%
+		request(paste0(
+			'https://instruments-prod.aws.barchart.com/instruments/search/', source$code, '?region=us'
+			)) %>%
+			req_retry(max_tries = 5) %>%
+			req_perform %>%
+			resp_body_json %>%
 			.$instruments %>%
 			map_chr(., \(x) x$symbol) %>%
 			some(., \(x) x == source$code)
 		})
 
 	cookies =
-		GET('https://www.barchart.com/futures/quotes/ZQV22') %>%
-		cookies(.) %>%
-		as_tibble(.)
+		request('https://www.barchart.com/futures/quotes/ZQV22/') %>%
+		add_standard_headers %>%
+		req_perform %>%
+		get_cookies(., T)
 
 	barchart_data = map(barchart_sources, function(x) {
 
 		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}'))
-		Sys.sleep(runif(1, .4, .6))
+		Sys.sleep(runif(1, .4, 1))
 
-		http_response = RETRY(
-			'GET',
-			times = 10,
-			paste0(
+		http_response =
+			request(paste0(
 				'https://www.barchart.com/proxies/timeseries/queryeod.ashx?',
 				'symbol=', x$code, '&data=daily&maxrecords=640&volume=contract&order=asc',
 				'&dividends=false&backadjust=false&daystoexpiration=1&contractroll=expiration'
-			),
-			add_headers(get_standard_headers(c(
-				'X-XSRF-TOKEN' = URLdecode(filter(cookies, name == 'XSRF-TOKEN')$value),
+			)) %>%
+			req_retry(max_tries = 10) %>%
+			add_standard_headers %>%
+			list_merge(., headers = list(
+				'X-XSRF-TOKEN' = URLdecode(str_extract(cookies$`XSRF-TOKEN`, '(?<==).*')),
 				'Referer' = 'https://www.barchart.com/futures/quotes/ZQZ20',
 				'Cookie' = URLdecode(paste0(
 					'bcFreeUserPageView=0; webinar113WebinarClosed=true; ',
-					paste0(paste0(cookies$name, '=', cookies$value), collapse = '; ')
+					paste0(cookies, collapse = '; ')
 					))
-				)))
-			)
+			)) %>%
+			req_perform
 
 		if (http_response$status_code != 200) {
 			print('No response, skipping')
 			return(NULL)
 		}
 
-		http_response %>%
-			content(.) %>%
+		res = http_response %>%
+			resp_body_string  %>%
 			read_csv(
 				.,
 				# Verified columns are correct - compare CME official chart to barchart
@@ -576,11 +602,13 @@ local({
 				vdate = vdate - days(1),
 				date = as_date(x$date),
 				value = ifelse(str_detect(varname, '^t\\d\\dy$'), close, 100 - close)
-				) %>%
-			return(.)
+				)
+
+		message('***** Rows: ', nrow(res))
+		return(res)
 		}) %>%
-		compact(.) %>%
-		bind_rows(.) %>%
+		compact %>%
+		list_rbind %>%
 		transmute(., varname, vdate, date, value) %>%
 		filter(., date >= floor_date(vdate, 'month')) # Get rid of forecasts for old observations
 
@@ -605,7 +633,7 @@ local({
 		# If this months forecast missing for BSBY, add it in for interpolation purposes
 		# Otherwise the dataset starts 3 months out
 		group_split(., vdate, varname) %>%
-		map_dfr(., function(x) {
+		map(., function(x) {
 			x %>%
 				# Join on missing obs dates
 				right_join(
@@ -627,13 +655,15 @@ local({
 					value = zoo::na.approx(value)
 				)
 			}) %>%
+		list_rbind %>%
 		# Now smooth all values more than 2 years out due to low liquidity
 		group_split(., vdate, varname) %>%
-		map_dfr(., function(x)
+		map(., function(x)
 			x %>%
 				mutate(., value_smoothed = zoo::rollmean(value, 6, fill = NA, align = 'right')) %>%
 				mutate(., value = ifelse(!is.na(value_smoothed) & date >= vdate + years(2), value_smoothed, value))
 				) %>%
+		list_rbind %>%
 		select(., -value_smoothed)
 
 
@@ -652,7 +682,7 @@ local({
 				filter(x, vdate == max(vdate)) %>%
 				mutate(date = datetime_to_timestamp(date)) %>%
 				arrange(., date) %>%
-				purrr::transpose(.) %>%
+				df_to_list(.) %>%
 				map(., ~ list(.$date, round(.$value, 2))),
 			color = rainbow(10)[i]
 			))
@@ -1004,7 +1034,7 @@ local({
 	# These forecasts only account for expectations theory without accounting for
 	# https://www.bis.org/publ/qtrpdf/r_qt1809h.htm
 	# Get historical term premium
-	term_prems_raw = collect(tbl(db, sql(
+	term_prems_raw = collect(tbl(pg, sql(
 		"SELECT vdate, varname, date, d1 AS value
 		FROM forecast_values_v2_all
 		WHERE forecast = 'spf' AND varname IN ('t03m', 't10y')"
@@ -1012,16 +1042,15 @@ local({
 
 	# Get long-term spreads forecast
 	forecast_spreads = lapply(c('tbill', 'tbond'), function(var) {
-		GET(
-			paste0(
-				'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
-				'survey-of-professional-forecasters/data-files/files/median_', var, '_level.xlsx?la=en'
-			),
-			write_disk(file.path(tempdir(), paste0(var, '.xlsx')), overwrite = TRUE)
-		)
-		readxl::read_excel(file.path(tempdir(), paste0(var, '.xlsx')), na = '#N/A', sheet = 'Median_Level') %>%
+
+		request(paste0(
+			'https://www.philadelphiafed.org/-/media/frbp/assets/surveys-and-data/',
+			'survey-of-professional-forecasters/data-files/files/median_', var, '_level.xlsx?la=en'
+			)) %>%
+			req_perform(., path = file.path(tempdir(), paste0(var, '.xlsx'))) %>%
+			readxl::read_excel(file.path(tempdir(), paste0(var, '.xlsx')), na = '#N/A', sheet = 'Median_Level') %>%
 			select(., c('YEAR', 'QUARTER', paste0(str_to_upper(var), 'D'))) %>%
-			na.omit(.) %>%
+			na.omit %>%
 			transmute(
 				.,
 				reldate = from_pretty_date(paste0(YEAR, 'Q', QUARTER), 'q'),
@@ -1339,17 +1368,17 @@ local({
 local({
 
 	cboe_data =
-		GET('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
-		content(.) %>%
+		request('https://www.cboe.com/us/futures/market_statistics/settlement/') %>%
+		req_perform %>%
+		resp_body_html %>%
 		html_elements(., 'ul.document-list > li > a') %>%
-		map_dfr(., function(x)
+		map(., function(x)
 			tibble(
 				vdate = as_date(str_sub(html_attr(x, 'href'), -10)),
 				url = paste0('https://cboe.com', html_attr(x, 'href'))
 			)
 		) %>%
-		purrr::transpose(.) %>%
-		map_dfr(., function(x)
+		map(., function(x)
 			read_csv(x$url, col_names = c('product', 'symbol', 'exp_date', 'price'), col_types = 'ccDn', skip = 1) %>%
 				filter(., product %in% c('AMB1', 'AMT1')) %>%
 				transmute(
@@ -1361,6 +1390,7 @@ local({
 					value = 100 - price/100
 				)
 			) %>%
+		list_rbind %>%
 		pivot_wider(., id_cols = c(varname, vdate, date), names_from = 'product', values_from = 'value') %>%
 		mutate(., value = ifelse(
 			is.na(AMB1) | is.na(AMT1),
@@ -1575,8 +1605,8 @@ local({
 		) %>%
 		transmute(., forecast = 'int', form = 'd1', vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(db, submodel_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(db, submodel_values, .verbose = T)
+	rows_added_v1 = store_forecast_values_v1(pg, submodel_values, .verbose = T)
+	rows_added_v2 = store_forecast_values_v2(pg, submodel_values, .verbose = T)
 
 	# Log
 	log_data = list(
@@ -1584,12 +1614,12 @@ local({
 		last_vdate = max(submodel_values$vdate),
 		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 100), collapse = '\n')
 	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'interest-rate-model', log_data)
+	log_finish_in_db(pg, run_id, JOB_NAME, 'interest-rate-model', log_data)
 
 	submodel_values <<- submodel_values
 })
 
 
 ## Close Connections ----------------------------------------------------------
-dbDisconnect(db)
+dbDisconnect(pg)
 message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
