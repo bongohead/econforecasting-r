@@ -9,13 +9,13 @@
 #' - Merge TFUT
 #' - Add vintage testing for mortgage rates
 #'
-#' Audited 1/17/23
+#' Validated 4/25/23
 
 # Initialize ----------------------------------------------------------
 
 ## Set Constants ----------------------------------------------------------
 JOB_NAME = 'interest-rate-model-run'
-BACKTEST_MONTHS = 36
+BACKTEST_MONTHS = 60
 
 ## Load Libs ----------------------------------------------------------
 library(econforecasting)
@@ -26,18 +26,15 @@ library(highcharter)
 library(DBI)
 library(data.table)
 library(forecast, include.only = c('forecast', 'Arima'))
-library(mgcv, include.only = c('gam', 'gam.fit', 's', 'te'))
-library(furrr, include.only = c('future_map'))
-library(future, include.only = c('plan', 'multisession'))
 
 ## Load Connection Info ----------------------------------------------------------
 load_env(Sys.getenv('EF_DIR'))
-if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
 pg = connect_pg()
-run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 
 hist = list()
 submodels = list()
+validation_log <<- list()
+data_dump <<- list()
 
 ## Load Variable Defs ----------------------------------------------------------'
 input_sources = get_query(pg, 'SELECT * FROM interest_rate_model_variables')
@@ -104,13 +101,18 @@ local({
 			value
 		) %>%
 		filter(., !is.na(value)) %>%
-		filter(., varname %in% filter(input_sources, hist_source == 'treas')$varname)
+		filter(., varname %in% filter(input_sources, hist_source == 'treas')$varname) %>%
+		arrange(., vdate)
 
 	hist$treasury <<- treasury_data
 })
 
 ## BLOOM  ----------------------------------------------------------
 local({
+
+	request('https://www.bloomberg.com') %>%
+		add_standard_headers %>%
+		req_perform
 
 	bloom_data =
 		input_sources %>%
@@ -127,11 +129,10 @@ local({
 				req %>%
 				req_headers(
 					'Host' = 'www.bloomberg.com',
-					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND'),
+					# 'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND'),
 					'Accept' = 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-					`User-Agent` = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/109.0',
-					`Set-Cookie` = 'seen_uk=1',
-					`Set-Cookie` = 'exp_pref=AMER'
+					`User-Agent` = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/112.0',
+					`Cookie` = 'geo_info={%22country%22:%22US%22%2C%22region%22:%22US%22%2C%22cityId%22:%224188985%22%2C%22provinceId%22:%224197000%22%2C%22fieldP%22:%224DC6D4%22%2C%22fieldD%22:%22wideopenwest.com%22%2C%22fieldMI%22:4%2C%22fieldN%22:%22hf%22}|1675044934273; agent_id=cb5e5766-a17c-4ea7-a774-4527c223693c; session_id=a92d1c93-92a6-4f2b-a50c-0293095d41ad; session_key=4b50dc47bb6b1b0960be1052118f8556d541d352; geo_info=%7B%22countryCode%22%3A%22US%22%2C%22country%22%3A%22US%22%2C%22cityId%22%3A%224188985%22%2C%22provinceId%22%3A%224197000%22%2C%22field_p%22%3A%224DC6D4%22%2C%22field_d%22%3A%22wideopenwest.com%22%2C%22field_mi%22%3A4%2C%22field_n%22%3A%22hf%22%2C%22trackingRegion%22%3A%22US%22%2C%22cacheExpiredTime%22%3A1675044930575%2C%22region%22%3A%22US%22%2C%22fieldMI%22%3A4%2C%22fieldN%22%3A%22hf%22%2C%22fieldD%22%3A%22wideopenwest.com%22%2C%22fieldP%22%3A%224DC6D4%22%7D%7C1675044930575; ccpaUUID=ab2e9aef-8dbc-4797-8899-17b1b38d9f32; dnsDisplayed=true; ccpaApplies=true; signedLspa=false; _sp_su=false; bbgconsentstring=req1fun1pad1; professional-cookieConsent=new-relic|perimeterx-bot-detection|perimeterx-pixel|google-tag-manager|google-analytics|google-campaign-manager-360-and-google-display-video-360|microsoft-advertising|eloqua|adwords|demandbase|linkedin-insights; _pxvid=02eb1983-8c85-11ed-8b4e-6f6f6a464858; _ga_GQ1PBLXZCT=GS1.1.1682399710.5.0.1682399710.0.0.0; _ga=GA1.1.2074772840.1672873888; bdfpc=004.6016910405.1673033116166; _scid=7b8228a9-0c5d-4f0b-887f-fe5ecd27d5e7; __stripe_mid=590b54ac-88fe-4371-8ed8-4518a23caf0b0b8cf1; gatehouse_id=67728942-a402-4c6b-8a0c-5e7a78ca15c3; _uetvid=d9857f508df711eda90ee33ad3e5656c; seen_uk=1; exp_pref=AMER; pxcts=1aa6d4f4-e328-11ed-bbf2-674463644579'
 					) %>%
 				req_retry(max_tries = 5) %>%
 				req_perform %>%
@@ -151,7 +152,7 @@ local({
 				na.omit
 
 			# Add sleep due to bot detection
-			Sys.sleep(runif(6, 3, 5))
+			Sys.sleep(runif(10, 10, 20))
 
 			return(res)
 		}) %>%
@@ -477,8 +478,6 @@ local({
 		return(res)
 	}))
 
-	log_dump_in_db(pg, run_id, JOB_NAME, 'interest-rate-model', list(cme_raw_data = cme_raw_data))
-
 	cme_raw_data %>%
 		arrange(., date) %>%
 		ggplot(.) +
@@ -508,11 +507,12 @@ local({
 	## Barchart.com data
 	message('Starting Barchart data scrape...')
 
-	barchart_sources =
+	desired_sources =
 		# 3 year history + max of 5 year forecast
+		# Note: addl 36 montths are needed for TDNS to have full BACKTEST_MONTHS
 		tibble(date = seq(
-			floor_date(today() - months(BACKTEST_MONTHS), 'month'),
-			length.out = (3+5)*12,
+			from = floor_date(today() - months(BACKTEST_MONTHS + 36), 'month'),
+			to = floor_date(today() + months(5 * 12), 'month'),
 			by = '1 month'
 			)) %>%
 		mutate(., year = year(date), month = month(date)) %>%
@@ -536,30 +536,52 @@ local({
 		) %>%
 		filter(., months_out <= max_months_out) %>%
 		transmute(., varname, code, date) %>%
-		arrange(., date) %>%
-		df_to_list
-
+		arrange(., date) 
+	
+	cookies =
+		request(
+		'https://www.barchart.com/futures/quotes/ZQM22/historical-prices?orderBy=contractExpirationDate&orderDir=asc&page=all'
+		) %>%
+		add_standard_headers %>%
+		req_perform %>%
+		get_cookies
+	
 	# Check ahead of time whether the source is valid
 	# This is a lot faster then checking it during the actual scraping process
-	barchart_sources_valid = keep(barchart_sources, .progress = T, function(source) {
-		request(paste0(
-			'https://instruments-prod.aws.barchart.com/instruments/search/', source$code, '?region=us'
-			)) %>%
-			req_retry(max_tries = 5) %>%
-			req_perform %>%
-			resp_body_json %>%
-			.$instruments %>%
-			map_chr(., \(x) x$symbol) %>%
-			some(., \(x) x == source$code)
-		})
-
-	cookies =
+	available_sources = lapply(unique(str_sub(desired_sources$code, 1, 2)), function(x) {
+		
+		request(URLencode(paste0(
+			'https://www.barchart.com/proxies/core-api/v1/quotes/get',
+			'?fields=contractExpirationDate.format(Y),symbol,contractNameHistorical,lastPrice,tradeTime',
+			'&list=futures.historical.byRoot(', x, ')&orderBy=contractExpirationDate&orderDir=asc',
+			'&meta=field.shortName,field.type,field.description,lists.lastUpdate&hasOptions=true',
+			'&raw=1'
+		))) %>%
+		add_standard_headers %>%
+		list_merge(., headers = list(
+			'X-XSRF-TOKEN' = URLdecode(str_extract(cookies$`XSRF-TOKEN`, '(?<==).*')),
+			'Referer' = paste0('https://www.barchart.com/futures/quotes/', x, 'M20/historical-prices'),
+			'Cookie' = URLdecode(paste0(
+				'bcFreeUserPageView=0; webinar144WebinarClosed=true; ',
+				paste0(cookies, collapse = '; ')
+			))
+		)) %>%
+		req_retry(max_tries = 5) %>%
+		req_perform %>%
+		resp_body_json %>%
+		.$data %>%
+		map_chr(., \(x) x$symbol)
+	}) %>% unlist(.)
+	
+	scrape_sources = filter(desired_sources, code %in% available_sources)
+	
+	cookies2 =
 		request('https://www.barchart.com/futures/quotes/ZQV22/') %>%
 		add_standard_headers %>%
 		req_perform %>%
 		get_cookies(., T)
 
-	barchart_data = map(barchart_sources_valid, function(x) {
+	barchart_data = map(df_to_list(scrape_sources), function(x) {
 
 		print(str_glue('Pulling data for {x$varname} - {as_date(x$date)}, {now()}'))
 		Sys.sleep(runif(1, 2, 5))
@@ -572,11 +594,11 @@ local({
 			)) %>%
 			add_standard_headers %>%
 			list_merge(., headers = list(
-				'X-XSRF-TOKEN' = URLdecode(str_extract(cookies$`XSRF-TOKEN`, '(?<==).*')),
+				'X-XSRF-TOKEN' = URLdecode(str_extract(cookies2$`XSRF-TOKEN`, '(?<==).*')),
 				'Referer' = 'https://www.barchart.com/futures/quotes/ZQZ20',
 				'Cookie' = URLdecode(paste0(
 					'bcFreeUserPageView=0; webinar113WebinarClosed=true; ',
-					paste0(cookies, collapse = '; ')
+					paste0(cookies2, collapse = '; ')
 					))
 			)) %>%
 			req_perform
@@ -699,7 +721,8 @@ local({
 		hc_legend(., enabled = TRUE)
 
 	print(series_chart)
-
+	
+	data_dump$cme_raw_data <<- cme_raw_data
 	submodels$cme <<- final_df
 })
 
@@ -717,9 +740,10 @@ local({
 		input_sources %>%
 		filter(., str_detect(varname, '^t\\d{2}[m|y]$')) %>%
 		select(., varname) %>%
-		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1))
+		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1)) %>%
+		arrange(., ttm) 
 
-	fred_data =
+	fred_data  =
 		bind_rows(hist$fred, hist$treasury) %>%
 		filter(., str_detect(varname, '^t\\d{2}[m|y]$') | varname == 'ffr') %>%
 		select(., -vdate)
@@ -880,7 +904,6 @@ local({
 
 	print(dns_fit_plots)
 
-
 	# For each vintage date, gets:
 	#  monthly returns (annualized & compounded) up to 10 years (minus FFR) using TDNS
 	#  decomposition to enforce smoothness, reweighted with historical values (via spline)
@@ -929,16 +952,15 @@ local({
 	# Check how well the spline combined with TDNS fits the history
 	full_fit_plots =
 		fitted_curve %>%
-		filter(., vdate %in% c(head(unique(.$vdate, 6)), tail(unique(.$vdate), 6))) %>%
+		filter(., vdate %in% c(head(unique(.$vdate, 4)), tail(unique(.$vdate), 4))) %>%
 		ggplot(.) +
-		geom_line(aes(x = ttm, y = annualized_yield_dns), color = 'blue') +
+		geom_line(aes(x = ttm, y = annualized_yield_dns), color = 'blue', linewidth = 1.5) +
 		geom_line(aes(x = ttm, y = spline_fit), color = 'black') +
 		geom_point(aes(x = ttm, y = yield_hist), color = 'black') +
-		geom_line(aes(x = ttm, y = annualized_yield), color = 'red') +
+		geom_line(aes(x = ttm, y = annualized_yield), color = 'red', linewidth = 2, alpha = .5) +
 		facet_wrap(vars(vdate))
 
 	print(full_fit_plots)
-
 
 	# Iterate over "yttms" tyield_1m, tyield_3m, ..., etc.
 	# and for each, iterate over the original "ttms" 1, 2, 3,
@@ -959,7 +981,7 @@ local({
 				mutate(., yttm = yttm) %>%
 				inner_join(., yield_curve_names_map, c('yttm' = 'ttm'))
 		) %>%
-		bind_rows(.) %>%
+		list_rbind %>%
 		mutate(., date = add_with_rollback(floor_date(vdate, 'months'), months(ttm - 1))) %>%
 		select(., vdate, varname, date, value = yttm_ahead_annualized_yield) %>%
 		inner_join(
@@ -1025,11 +1047,10 @@ local({
 			tdns3 = .3 * (2 * t02y - t03m - t10y)
 		)
 
-
 	## Now add historical ratios in for LT term premia
 
 	# For 10-year forward forecast, use long-term spread forecast
-	# Exact interpolatoin at 10-3 10 years ahead
+	# Exact interpolation at 10-3 10 years ahead
 	# These forecasts only account for expectations theory without accounting for
 	# https://www.bis.org/publ/qtrpdf/r_qt1809h.htm
 	# Get historical term premium
@@ -1066,7 +1087,6 @@ local({
 		arrange(., vdate) %>%
 		mutate(., spread = zoo::rollmean(spread, 2, fill = NA, align = 'right')) %>%
 		tail(., -1)
-
 
 	# 1. At each historical vdate, get the trailing 36-month historical spread between all Treasuries with the 3m yield
 	# 2. Get the relative ratio of these historical spreads relative to the 10-3 spread (%diff from 0)
@@ -1135,7 +1155,7 @@ local({
 		mutate(
 			.,
 			months_ahead = interval(floor_date(vdate, 'months'), date) %/% months(1),
-			lt_weight = ifelse(months_ahead >= 60, .5, months_ahead/60 * .5),
+			lt_weight = ifelse(months_ahead >= 60, 1/3, months_ahead/60 * 2/3),
 			spread = value - t03m
 			) %>%
 		left_join(., forecast_lt_spreads, by = c('varname', 'vdate')) %>%
@@ -1180,7 +1200,7 @@ local({
 				mutate(., date = floor_date) %>%
 				group_by(., vdate, varname, date) %>%
 				summarize(., value = mean(value), .groups = 'drop') %>%
-				# Keep lastest hist obs for each vdate
+				# Keep latest hist obs for each vdate
 				group_by(., vdate) %>%
 				filter(., date == max(date)) %>%
 				ungroup(.) %>%
@@ -1267,13 +1287,35 @@ local({
 		facet_wrap(vars(varname))
 
 	bind_rows(
-		expectations_forecasts %>% filter(., vdate == max(vdate)) %>% mutate(., type = 'expectations'),
-		adj_forecasts %>% filter(., vdate == max(vdate)) %>% mutate(., type = 'adj'),
-		merged_forecasts %>% filter(., vdate == max(vdate)) %>% mutate(., type = 'merged')
+		expectations_forecasts %>% filter(., vdate == max(vdate) - days(0)) %>% mutate(., type = 'expectations'),
+		adj_forecasts %>% filter(., vdate == max(vdate) - days(0)) %>% mutate(., type = 'adj'),
+		merged_forecasts %>% filter(., vdate == max(vdate) - days(0)) %>% mutate(., type = 'merged')
 		) %>%
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = type)) +
 		facet_wrap(vars(varname))
+	
+	# Take same-month t01m forecasts and merge due to instability 
+	# at the short end during financial risk periods
+	filter(merged_forecasts, floor_date(vdate, 'month') == date & varname == 't01m') %>%
+		left_join(
+			hist_df_unagg %>%
+				group_by(., vdate, varname) %>%
+				filter(., date == max(date)) %>%
+				ungroup(.) %>%
+				transmute(., vdate, varname, last_date = date, last_value = value),
+			 by = c('varname', 'vdate'),
+			 relationship = 'one-to-one'
+		) %>% 
+		transmute(
+			.,
+			vdate,
+			varname, 
+			freq,
+			date,
+			lv = 1/4 * last_value + 3/4 * value
+			) %>%
+		arrange(., vdate)
 
 	tdns <<- list(
 		dns_coefs_hist = dns_coefs_hist,
@@ -1287,12 +1329,12 @@ local({
 ## TFUT: Smoothed DNS + Futures ----------------------------------------------------------
 #' Temporarily disabled - since currently all these are merged into a single INT model
 # local({
-#
+# 
 # 	"
 # 	Fit splines on both temporal dimension, ttm dimension, and their tensor product
 # 	https://www.math3ma.com/blog/the-tensor-product-demystified
 # 	"
-#
+# 
 # 	# Match each varname x forecast date from TDNS to the closest futures vdate (within 7 day range)
 # 	futures_df =
 # 		submodels$tdns %>%
@@ -1315,16 +1357,15 @@ local({
 # 			months_out = interval(floor_date(vdate, 'month'), floor_date(date, 'month')) %/% months(1)
 # 		) %>%
 # 		mutate(., mod_value = ifelse(!is.na(futures_value), futures_value, value))
-#
-# 	# Can use furrr if too slow
-# 	plan(multisession, workers = cl, gc = TRUE)
-#
+# 
+# 	# Can use furrr for speed issues
+# 	# plan(multisession, workers = parallel::detectCores() - 2, gc = TRUE)
+# 
 # 	future_forecasts =
 # 		futures_df %>%
 # 		group_split(., vdate) %>%
-# 		tail(., 1) %>%
 # 		map(., .progress = T, function(df, i) {
-#
+# 
 # 			fit = gam(
 # 				mod_value ~
 # 					s(months_out, bs = 'tp', fx = F, k = -1) +
@@ -1333,9 +1374,9 @@ local({
 # 				data = df,
 # 				method = 'ML'
 # 				)
-#
+# 
 # 			final_df = mutate(df, gam_fit = fit$fitted.values, final_value = .5 * value + .5 * gam_fit)
-#
+# 
 # 			plot =
 # 				final_df %>%
 # 				filter(., varname == 't10y') %>%
@@ -1346,19 +1387,23 @@ local({
 # 				geom_line(aes(x = date, y = mod_value), color = 'red') +
 # 				geom_line(aes(x = date, y = gam_fit), color = 'pink') +
 # 				geom_line(aes(x = date, y = final_value), color = 'blue')
-#
+# 
 # 			list(
 # 				final_df = final_df,
 # 				plot = plot
 # 				)
 # 			})
-#
-# 	future:::ClusterRegistry("stop")
-#
+# 
+# 	# future:::ClusterRegistry("stop")
+# 	
 # 	forecasts_df =
 # 		map_dfr(future_forecasts, \(x) x$final_df) %>%
 # 		transmute(., vdate, varname, freq = 'm', date, value)
-#
+# 	
+# 	forecasts_df %>%
+# 		count(., vdate) %>%
+# 		arrange(., vdate)
+# 
 # 	submodels$tfut <<- forecasts_df
 # })
 
@@ -1608,17 +1653,12 @@ local({
 	rows_added_v2 = store_forecast_values_v2(pg, submodel_values, .verbose = T)
 
 	# Log
-	log_data = list(
-		rows_added = rows_added_v2,
-		last_vdate = max(submodel_values$vdate),
-		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
-	)
-	log_finish_in_db(pg, run_id, JOB_NAME, 'interest-rate-model', log_data)
-
+	validation_log$rows_added <<- rows_added_v2
+	validation_log$last_vdate <<- max(submodel_values$vdate)
+	
 	submodel_values <<- submodel_values
 })
 
 
 ## Close Connections ----------------------------------------------------------
 dbDisconnect(pg)
-message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
