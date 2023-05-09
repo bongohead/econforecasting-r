@@ -17,6 +17,7 @@
 #' @import dplyr
 #' @importFrom stringr str_glue
 #' @importFrom tibble as_tibble
+#'
 #' @export
 add_lagged_columns = function(df, date_col = 'date', cols = NULL, max_lag = 1) {
 
@@ -31,16 +32,19 @@ add_lagged_columns = function(df, date_col = 'date', cols = NULL, max_lag = 1) {
 
 
 	if (is.null(cols)) {
+
 		lapply(1:max_lag, function(l)
-			dplyr::transmute(df, across(where(function(x) is.numeric(x)), function(x) dplyr::lag(x, l))) %>%
+			transmute(df, across(where(function(x) is.numeric(x)), function(x) dplyr::lag(x, l))) %>%
 				setNames(., paste0(colnames(.), '.l', l))
 			) %>%
-			dplyr::bind_cols(dplyr::select(df, where(function(x) !is.numeric(x))), .)
+			bind_cols(select(df, where(function(x) !is.numeric(x))), .)
+			
 	} else {
+
 		lapply(1:max_lag, function(l)
-			dplyr::transmute(df, across(cols, function(x) dplyr::lag(x, l))) %>%
+			transmute(df, across(cols, function(x) dplyr::lag(x, l))) %>%
 				setNames(., paste0(colnames(.), '.l', l))
 			) %>%
-			dplyr::bind_cols(dplyr::select(df, all_of(c(date_col, cols))), .)
+			bind_cols(select(df, all_of(c(date_col, cols))), .)
 	}
 }

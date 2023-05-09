@@ -1,3 +1,83 @@
+#' Connect to main Postgres database
+#'
+#' @importFrom RPostgres Postgres
+#' @importFrom DBI dbConnect
+#'
+#' @export
+connect_pg = function() {
+
+	check_env_variables(c('DB_DATABASE', 'DB_SERVER', 'DB_USERNAME', 'DB_PASSWORD', 'DB_PORT'))
+
+	db = dbConnect(
+		RPostgres::Postgres(),
+		dbname = Sys.getenv('DB_DATABASE'),
+		host = Sys.getenv('DB_SERVER'),
+		port = Sys.getenv('DB_PORT'),
+		user = Sys.getenv('DB_USERNAME'),
+		password = Sys.getenv('DB_PASSWORD')
+	)
+
+	return(db)
+}
+
+#' Execute a select query
+#'
+#' @param db The DBI connector object
+#' @param query The query
+#'
+#' @importFrom DBI dbGetQuery
+#'
+#' @export
+get_query = function(db, query) {
+
+	if (!'PqConnection' %in% class(db)) stop('Object "db" must be of class PgConnection')
+
+	return(as_tibble(dbGetQuery(db, query)))
+}
+
+#' Disconenct frmo DB
+#'
+#' @param db The DBI connector object
+#'
+#' @importFrom DBI dbDisconnect
+#'
+#' @export
+disconnect_db = function(db) {
+	dbDisconnect(db)
+}
+
+#' Check largest table sizes in Postgres database.
+#'
+#' @param db A PostgreSQL DBI connection.
+#'
+#' @return A data frame of table sizes.
+#'
+#' @import dplyr
+#'
+#' @export
+get_pg_table_sizes = function(db) {
+
+	if (!'PqConnection' %in% class(db)) stop('Object "db" must be of class PgConnection')
+
+	res = get_query(db, sql(
+		"SELECT
+			schema_name,
+			relname,
+			pg_size_pretty(table_size) AS size,
+			table_size
+		FROM (
+			SELECT
+				pg_catalog.pg_namespace.nspname AS schema_name,
+				relname,
+				pg_relation_size(pg_catalog.pg_class.oid) AS table_size
+			FROM pg_catalog.pg_class
+			JOIN pg_catalog.pg_namespace ON relnamespace = pg_catalog.pg_namespace.oid
+		) t
+		WHERE schema_name NOT LIKE 'pg_%'
+		ORDER BY table_size DESC;"
+	))
+}
+
 #' Helper function to check row count of a table in Postgres
 #'
 #' @description
@@ -109,6 +189,7 @@ store_forecast_values_v1 = function(db, df, .verbose = F) {
 #'
 #' @param db The database conenction object.
 #' @param df The dataframe of forecast values. Must include columns forecast, vdate, form, freq, varname, and date.
+#' @param .store_new_only Boolean; whether to *only* store rows where the combination of (forecast, vdate) doesn't already exist in the database. Defaults to F.
 #' @param .verbose Echo error messages.
 #'
 #' @return The number of rows added
@@ -119,7 +200,7 @@ store_forecast_values_v1 = function(db, df, .verbose = F) {
 #' @importFrom lubridate today
 #'
 #' @export
-store_forecast_values_v2 = function(db, df, .verbose = F) {
+store_forecast_values_v2 = function(db, df, .store_new_only = F, .verbose = F) {
 
 	if (class(db) != 'PqConnection') stop('Parameter "db" must be a PqConnection object!')
 	if (!is.data.frame(df)) stop('Parameter "df" must be a data.frame.')
@@ -135,23 +216,33 @@ store_forecast_values_v2 = function(db, df, .verbose = F) {
 
 	today_string = today('US/Eastern')
 
-	insert_groups = group_split(mutate(df, mdate = today_string, split = ceiling((1:nrow(df))/10000)), split, .keep = F)
+	existing_forecast_combinations = get_query(db, paste0("SELECT forecast, vdate FROM forecast_values_v2 GROUP BY forecast, vdate"))
+	store_df = anti_join(df, existing_forecast_combinations, by = c('forecast', 'vdate'))
 
-	insert_result = map_dbl(insert_groups, .progress = .verbose, function(x)
-		dbExecute(db, create_insert_query(
-			x,
-			'forecast_values_v2',
-			'ON CONFLICT (mdate, forecast, vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
-		))
-	)
+	if (nrow(store_df) > 0) {
 
-	insert_result = {if (any(is.null(insert_result))) stop('SQL Error!') else sum(insert_result)}
+		insert_groups = group_split(mutate(store_df, mdate = today_string, split = ceiling((1:nrow(store_df))/10000)), split, .keep = F)
+
+		insert_result = map_dbl(insert_groups, .progress = .verbose, function(x)
+			dbExecute(db, create_insert_query(
+				x,
+				'forecast_values_v2',
+				'ON CONFLICT (mdate, forecast, vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
+			))
+		)
+
+		insert_result = {if (any(is.null(insert_result))) stop('SQL Error!') else sum(insert_result)}
+	}
+
 
 	final_count = get_rowcount(db, 'forecast_values_v2')
 	rows_added = final_count - initial_count
+
+
 	if (.verbose == T) message('***** Rows Added: ', rows_added)
 
 	if (rows_added != 0) {
+
 		if (.verbose == T) message('***** Refreshing Views')
 		initial_count_all = get_rowcount(db, 'forecast_values_v2_all')
 		initial_count_latest = get_rowcount(db, 'forecast_values_v2_latest')
@@ -159,14 +250,15 @@ store_forecast_values_v2 = function(db, df, .verbose = F) {
 		dbExecute(db, 'REFRESH MATERIALIZED VIEW CONCURRENTLY forecast_values_v2_latest;')
 		rows_added_all = get_rowcount(db, 'forecast_values_v2_all') - initial_count_all
 		rows_added_latest = get_rowcount(db, 'forecast_values_v2_latest') - initial_count_latest
+
 	} else {
 		rows_added_all = 0
 		rows_added_latest = 0
+
 	}
 
 	return(list(forecast_values = rows_added, forecast_values_all = rows_added_all, forecast_values_latest = rows_added_latest))
 }
-
 
 
 
@@ -184,6 +276,7 @@ store_forecast_values_v2 = function(db, df, .verbose = F) {
 #' @importFrom purrr map_dbl
 #' @importFrom DBI dbExecute
 #' @importFrom lubridate today
+#'
 #' @export
 store_forecast_hist_values_v2 = function(db, df, .verbose = F) {
 
@@ -228,14 +321,3 @@ store_forecast_hist_values_v2 = function(db, df, .verbose = F) {
 
 	return(list(forecast_hist_values = rows_added, forecast_hist_values_latest = rows_added_latest))
 }
-
-
-# refresh_views = function(db) {
-#
-# 	dbExecute(db, 'REFRESH MATERIALIZED VIEW CONCURRENTLY forecast_hist_values_v2_latest;')
-# 	dbExecute(db, 'REFRESH MATERIALIZED VIEW CONCURRENTLY forecast_values_v2_all;')
-# 	dbExecute(db, 'REFRESH MATERIALIZED VIEW CONCURRENTLY forecast_values_v2_latest;')
-#
-#
-# }
-

@@ -120,3 +120,24 @@ log_finish_in_db = function(db, run_id, job, module, log_dump = list()) {
 
 	return(T)
 }
+
+
+#' Log the output to a file
+#'
+#' @param log_path A character representing the filename of the log file.
+#'
+#' @export
+send_output_to_log = function(log_path) {
+
+	check_env_variables('EF_DIR')
+
+	sink_path = file.path(log_path)
+	sink_conn = file(sink_path, open = 'at')
+
+	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
+	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
+
+	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
+
+	return(T)
+}

@@ -4,7 +4,7 @@ Title: Helper functions
 Version: 2.02
 Authors@R: 
     c(person(given = "Charles",
-             family = "Ye",
+             family = "Y",
              role = c("aut", "cre"),
              email = "charles@econforecasting.com"))
 Description: Provides miscellaneous functions for forecasting and analysis of economic time series. 
@@ -14,11 +14,9 @@ Imports:
 	lubridate,
 	purrr,
 	tibble,
-	httr,
+	httr2,
 	DBI
 Suggests:
-	highcharter,
-	DT
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.2.3

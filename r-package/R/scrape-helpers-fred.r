@@ -198,32 +198,3 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 		) %>%
 		return(.)
 }
-
-# get_treasury_data = function() {
-# 	treasury_data = c(
-# 		'https://home.treasury.gov/system/files/276/yield-curve-rates-2011-2020.csv',
-# 		paste0(
-# 			'https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/',
-# 			2021:year(today()),
-# 			'/all?type=daily_treasury_yield_curve&field_tdr_date_value=2023&page&_format=csv'
-# 		)
-# 	) %>%
-# 		map(., .progress = T, \(x) read_csv(x, col_types = 'c')) %>%
-# 		list_rbind(.) %>%
-# 		pivot_longer(., cols = -c('Date'), names_to = 'varname', values_to = 'value') %>%
-# 		separate(., col = 'varname', into = c('ttm_1', 'ttm_2'), sep = ' ') %>%
-# 		mutate(
-# 			.,
-# 			varname = paste0('t', str_pad(ttm_1, 2, pad = '0'), ifelse(ttm_2 == 'Mo', 'm', 'y')),
-# 			date = mdy(Date),
-# 		) %>%
-# 		transmute(
-# 			.,
-# 			vdate = date,
-# 			varname,
-# 			date,
-# 			value
-# 		) %>%
-# 		filter(., !is.na(value))
-#
-# }
