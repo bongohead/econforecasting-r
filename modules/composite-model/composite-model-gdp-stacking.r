@@ -3,21 +3,12 @@
 #' Audited 1/17/23
 
 # Initialize ----------------------------------------------------------
-
-## Set Constants ----------------------------------------------------------
-JOB_NAME = 'composite-model-stacking'
-EF_DIR = Sys.getenv('EF_DIR')
 TRAIN_VDATE_START = '2010-01-01'
 VARNAMES = c('gdp', 'pce', 'pdi')
+STORE_NEW_ONLY = F
 
-## Cron Log ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
+validation_log <<- list()
+data_dump <<- list()
 
 ## Load Libs ----------------------------------------------------------'
 library(econforecasting)
@@ -25,30 +16,29 @@ library(tidyverse)
 library(data.table)
 library(readxl)
 library(httr)
-library(DBI)
 library(lubridate)
 library(xgboost)
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'composite-model')
+load_env(Sys.getenv('EF_DIR'))
+pg = connect_pg()
+
 releases = list()
 hist = list()
 
 ## Load Variable Defs ----------------------------------------------------------
-variable_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_variables'))
-release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'))
+variable_params = get_query(pg, 'SELECT * FROM forecast_variables')
+release_params = get_query(pg, 'SELECT * FROM forecast_hist_releases')
 
 # Import Test Backdates ----------------------------------------------------------
 
 ## Import Historical Data ----------------------------------------------------------
-hist_data = tbl(db, sql(
+hist_data = get_query(pg,
 	"SELECT val.varname, val.vdate, val.date, val.value
 	FROM forecast_hist_values_v2 val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
 	WHERE release = 'BEA.GDP' AND freq = 'q' AND form = 'd1' AND v.varname NOT IN ('cbi', 'nx', 'ngdp')"
-	)) %>%
-	collect(.) %>%
+	) %>%
 	# Only keep initial release for each historical value
 	# This results in date being the unique row identifier
 	group_by(., varname, date) %>%
@@ -57,23 +47,21 @@ hist_data = tbl(db, sql(
 	arrange(., varname, date)
 
 ## Import Forecasts ----------------------------------------------------------
-forecast_data = tbl(db, sql(
+forecast_data = get_query(pg,
 	"SELECT val.varname, val.forecast, val.vdate, val.date, val.d1 AS value
 	FROM forecast_values_v2_all val
 	INNER JOIN forecast_variables v ON v.varname = val.varname
 	WHERE release = 'BEA.GDP' AND freq = 'q' AND v.varname NOT IN ('cbi', 'nx', 'ngdp')"
-	)) %>%
-	collect(.)
+	)
 
 ## Import Forecasts ----------------------------------------------------------
-release_data = tbl(db, sql(str_glue(
+release_data = get_query(pg, str_glue(
 	"SELECT v.varname, d.release, d.date AS release_date
 	FROM forecast_hist_release_dates d
 	INNER JOIN forecast_hist_releases r ON r.id = d.release
 	INNER JOIN forecast_variables v ON r.id = v.release
 	WHERE v.release = 'BEA.GDP'"
-	))) %>%
-	collect(.) %>%
+	)) %>%
 	# Convert BEA forecasts into release dates
 	mutate(., date = add_with_rollback(floor_date(release_date, 'quarter'), months(-3))) %>%
 	group_by(., date) %>%
@@ -268,7 +256,6 @@ test_data =
 	# .[, vdate := release_date - days_before_release] %>%
 	dcast(., varname + date + release_date + days_before_release ~ forecast, value.var = 'value')
 
-
 ## Train Model ----------------------------------------------------------
 train_varnames = VARNAMES
 
@@ -276,7 +263,7 @@ trees = lapply(train_varnames, function(this_varname) {
 
 	input_data =
 		train_data %>%
-		.[varname == this_varname] #%>%
+		.[varname == this_varname]
 		# .[!year(date) %in% c(2020)]
 		# .[!date %in% as_date(c('2020-04-01', '2020-07-01', '2020-10-01'))]
 
@@ -294,7 +281,7 @@ trees = lapply(train_varnames, function(this_varname) {
 			ma,
 			now,
 			spf,
-			stlnow,
+			# stlnow,
 			wsj
 		) %>%
 		as.matrix(.)
@@ -303,13 +290,13 @@ trees = lapply(train_varnames, function(this_varname) {
 		data = input_matrix,
 		label = input_data$hist_value,
 		verbose = 2,
-		max_depth = 6,
-		learning_rate = .3,
-		print_every_n = 50,
+		max_depth = 3,
+		learning_rate = .1,
+		print_every_n = 100,
 		nthread = 6,
 		nrounds = 1000,
 		objective = 'reg:squarederror',
-		booster = 'gbtree' #'gbtree'#'gblinear', #'gbtree', #'gblinear', 'gbtree',
+		booster = 'gbtree'# #'gblinear'
 		# monotone_constraints = c(0, rep(1, ncol(input_matrix) - 1))
 		)
 
@@ -329,19 +316,19 @@ test_results = lapply(train_varnames, function(this_varname) {
 			trees[[this_varname]],
 			test_data[varname == this_varname] %>%
 				select(
-						'days_before_release',
-						'arima',
-						'atlnow',
-						# 'cb',
-						'cbo',
-						'constant',
-						'fnma',
-						'ma',
-						'now',
-						'spf',
-						'stlnow',
-						'wsj'
-						) %>%
+					'days_before_release',
+					'arima',
+					'atlnow',
+					# 'cb',
+					'cbo',
+					'constant',
+					'fnma',
+					'ma',
+					'now',
+					'spf',
+					# 'stlnow',
+					'wsj'
+					) %>%
 				.[, days_before_release := fifelse(days_before_release >= 180, 180, days_before_release)] %>%
 				as.matrix(.)
 			)
@@ -379,14 +366,18 @@ test_results =
 	.[, vdate := release_date - days_before_release] %>%
 	.[vdate <= today()]
 
-# Show GDP values
+test_data %>%
+	mutate(., realdate = release_date - days_before_release) %>% filter(., realdate == today()) %>%
+	as_tibble %>% filter(., varname == 'gdp')
+
 test_results %>%
 	filter(., varname == 'gdp') %>%
 	select(., vdate, date, predict) %>%
 	arrange(., date, vdate) %>%
 	pivot_wider(., names_from = 'date', values_from = 'predict') %>%
-	arrange(., desc(vdate)) %>%
-	print(., n = 500)
+	arrange(., (vdate)) %>%
+	tail(., 100) %>%
+	print(., n = 100)
 
 # Finalize ----------------------------------------------------------
 
@@ -397,19 +388,12 @@ local({
 		test_results %>%
 		transmute(., forecast = 'comp', form = 'd1', vdate, freq = 'q', varname, date, value = predict)
 
-	rows_added_v1 = store_forecast_values_v1(db, forecast_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(db, forecast_values, .verbose = T)
+	rows_added = store_forecast_values_v2(pg, forecast_values, .store_new_only = STORE_NEW_ONLY, .verbose = T)
 
-	log_data = list(
-		rows_added = rows_added_v2,
-		last_vdate = max(forecast_values$vdate),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 100), collapse = '\n')
-	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'composite-model', log_data)
+	# Log
+	validation_log$store_new_only <<- STORE_NEW_ONLY
+	validation_log$rows_added <<- rows_added
+	validation_log$last_vdate <<- max(forecast_values$vdate)
 
-	forecast_values <<- forecast_values
+	disconnect_db(pg)
 })
-
-## Close Connections ----------------------------------------------------------
-dbDisconnect(db)
-message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))

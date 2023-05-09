@@ -1,29 +1,20 @@
 #'  Run this script on scheduler after close of business each day
 
 # Initialize ----------------------------------------------------------
-
-## Set Constants ----------------------------------------------------------
-JOB_NAME = 'nowcast-model-run'
-EF_DIR = Sys.getenv('EF_DIR')
 IMPORT_DATE_START = '2007-01-01'  # spdw, usd, metals, moo start in Q1-Q2 2007, can start at 2008-01-01
-STORE_HIST = FALSE
+STORE_HIST = F
+STORE_NEW_ONLY = F
 
-## Cron Log ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
+validation_log <<- list()
+data_dump <<- list()
 
 ## Load Libs ----------------------------------------------------------'
 library(econforecasting)
 library(tidyverse)
 library(data.table)
 library(readxl)
-library(httr)
 library(DBI)
+library(httr2)
 library(lubridate)
 library(jsonlite)
 library(glmnet)
@@ -34,17 +25,17 @@ library(xtable) # Needed for knitting latex docs
 library(ggthemes) # Needed for knitting latex docs
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'nowcast-model')
-log_job_in_db(db, JOB_NAME, 'nowcast-model', 'job-start')
+load_env(Sys.getenv('EF_DIR'))
+pg = connect_pg()
+
 releases = list()
 hist = list()
 model = list()
 models = list()
 
 ## Load Variable Defs ----------------------------------------------------------
-variable_params = as_tibble(dbGetQuery(db, 'SELECT * FROM nowcast_model_variables'))
-release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM nowcast_model_input_releases'))
+variable_params = get_query(pg, 'SELECT * FROM nowcast_model_variables')
+release_params = get_query(pg, 'SELECT * FROM nowcast_model_input_releases')
 
 ## Set Backtest Dates  ----------------------------------------------------------
 local({
@@ -72,29 +63,27 @@ local({
 local({
 
 	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
-	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	api_key = Sys.getenv('FRED_API_KEY')
 
-	fred_releases =
-		release_params %>%
-		filter(., id %in% filter(variable_params, nc_dfm_input == 1)$release & source == 'fred') %>%
-		purrr::transpose(.) %>%
-		map_dfr(., function(x)
-			RETRY(
-				'GET',
-				str_glue(
-					'https://api.stlouisfed.org/fred/release/dates?',
-					'release_id={x$source_key}&realtime_start=2010-01-01',
-					'&include_release_dates_with_no_data=true&api_key={api_key}&file_type=json'
-				),
-				times = 10
-				) %>%
-				content(., as = 'parsed') %>%
-				.$release_dates %>%
-				{tibble(
-					release = x$id,
-					date = sapply(., function(y) y$date)
-					)}
-			)
+	pull_data = df_to_list(
+		filter(release_params, id %in% filter(variable_params, nc_dfm_input == 1)$release & source == 'fred')
+		)
+
+	resp_results = set_names(send_parallel_requests(map(pull_data, \(x) request(str_glue(
+		'https://api.stlouisfed.org/fred/release/dates?',
+		'release_id={x$source_key}&realtime_start=2010-01-01',
+		'&include_release_dates_with_no_data=true&api_key={api_key}&file_type=json'
+		)))), map(pull_data, \(x) x$id))
+
+	fred_releases = list_rbind(imap(resp_results, \(x, i)
+		x %>%
+			resp_body_json %>%
+			.$release_dates %>%
+			{tibble(
+				release = i,
+				date = sapply(., function(y) y$date)
+			)}
+		))
 
 	releases$raw$fred <<- fred_releases
 })
@@ -107,7 +96,7 @@ local({
 ## 3. SQL ----------------------------------------------------------
 local({
 
-	initial_count = get_rowcount(db, 'nowcast_model_input_release_dates')
+	initial_count = get_rowcount(pg, 'nowcast_model_input_release_dates')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -115,16 +104,15 @@ local({
 		mutate(., split = ceiling((1:nrow(.))/5000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
-			create_insert_query(
+			dbExecute(pg, create_insert_query(
 				x,
 				'nowcast_model_input_release_dates',
 				'ON CONFLICT (release, date) DO NOTHING'
-				) %>%
-				dbExecute(db, .)
+				))
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = get_rowcount(db, 'nowcast_model_input_release_dates')
+	final_count = get_rowcount(pg, 'nowcast_model_input_release_dates')
 	message('***** Rows Added: ', final_count - initial_count)
 })
 
@@ -134,30 +122,34 @@ local({
 local({
 
 	message('*** Importing FRED Data')
-	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	api_key = Sys.getenv('FRED_API_KEY')
+
+	pull_data = keep(df_to_list(variable_params), \(x) x$hist_source == 'fred')
+
 	# There is a limit on the maximum number of vintage dates pulled @ 2000
-	fred_data =
-		variable_params %>%
-		purrr::transpose(.) %>%
-		keep(., ~ .$hist_source == 'fred') %>%
-		imap_dfr(., function(x, i) {
-			message(str_glue('**** Pull {i}: {x$varname} {x$hist_source_key}'))
-			res =
-				get_fred_data(
-					x$hist_source_key,
-					api_key,
-					.freq = x$hist_source_freq,
-					.return_vintages = T,
-					.obs_start = {
-						if (x$hist_source_freq == 'd') today() - days(2000)
-						else IMPORT_DATE_START
-						},
-					) %>%
-				transmute(., varname = x$varname, freq = x$hist_source_freq, date, vdate = vintage_date, value) %>%
-				filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
-			message(str_glue('**** Count: {nrow(res)}'))
-			return(res)
-			})
+	fred_data = list_rbind(imap(pull_data, function(x, i) {
+
+		message(str_glue('**** Pull {i}: {x$varname} {x$hist_source_key}'))
+
+		res =
+			get_fred_data(
+				x$hist_source_key,
+				api_key,
+				.freq = x$hist_source_freq,
+				.return_vintages = T,
+				.obs_start = {
+					if (x$hist_source_freq == 'd') today() - days(2000)
+					else IMPORT_DATE_START
+					},
+				) %>%
+			transmute(., varname = x$varname, freq = x$hist_source_freq, date, vdate = vintage_date, value) %>%
+			filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
+
+		message(str_glue('**** Count: {nrow(res)}'))
+
+		return(res)
+
+		}))
 
 	hist$raw$fred <<- fred_data
 })
@@ -167,35 +159,35 @@ local({
 
 	message(str_glue('*** Importing Yahoo Finance Data | {format(now(), "%H:%M")}'))
 
-	yahoo_data =
-		variable_params %>%
-		purrr::transpose(.) %>%
-		keep(., ~ .$hist_source == 'yahoo') %>%
-		map_dfr(., function(x) {
-			url =
-				paste0(
-					'https://query1.finance.yahoo.com/v7/finance/download/', x$hist_source_key,
-					'?period1=', as.numeric(as.POSIXct(as_date(IMPORT_DATE_START))),
-					'&period2=', as.numeric(as.POSIXct(Sys.Date() + days(1))),
-					'&interval=1d',
-					'&events=history&includeAdjustedClose=true'
-				)
-			data.table::fread(url, showProgress = FALSE) %>%
-				.[, c('Date', 'Adj Close')]	%>%
-				set_names(., c('date', 'value')) %>%
-				as_tibble(.) %>%
-				# Bug with yahoo finance returning null for date 7/22/21 as of 7/23
-				filter(., value != 'null') %>%
-				mutate(
-					.,
-					varname = x$varname,
-					freq = x$hist_source_freq,
-					date = as_date(date),
-					vdate = date,
-					value = as.numeric(value)
-					) %>%
-				return(.)
-		})
+	pull_data = keep(df_to_list(variable_params), \(x) x$hist_source == 'yahoo')
+
+	yahoo_data = list_rbind(map(pull_data, function(x) {
+		url =
+			paste0(
+				'https://query1.finance.yahoo.com/v7/finance/download/', x$hist_source_key,
+				'?period1=', as.numeric(as.POSIXct(as_date(IMPORT_DATE_START))),
+				'&period2=', as.numeric(as.POSIXct(Sys.Date() + days(1))),
+				'&interval=1d',
+				'&events=history&includeAdjustedClose=true'
+			)
+
+		data.table::fread(url, showProgress = FALSE) %>%
+			.[, c('Date', 'Adj Close')]	%>%
+			set_names(., c('date', 'value')) %>%
+			as_tibble(.) %>%
+			# Bug with yahoo finance returning null for date 7/22/21 as of 7/23
+			filter(., value != 'null') %>%
+			mutate(
+				.,
+				varname = x$varname,
+				freq = x$hist_source_freq,
+				date = as_date(date),
+				vdate = date,
+				value = as.numeric(value)
+				) %>%
+			return(.)
+
+		}))
 
 	hist$raw$yahoo <<- yahoo_data
 })
@@ -216,7 +208,7 @@ local({
 	cpi_data =
 		cpi_df %>%
 		group_split(., vdate) %>%
-		purrr::map_dfr(., function(x)
+		map(., function(x)
 			filter(cpi_df, vdate <= x$vdate[[1]]) %>%
 				group_by(., date) %>%
 				filter(., vdate == max(vdate)) %>%
@@ -224,7 +216,8 @@ local({
 				arrange(., date) %>%
 				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
 		) %>%
-		na.omit(.) %>%
+		list_rbind %>%
+		na.omit %>%
 		distinct(., date, vdate, value) %>%
 		transmute(
 			.,
@@ -243,7 +236,7 @@ local({
 	pcepi_data =
 		pcepi_df %>%
 		group_split(., vdate) %>%
-		purrr::map_dfr(., function(x)
+		map(., function(x)
 			filter(pcepi_df, vdate <= x$vdate[[1]]) %>%
 				group_by(., date) %>%
 				filter(., vdate == max(vdate)) %>%
@@ -251,7 +244,8 @@ local({
 				arrange(., date) %>%
 				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
 		) %>%
-		na.omit(.) %>%
+		list_rbind %>%
+		na.omit %>%
 		distinct(., date, vdate, value) %>%
 		transmute(
 			.,
@@ -261,7 +255,6 @@ local({
 			vdate,
 			value
 		)
-
 
 	hist_calc = bind_rows(cpi_data, pcepi_data)
 
@@ -357,7 +350,7 @@ local({
 		hist$agg %>%
 		as.data.table(.) %>%
 		split(., by = c('varname', 'freq')) %>%
-		lapply(., function(x)  {
+		map(., .progress = T, function(x)  {
 
 			# message(str_glue('**** Getting last vintage dates for {x$varname[[1]]}'))
 			# Get last observation for every vintage date
@@ -394,18 +387,13 @@ local({
 
 	message(str_glue('*** Adding Stationary Transforms | {format(now(), "%H:%M")}'))
 
-	stat_groups =
-		hist$base %>%
-		split(., by = c('varname', 'freq', 'bdate')) %>%
-		unname(.)
+	stat_groups = unname(split(hist$base, by = c('varname', 'freq', 'bdate')))
 
 	stat_final =
 		stat_groups %>%
-		imap(., function(x, i) {
+		imap(., .progress = T, function(x, i) {
 
-			if (i %% 1000 == 0) message(str_glue('**** Transforming {i} of {length(stat_groups)}'))
-
-			variable_def = purrr::transpose(filter(variable_params, varname == x$varname[[1]]))[[1]]
+			variable_def = df_to_list(filter(variable_params, varname == x$varname[[1]]))[[1]]
 			if (is.null(variable_def)) stop(str_glue('Missing {x$varname[[1]]} in variable_params'))
 
 			last_obs_by_vdate_t = lapply(c('st', 'd1', 'd2'), function(this_form) {
@@ -428,7 +416,7 @@ local({
 		}) %>%
 		rbindlist(.) %>%
 		bind_rows(., hist$base[, form := 'base']) %>%
-		na.omit(.)
+		na.omit
 
 	stat_final_last = stat_final[bdate == max(bdate)]
 
@@ -471,7 +459,7 @@ local({
 
 		message(str_glue('*** Sending Historical Data to SQL: {format(now(), "%H:%M")}'))
 
-		initial_count = get_rowcount(db, 'nowcast_model_input_values')
+		initial_count = get_rowcount(pg, 'nowcast_model_input_values')
 		message('***** Initial Count: ', initial_count)
 
 		sql_result =
@@ -482,16 +470,15 @@ local({
 			mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 			group_split(., split, .keep = FALSE) %>%
 			sapply(., function(x)
-				create_insert_query(
+				dbExecute(pg, create_insert_query(
 					x,
 					'nowcast_model_input_values',
 					'ON CONFLICT (vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
-					) %>%
-					dbExecute(db, .)
+					))
 			) %>%
 			{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-		final_count = get_rowcount(db, 'nowcast_model_input_values')
+		final_count = get_rowcount(pg, 'nowcast_model_input_values')
 		message('***** Rows Added: ', final_count - initial_count)
 
 	}
@@ -689,8 +676,8 @@ local({
 
 		factor_weights_df =
 			lambdaHat %>%
-			as.data.frame(.) %>%
-			as_tibble(.) %>%
+			as.data.frame %>%
+			as_tibble %>%
 			setNames(., paste0('f', str_pad(1:ncol(.), pad = '0', 1))) %>%
 			bind_cols(weight = colnames(xMat), .) %>%
 			pivot_longer(., -weight, names_to = 'varname') %>%
@@ -766,7 +753,7 @@ local({
 			bind_cols(date = input_df$date, .) %>%
 			pivot_longer(., -date) %>%
 			ggplot(.) +
-			geom_line(aes(x = date, y = value, group = name, color = name), size = 1) +
+			geom_line(aes(x = date, y = value, group = name, color = name), linewidth = 1) +
 			labs(title = 'Residuals plot for PCA factors', x = NULL, y = NULL, color = NULL)
 
 		fitted_plots =
@@ -1185,7 +1172,7 @@ local({
 
 			forecast_dates = tail(seq(tail(input_df$date, 1), tail(m$big_tstar_dates, 1), by = '1 month'), -1)
 
-			purrr::accumulate(1:length(forecast_dates), function(accum, i)
+			accumulate(1:length(forecast_dates), function(accum, i)
 				c_mat + {if (ar_lags == 0) 0 else a_mat %*% accum} + b_mat %*% f_mats[[i]],
 				.init = y_0
 				) %>%
@@ -1620,7 +1607,7 @@ local({
 		pred_flat =
 			# Map each frequency x display form combination
 			expand_grid(form = c('d1', 'd2'), freq = c('m', 'q')) %>%
-			purrr::transpose(.) %>%
+			df_to_list %>%
 			lapply(., function(z) {
 				# message(z)
 				df =
@@ -1708,26 +1695,53 @@ local({
 	model$pred_wide <<- pred_wide
 })
 
-## 6. Final Checks ------------------------------------------------------------
+## 6. Stabilize ------------------------------------------------------------
+local({
+
+	message(str_glue('*** Stabilizing Results | {format(now(), "%H:%M")}'))
+
+	pred_flat_stab =
+		model$pred_flat %>%
+		group_by(., varname, date, form, freq) %>%
+		arrange(., bdate, .by_group = T) %>%
+		mutate(
+			.,
+			last_is_contiguous = dplyr::lag(bdate, 1) == bdate - days(1),
+			rle = rowid(rleid(last_is_contiguous)),
+			value = ifelse(
+				!is.na(last_is_contiguous) & last_is_contiguous == T & rle >= 7,
+				zoo::rollmean(value, 7, align = 'right', fill = NA),
+				NA
+				)
+			) %>%
+		ungroup %>%
+		filter(., !is.na(value)) %>%
+		select(., date, varname, value, form, freq, bdate)
+
+	model$pred_flat_stab <<- pred_flat_stab
+})
+
+## 7. Final Checks ------------------------------------------------------------
 local({
 
 	message(str_glue('*** Getting Final Checks | {format(now(), "%H:%M")}'))
 
 	plots =
-		model$pred_flat %>%
+		model$pred_flat_stab %>%
 		filter(
 			.,
 			varname %in% c('gdp', 'pceg', 'pces', 'govt', 'ex', 'im', 'pdi', 'pdin', 'pdir'),
 			form == 'd1'
-			) %>%
-		filter(., bdate >= date - days(30)) %>%
+		) %>%
+		filter(., bdate >= date - days(90)) %>%
 		group_split(., date) %>%
+		set_names(., map_vec(., \(x) x$date[[1]])) %>%
 		lapply(., function(x)
 			ggplot(x) + geom_line(aes(x = bdate, y = value, color = varname), size = 1) +
 				geom_point(aes(x = bdate, y = value, color = varname), size = 2) +
 				labs(x = 'Vintage Date', y = 'Annualized % Change', title = x$date[[1]]) +
 				scale_x_date(date_breaks = '1 week', date_labels =  '%m/%d/%y')
-			)
+		)
 
 	for (p in tail(plots, 4)) {
 		print(p)
@@ -1751,35 +1765,19 @@ local({
 
 	message(str_glue('*** Sending Values to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = get_rowcount(db, 'forecast_values')
-	message('***** Initial Count: ', initial_count)
-
-	sql_result =
-		model$pred_flat %>%
+	model_values =
+		model$pred_flat_stab %>%
 		transmute(., forecast = 'now', vdate = bdate, form, freq, varname, date, value) %>%
-		filter(., varname %in% dbGetQuery(db, 'SELECT * FROM forecast_variables')$varname) %>%
-		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
-		group_split(., split, .keep = FALSE) %>%
-		sapply(., function(x)
-			create_insert_query(
-				x,
-				'forecast_values',
-				'ON CONFLICT (forecast, vdate, form, freq, varname, date) DO UPDATE SET value=EXCLUDED.value'
-				) %>%
-				dbExecute(db, .)
-		) %>%
-		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
+		filter(., varname %in% get_query(pg, 'SELECT * FROM forecast_variables')$varname)
 
-	final_count = get_rowcount(db, 'forecast_values')
-	message('***** Final Count: ', final_count)
-	message('***** Rows Added: ', final_count - initial_count)
+	rows_added = store_forecast_values_v2(pg, model_values, .store_new_only = STORE_NEW_ONLY, .verbose = T)
 
-	log_data = list(
-		rows_added = final_count - initial_count,
-		last_bdate = model$pred_flat$bdate,
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 500), collapse = '\n')
-	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'nowcast-model', log_data)
+	# Log
+	validation_log$store_new_only <<- STORE_NEW_ONLY
+	validation_log$rows_added <<- rows_added
+	validation_log$last_bdate <<- model$pred_flat_stab$bdate
+
+	disconnect_db(pg)
 })
 
 ## 2. Create Docs  ----------------------------------------------------------
@@ -1787,28 +1785,25 @@ local({
 
 	message('*** Creating Docs')
 
+	temp = tempdir()
+
 	knitr::knit2pdf(
-		input = file.path(EF_DIR, 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
-		output = file.path(EF_DIR, 'logs', 'nowcast-model-documentation.tex'),
-		clean = TRUE
+		input = file.path(Sys.getenv('EF_DIR'), 'modules', 'nowcast-model', 'nowcast-model-documentation-template.rnw'),
+		output = file.path(temp, 'nowcast-model-documentation.tex'),
+		clean = T
 		)
 
 	fs::file_move(
-		file.path(EF_DIR, 'logs', 'nowcast-model-documentation.pdf'),
-		file.path(EF_DIR, 'nowcast-model-documentation.pdf')
+		file.path(temp, 'nowcast-model-documentation.pdf'),
+		file.path(Sys.getenv('EF_DIR'), 'nowcast-model-documentation.pdf')
 		)
 
-	# Copy file to web directory if on Linux
-	if (Sys.info()[['sysname']] == 'Linux') {
-		fs::file_copy(
-			file.path(EF_DIR, 'nowcast-model-documentation.pdf'),
-			'/var/www/econforecasting.com/public/static/nowcast-model-documentation.pdf',
-			overwrite = T
-		)
-	}
+	system(str_glue(
+		"scp {filepath} {remote_user}@{remote_host}:{remote_path}",
+		filepath = file.path(Sys.getenv('EF_DIR'), 'nowcast-model-documentation.pdf'),
+		remote_user = Sys.getenv('SCP_USER'),
+		remote_host = Sys.getenv('SCP_SERVER'),
+		remote_path = Sys.getenv('SCP_DIR')
+		), wait = T)
 
 })
-
-## 3. Close Connections ----------------------------------------------------------
-dbDisconnect(db)
-message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))

@@ -1,23 +1,19 @@
-#' Validated 3/26/23
-
 # Initialize ----------------------------------------------------------
-
-## Set Constants ----------------------------------------------------------
-JOB_NAME = 'external-import-wsj'
+# If F, adds data to the database that belongs to data vintages already existing in the database.
+# Set to T only when there are model updates, new variable pulls, or old vintages are unreliable.
+STORE_NEW_ONLY = T
+validation_log <<- list()
 
 ## Load Libs ----------------------------------------------------------
 library(econforecasting)
 library(tidyverse)
 library(httr2)
 library(rvest)
-library(DBI, include.only = 'dbDisconnect')
 library(readxl, include.only = c('excel_sheets', 'read_excel'))
 
 ## Load Connection Info ----------------------------------------------------------
 load_env(Sys.getenv('EF_DIR'))
-if (!interactive()) send_output_to_log(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log')))
 pg = connect_pg()
-run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 
 # Import ------------------------------------------------------------------
 
@@ -25,7 +21,7 @@ run_id = log_start_in_db(pg, JOB_NAME, 'external-import')
 local({
 
 	message('**** WSJ Survey')
-	message('***** Last Import Jan 23')
+	message('***** Last Import Apr 23')
 
 	wsj_params = tribble(
 		~ submodel, ~ fullname,
@@ -118,19 +114,12 @@ local({
 	# Store in SQL
 	model_values = transmute(raw_data, forecast, form, vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(pg, model_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(pg, model_values, .verbose = T)
+	rows_added = store_forecast_values_v2(pg, model_values, .store_new_only = STORE_NEW_ONLY, .verbose = T)
 
 	# Log
-	log_data = list(
-		rows_added = rows_added_v2,
-		last_vdate = max(raw_data$vdate),
-		stdout = paste0(tail(read_lines(file.path(Sys.getenv('LOG_DIR'), paste0(JOB_NAME, '.log'))), 20), collapse = '\n')
-	)
+	validation_log$store_new_only <<- STORE_NEW_ONLY
+	validation_log$rows_added <<- rows_added
+	validation_log$last_vdate <<- max(raw_data$vdate)
 
-	log_finish_in_db(pg, run_id, JOB_NAME, 'external-import', log_data)
+	disconnect_db(pg)
 })
-
-## Finalize ------------------------------------------------------------------
-dbDisconnect(pg)
-message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))

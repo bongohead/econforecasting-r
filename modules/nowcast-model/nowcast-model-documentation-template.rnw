@@ -8,7 +8,7 @@
 \usepackage{graphicx}
 \usepackage{fancyhdr}
 \usepackage{appendix}
-\graphicspath{{\Sexpr{file.path(EF_DIR, 'modules', 'nowcast-model', 'documentation-images')}}}
+\graphicspath{{\Sexpr{file.path(Sys.getenv('EF_DIR'), 'modules', 'nowcast-model', 'documentation-images')}}}
 \newcommand{\vv}[1]{\textcolor{black}{\mathbf{#1}}}
 \definecolor{econgreen}{RGB}{45, 140, 38}
 
@@ -55,9 +55,9 @@
   # Settings for PDF compilation
   knitr::opts_chunk$set(
     echo = F, results = 'asis',
-    root.dir = file.path(EF_DIR, 'modules', 'nowcast-model'),
-    fig.path = file.path(EF_DIR, 'logs', 'latex-figures'),
-    cache.path = file.path(EF_DIR, 'logs', 'latex-cache'),
+    root.dir = file.path(Sys.getenv('EF_DIR'), 'modules', 'nowcast-model'),
+    fig.path = file.path(Sys.getenv('EF_DIR'), 'logs', 'latex-figures'),
+    cache.path = file.path(Sys.getenv('EF_DIR'), 'logs', 'latex-cache'),
     fig.width = 9, fig.height = 4, out.width = '4.5in', out.height = '2in',
     fig.pos = 'H', fig.align = 'center', warnings = F, message = F
     )

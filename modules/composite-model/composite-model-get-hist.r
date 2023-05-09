@@ -8,41 +8,30 @@
 #' - Weekly data has been correctly moved to 6 days preceding since FRED uses week-end data.
 
 # Initialize ----------------------------------------------------------
-
-## Set Constants ----------------------------------------------------------
-JOB_NAME = 'composite-model-get-hist'
-EF_DIR = Sys.getenv('EF_DIR')
 IMPORT_DATE_START = '2007-01-01' #'2007-01-01' Reduced 7/6/22 due to vintage date limit on ALFRED
-
-## Cron Log ----------------------------------------------------------
-if (interactive() == FALSE) {
-	sink_path = file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))
-	sink_conn = file(sink_path, open = 'at')
-	system(paste0('echo "$(tail -50 ', sink_path, ')" > ', sink_path,''))
-	lapply(c('output', 'message'), function(x) sink(sink_conn, append = T, type = x))
-	message(paste0('\n\n----------- START ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
-}
+validation_log <<- list()
+data_dump <<- list()
 
 ## Load Libs ----------------------------------------------------------'
 library(econforecasting)
 library(tidyverse)
 library(data.table)
 library(readxl)
-library(httr)
+library(httr2)
 library(rvest)
 library(DBI)
-library(lubridate)
 library(roll)
 
 ## Load Connection Info ----------------------------------------------------------
-db = connect_db(secrets_path = file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
-run_id = log_start_in_db(db, JOB_NAME, 'composite-model')
+load_env(Sys.getenv('EF_DIR'))
+pg = connect_pg()
+
 releases = list()
 hist = list()
 
 ## Load Variable Defs ----------------------------------------------------------
-variable_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_variables'))
-release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'))
+variable_params = get_query(pg, 'SELECT * FROM forecast_variables')
+release_params = get_query(pg, 'SELECT * FROM forecast_hist_releases')
 
 # Release Data ----------------------------------------------------------
 
@@ -50,29 +39,23 @@ release_params = as_tibble(dbGetQuery(db, 'SELECT * FROM forecast_hist_releases'
 local({
 
 	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
-	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	api_key = Sys.getenv('FRED_API_KEY')
 
-	fred_releases =
-		release_params %>%
-		filter(., source == 'fred') %>%
-		purrr::transpose(.) %>%
-		map_dfr(., function(x)
-			RETRY(
-				'GET',
-				str_glue(
-					'https://api.stlouisfed.org/fred/release/dates?',
-					'release_id={x$source_key}&realtime_start=2010-01-01',
-					'&include_release_dates_with_no_data=true&api_key={api_key}&file_type=json'
-				),
-				times = 10
-			) %>%
-				content(., as = 'parsed') %>%
-				.$release_dates %>%
-				{tibble(
-					release = x$id,
-					date = sapply(., function(y) y$date)
-				)}
-		)
+	fred_releases = list_rbind(map(df_to_list(filter(release_params, source == 'fred')), function(x) {
+		request(str_glue(
+			'https://api.stlouisfed.org/fred/release/dates?',
+			'release_id={x$source_key}&realtime_start=2010-01-01',
+			'&include_release_dates_with_no_data=true&api_key={api_key}&file_type=json'
+			)) %>%
+			req_retry(max_tries = 10) %>%
+			req_perform %>%
+			resp_body_json %>%
+			.$release_dates %>%
+			{tibble(
+				release = x$id,
+				date = sapply(., function(y) y$date)
+			)}
+	}))
 
 	releases$raw$fred <<- fred_releases
 })
@@ -85,7 +68,7 @@ local({
 ## 3. SQL ----------------------------------------------------------
 local({
 
-	initial_count = get_rowcount(db, 'forecast_hist_release_dates')
+	initial_count = get_rowcount(pg, 'forecast_hist_release_dates')
 	message('***** Initial Count: ', initial_count)
 
 	sql_result =
@@ -93,7 +76,7 @@ local({
 		mutate(., split = ceiling((1:nrow(.))/10000)) %>%
 		group_split(., split, .keep = FALSE) %>%
 		sapply(., function(x)
-			dbExecute(db, create_insert_query(
+			dbExecute(pg, create_insert_query(
 				x,
 				'forecast_hist_release_dates',
 				'ON CONFLICT (release, date) DO NOTHING'
@@ -101,7 +84,7 @@ local({
 		) %>%
 		{if (any(is.null(.))) stop('SQL Error!') else sum(.)}
 
-	final_count = get_rowcount(db, 'forecast_hist_release_dates')
+	final_count = get_rowcount(pg, 'forecast_hist_release_dates')
 	message('***** Rows Added: ', final_count - initial_count)
 })
 
@@ -110,33 +93,35 @@ local({
 local({
 
 	message('*** Importing FRED Data')
-	api_key = get_secret('FRED_API_KEY', file.path(EF_DIR, 'model-inputs', 'constants.yaml'))
+	api_key = Sys.getenv('FRED_API_KEY')
 
-	fred_data =
-		variable_params %>%
-		purrr::transpose(.) %>%
-		keep(., ~ .$hist_source == 'fred') %>%
-		imap_dfr(., function(x, i) {
-			message(str_glue('**** Pull {i}: {x$varname}'))
-			res =
-				get_fred_obs_with_vintage(
-					x$hist_source_key,
-					api_key,
-					.freq = x$hist_source_freq,
-					.obs_start = IMPORT_DATE_START,
-					.verbose = T
-				) %>%
-				transmute(., varname = x$varname, freq = x$hist_source_freq, date, vdate = vintage_date, value) %>%
-				filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
-			message(str_glue('**** Count: {nrow(res)}'))
-			return(res)
-		})
+	fred_data = list_rbind(imap(df_to_list(filter(variable_params, hist_source == 'fred')), function(x, i) {
+
+		message(str_glue('**** Pull {i}: {x$varname}'))
+
+		res =
+			get_fred_obs_with_vintage(
+				x$hist_source_key,
+				api_key,
+				.freq = x$hist_source_freq,
+				.obs_start = IMPORT_DATE_START,
+				.verbose = T
+			) %>%
+			transmute(., varname = x$varname, freq = x$hist_source_freq, date, vdate = vintage_date, value) %>%
+			filter(., date >= as_date(IMPORT_DATE_START), vdate >= as_date(IMPORT_DATE_START))
+
+		message(str_glue('**** Count: {nrow(res)}'))
+		return(res)
+
+	}))
 
 	hist$raw$fred <<- fred_data
 })
 
 ## 2. TREAS ----------------------------------------------------------
 local({
+
+	message(str_glue('*** Importing Treasury Data | {format(now(), "%H:%M")}'))
 
 	treasury_data = c(
 		'https://home.treasury.gov/system/files/276/yield-curve-rates-2001-2010.csv',
@@ -148,7 +133,7 @@ local({
 			)
 		) %>%
 		map(., .progress = F, \(x) read_csv(x, col_types = 'c')) %>%
-		list_rbind(.) %>%
+		list_rbind %>%
 		pivot_longer(., cols = -c('Date'), names_to = 'varname', values_to = 'value') %>%
 		separate(., col = 'varname', into = c('ttm_1', 'ttm_2'), sep = ' ') %>%
 		mutate(
@@ -176,35 +161,33 @@ local({
 
 	message(str_glue('*** Importing Yahoo Finance Data | {format(now(), "%H:%M")}'))
 
-	yahoo_data =
-		variable_params %>%
-		purrr::transpose(.) %>%
-		keep(., ~ .$hist_source == 'yahoo') %>%
-		map_dfr(., function(x) {
-			url =
-				paste0(
-					'https://query1.finance.yahoo.com/v7/finance/download/', x$hist_source_key,
-					'?period1=', as.numeric(as.POSIXct(as_date(IMPORT_DATE_START))),
-					'&period2=', as.numeric(as.POSIXct(Sys.Date() + days(1))),
-					'&interval=1d',
-					'&events=history&includeAdjustedClose=true'
-				)
-			data.table::fread(url, showProgress = FALSE) %>%
-				.[, c('Date', 'Adj Close')]	%>%
-				set_names(., c('date', 'value')) %>%
-				as_tibble(.) %>%
-				# Bug with yahoo finance returning null for date 7/22/21 as of 7/23
-				filter(., value != 'null') %>%
-				mutate(
-					.,
-					varname = x$varname,
-					freq = x$hist_source_freq,
-					date = as_date(date),
-					vdate = date,
-					value = as.numeric(value)
-				) %>%
-				return(.)
-		})
+	yahoo_data = list_rbind(map(df_to_list(filter(variable_params, hist_source == 'yahoo')), function(x) {
+
+		url = paste0(
+			'https://query1.finance.yahoo.com/v7/finance/download/', x$hist_source_key,
+			'?period1=', as.numeric(as.POSIXct(as_date(IMPORT_DATE_START))),
+			'&period2=', as.numeric(as.POSIXct(Sys.Date() + days(1))),
+			'&interval=1d',
+			'&events=history&includeAdjustedClose=true'
+			)
+
+		data.table::fread(url, showProgress = FALSE) %>%
+			.[, c('Date', 'Adj Close')]	%>%
+			set_names(., c('date', 'value')) %>%
+			as_tibble(.) %>%
+			# Bug with yahoo finance returning null for date 7/22/21 as of 7/23
+			filter(., value != 'null') %>%
+			mutate(
+				.,
+				varname = x$varname,
+				freq = x$hist_source_freq,
+				date = as_date(date),
+				vdate = date,
+				value = as.numeric(value)
+			) %>%
+			return(.)
+
+	}))
 
 	hist$raw$yahoo <<- yahoo_data
 })
@@ -212,41 +195,41 @@ local({
 ## 4. BLOOM  ----------------------------------------------------------
 local({
 
-	bloom_data =
-		variable_params %>%
-		purrr::transpose(.) %>%
-		keep(., ~ .$hist_source == 'bloom') %>%
-		map_dfr(., function(x) {
+	message(str_glue('*** Importing Bloom Data | {format(now(), "%H:%M")}'))
 
-			res = GET(
-				paste0(
-					'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
-					'timeframe=5_YEAR&period=daily&volumePeriod=daily'
-				),
-				add_headers(get_standard_headers(c(
-					'Host' = 'www.bloomberg.com',
-					'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
-				)))
+	bloom_data = list_rbind(map(df_to_list(filter(variable_params, hist_source == 'bloom')), function(x) {
+
+		res =
+			request(paste0(
+				'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
+				'timeframe=5_YEAR&period=daily&volumePeriod=daily'
+			)) %>%
+			add_standard_headers %>%
+			list_merge(., headers = list(
+				'Host' = 'www.bloomberg.com',
+				'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
+				)) %>%
+			req_perform %>%
+			resp_body_json %>%
+			.[[1]] %>%
+			.$price %>%
+			map(., \(x) as_tibble(x)) %>%
+			list_rbind %>%
+			transmute(
+				.,
+				varname = x$varname,
+				freq = 'd',
+				date = as_date(dateTime),
+				vdate = date,
+				value
 			) %>%
-				content(., 'parsed') %>%
-				.[[1]] %>%
-				.$price %>%
-				map_dfr(., ~ as_tibble(.)) %>%
-				transmute(
-					.,
-					varname = x$varname,
-					freq = 'd',
-					date = as_date(dateTime),
-					vdate = date,
-					value
-				) %>%
-				na.omit(.)
+			na.omit
 
-			# Add sleep due to bot detection
-			Sys.sleep(runif(1, 5, 10))
+		# Add sleep due to bot detection
+		Sys.sleep(runif(1, 5, 10))
 
-			return(res)
-		})
+		return(res)
+	}))
 
 	hist$raw$bloom <<- bloom_data
 })
@@ -255,14 +238,16 @@ local({
 local({
 
 	afx_data =
-		GET('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
-		content(., 'parsed') %>%
-		keep(., ~ all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(.))) %>%
-		map_dfr(., function(x)
+		request('https://us-central1-ameribor.cloudfunctions.net/api/rates') %>%
+		req_perform %>%
+		resp_body_json %>%
+		keep(., \(x) all(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y') %in% names(x))) %>%
+		map(., function(x)
 			as_tibble(x) %>%
 				select(., all_of(c('date', 'ON', '1M', '3M', '6M', '1Y', '2Y'))) %>%
 				mutate(., across(-date, function(x) as.numeric(x)))
 		) %>%
+		list_rbind %>%
 		mutate(., date = ymd(date)) %>%
 		pivot_longer(., -date, names_to = 'varname_scrape', values_to = 'value') %>%
 		inner_join(
@@ -302,9 +287,11 @@ local({
 		'ukbankrate', 'https://www.bankofengland.co.uk/boeapps/database/Bank-Rate.asp'
 	)
 
-	boe_data = map_dfr(purrr::transpose(boe_keys), function(x)
-		GET(x$url) %>%
-			content(., 'parsed', encoding = 'UTF-8') %>%
+	boe_data = list_rbind(map(df_to_list(boe_keys), function(x)
+		request(x$url) %>%
+			req_perform %>%
+			resp_body_html %>%
+			# content(., 'parsed', encoding = 'UTF-8') %>%
 			html_node(., '#stats-table') %>%
 			html_table(.) %>%
 			set_names(., c('date', 'value')) %>%
@@ -315,7 +302,7 @@ local({
 			left_join(tibble(date = seq(min(.$date), to = max(max(.$date), today('GMT') - days(1)), by = '1 day')), ., by = 'date') %>%
 			mutate(., value = zoo::na.locf(value)) %>%
 			transmute(., varname = x$varname, freq = 'd', date, value)
-		) %>%
+		)) %>%
 		transmute(
 			.,
 			varname = 'ukbankrate',
@@ -344,7 +331,7 @@ local({
 	cpi_data =
 		cpi_df %>%
 		group_split(., vdate) %>%
-		purrr::map_dfr(., function(x)
+		map(., function(x)
 			filter(cpi_df, vdate <= x$vdate[[1]]) %>%
 				group_by(., date) %>%
 				filter(., vdate == max(vdate)) %>%
@@ -352,7 +339,8 @@ local({
 				arrange(., date) %>%
 				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
 		) %>%
-		na.omit(.) %>%
+		list_rbind %>%
+		na.omit %>%
 		distinct(., date, vdate, value) %>%
 		transmute(
 			.,
@@ -371,7 +359,7 @@ local({
 	pcepi_data =
 		pcepi_df %>%
 		group_split(., vdate) %>%
-		purrr::map_dfr(., function(x)
+		map(., function(x)
 			filter(pcepi_df, vdate <= x$vdate[[1]]) %>%
 				group_by(., date) %>%
 				filter(., vdate == max(vdate)) %>%
@@ -379,7 +367,8 @@ local({
 				arrange(., date) %>%
 				transmute(date, vdate = roll::roll_max(vdate, 13), value = 100 * (value/lag(value, 12) - 1))
 		) %>%
-		na.omit(.) %>%
+		list_rbind %>%
+		na.omit %>%
 		distinct(., date, vdate, value) %>%
 		transmute(
 			.,
@@ -390,7 +379,6 @@ local({
 			value
 		)
 
-
 	hist_calc = bind_rows(cpi_data, pcepi_data)
 
 	hist$raw$calc <<- hist_calc
@@ -399,7 +387,7 @@ local({
 ## 9. Verify ----------------------------------------------------------
 local({
 
-	missing_varnames = variable_params$varname %>% .[!. %in% unique(bind_rows(hist$raw)$varname)]
+	missing_varnames = variable_params$varname[!variable_params$varname %in% unique(bind_rows(hist$raw)$varname)]
 
 	message('*** Missing Variables: ')
 	cat(paste0(missing_varnames, collapse = '\n'))
@@ -653,19 +641,13 @@ local({
 		hist$flat_final %>%
 		select(., vdate, form, freq, varname, date, value)
 
-	rows_added_v2 = store_forecast_hist_values_v2(db, hist_values, .verbose = T)
+	rows_added = store_forecast_hist_values_v2(pg, hist_values, .verbose = T)
 
 	# Log
-	log_data = list(
-		rows_added = rows_added_v2,
-		last_vdate = max(hist$flat_final$vdate),
-		missing_varnames = variable_params$varname %>% .[!. %in% unique(hist$flat_final$varname)],
-		rows_pulled = nrow(hist$flat_final),
-		stdout = paste0(tail(read_lines(file.path(EF_DIR, 'logs', paste0(JOB_NAME, '.log'))), 100), collapse = '\n')
-	)
-	log_finish_in_db(db, run_id, JOB_NAME, 'composite-model', log_data)
-})
+	validation_log$rows_added <<- rows_added
+	validation_log$last_vdate <<- max(hist$flat_final$vdate)
+	validation_log$missing_varnames <<- variable_params$varname[!variable_params$varname %in% unique(hist$flat_final$varname)]
+	validation_log$rows_pulled <<- nrow(hist$flat_final)
 
-## 2. Close Connections ----------------------------------------------------------
-dbDisconnect(db)
-message(paste0('\n\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------\n')))
+	disconnect_db(pg)
+})

@@ -27,4 +27,3 @@ CREATE INDEX forecast_values_v2_all_ix_varname ON forecast_values_v2_all (varnam
 CREATE INDEX forecast_values_v2_all_ix_freq ON forecast_values_v2_all (freq);
 CREATE INDEX forecast_values_v2_all_ix_vdate ON forecast_values_v2_all (vdate);
 CREATE INDEX forecast_values_v2_all_ix_date ON forecast_values_v2_all (date);
-

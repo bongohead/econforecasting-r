@@ -4,6 +4,7 @@ library(jsonlite)
 library(dotenv)
 library(RPostgres)
 library(DBI)
+library(lubridate)
 
 # Load Args ---------------------------------------------------------------
 if (interactive() == F) {
@@ -14,11 +15,14 @@ if (interactive() == F) {
 	)
 	opt = parse_args(OptionParser(option_list = option_list))
 
-	if (!is.na(opt$filename) & !is.na(opt$jobname) & !is.na(opt$efdir)) {
-		print(paste0('Running with file ', opt$filename, ' and jobname ', opt$jobname))
-	} else {
+	if (is.na(opt$filename) || is.na(opt$jobname) || is.na(opt$efdir)) {
 		stop('Missing variables')
 	}
+
+	if (!file.exists(opt$filename) || !dir.exists(opt$efdir)) {
+		stop('Script file or ef directory does not exist')
+	}
+
 } else {
 	# Default args for interactive mode
 	opt = list(
@@ -53,7 +57,8 @@ script_output = tryCatch(
 			source(
 				file.path(filename),
 				local = T,
-				echo = T,
+				echo = F, # Don't print code
+				print.eval = T,
 				max.deparse.length = Inf,
 				width.cutoff = Inf
 				)
@@ -61,8 +66,8 @@ script_output = tryCatch(
 
 		message(paste0('\n----------- FINISHED ', format(Sys.time(), '%m/%d/%Y %I:%M %p ----------')))
 
-		sink(type = 'output')
-		sink(type = 'message')
+		# sink(type = 'output')
+		# sink(type = 'message')
 		# Store any global variables named validation_log or data_dump from the job
 		list(
 			success = T,

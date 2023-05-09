@@ -1,0 +1,33 @@
+DROP TABLE IF EXISTS jobscripts;
+CREATE TABLE jobscripts (
+	jobname VARCHAR(50) PRIMARY KEY,
+	filename VARCHAR(50) NOT NULL,
+	is_active BOOL DEFAULT 1::BOOL NOT NULL,
+	cron_minute VARCHAR(10) DEFAULT '*' NOT NULL,
+	cron_hour VARCHAR(10) DEFAULT '*' NOT NULL,
+	cron_dom VARCHAR(10) DEFAULT '*' NOT NULL,
+	cron_month VARCHAR(10) DEFAULT '*' NOT NULL,
+	cron_dow VARCHAR(10) DEFAULT '*' NOT NULL,
+	added_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+	removed_at TIMESTAMPTZ NULL DEFAULT NULL
+	);
+
+
+
+DROP TABLE IF EXISTS jobscript_runs;
+CREATE TABLE jobscript_runs (
+	id SERIAL PRIMARY KEY,
+	jobname VARCHAR(50),
+	is_interactive BOOL NOT NULL,
+	is_success BOOL NOT NULL,
+	start_dttm TIMESTAMPTZ NOT NULL,
+	end_dttm TIMESTAMPTZ NULL DEFAULT NULL,
+	run_secs INT NULL DEFAULT NULL,
+	validation_log TEXT NULL DEFAULT NULL,
+	data_dump TEXT NULL DEFAULT NULL,
+	err_message TEXT NULL DEFAULT NULL,
+	stdout TEXT NULL DEFAULT NULL,
+	added_at TIMESTAMPTZ NULL DEFAULT CURRENT_TIMESTAMP,
+	CONSTRAINT jobscript_runs_jobname_fk FOREIGN KEY(jobname) REFERENCES jobscripts(jobname) ON DELETE CASCADE
+	);
+

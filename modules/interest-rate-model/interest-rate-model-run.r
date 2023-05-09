@@ -12,10 +12,11 @@
 #' Validated 4/25/23
 
 # Initialize ----------------------------------------------------------
+BACKTEST_MONTHS = 24
+STORE_NEW_ONLY = F
 
-## Set Constants ----------------------------------------------------------
-JOB_NAME = 'interest-rate-model-run'
-BACKTEST_MONTHS = 60
+validation_log <<- list()
+data_dump <<- list()
 
 ## Load Libs ----------------------------------------------------------
 library(econforecasting)
@@ -33,8 +34,6 @@ pg = connect_pg()
 
 hist = list()
 submodels = list()
-validation_log <<- list()
-data_dump <<- list()
 
 ## Load Variable Defs ----------------------------------------------------------'
 input_sources = get_query(pg, 'SELECT * FROM interest_rate_model_variables')
@@ -536,8 +535,8 @@ local({
 		) %>%
 		filter(., months_out <= max_months_out) %>%
 		transmute(., varname, code, date) %>%
-		arrange(., date) 
-	
+		arrange(., date)
+
 	cookies =
 		request(
 		'https://www.barchart.com/futures/quotes/ZQM22/historical-prices?orderBy=contractExpirationDate&orderDir=asc&page=all'
@@ -545,11 +544,11 @@ local({
 		add_standard_headers %>%
 		req_perform %>%
 		get_cookies
-	
+
 	# Check ahead of time whether the source is valid
 	# This is a lot faster then checking it during the actual scraping process
 	available_sources = lapply(unique(str_sub(desired_sources$code, 1, 2)), function(x) {
-		
+
 		request(URLencode(paste0(
 			'https://www.barchart.com/proxies/core-api/v1/quotes/get',
 			'?fields=contractExpirationDate.format(Y),symbol,contractNameHistorical,lastPrice,tradeTime',
@@ -572,9 +571,9 @@ local({
 		.$data %>%
 		map_chr(., \(x) x$symbol)
 	}) %>% unlist(.)
-	
+
 	scrape_sources = filter(desired_sources, code %in% available_sources)
-	
+
 	cookies2 =
 		request('https://www.barchart.com/futures/quotes/ZQV22/') %>%
 		add_standard_headers %>%
@@ -630,6 +629,7 @@ local({
 		}) %>%
 		compact %>%
 		list_rbind %>%
+		na.omit %>%
 		transmute(., varname, vdate, date, value) %>%
 		filter(., date >= floor_date(vdate, 'month')) # Get rid of forecasts for old observations
 
@@ -654,7 +654,7 @@ local({
 		# If this months forecast missing for BSBY, add it in for interpolation purposes
 		# Otherwise the dataset starts 3 months out
 		group_split(., vdate, varname) %>%
-		map(., function(x) {
+		map(., .progress = T, function(x) {
 			x %>%
 				# Join on missing obs dates
 				right_join(
@@ -682,7 +682,8 @@ local({
 		map(., function(x)
 			x %>%
 				mutate(., value_smoothed = zoo::rollmean(value, 6, fill = NA, align = 'right')) %>%
-				mutate(., value = ifelse(!is.na(value_smoothed) & date >= vdate + years(2), value_smoothed, value))
+				# %m+% handles leap years and imaginary days, regular addition of years does not
+				mutate(., value = ifelse(!is.na(value_smoothed) & date >= vdate %m+% years(2), value_smoothed, value))
 				) %>%
 		list_rbind %>%
 		select(., -value_smoothed)
@@ -721,7 +722,7 @@ local({
 		hc_legend(., enabled = TRUE)
 
 	print(series_chart)
-	
+
 	data_dump$cme_raw_data <<- cme_raw_data
 	submodels$cme <<- final_df
 })
@@ -741,7 +742,7 @@ local({
 		filter(., str_detect(varname, '^t\\d{2}[m|y]$')) %>%
 		select(., varname) %>%
 		mutate(., ttm = as.numeric(str_sub(varname, 2, 3)) * ifelse(str_sub(varname, 4, 4) == 'y', 12, 1)) %>%
-		arrange(., ttm) 
+		arrange(., ttm)
 
 	fred_data  =
 		bind_rows(hist$fred, hist$treasury) %>%
@@ -818,7 +819,7 @@ local({
 		select(., -ffr)
 
 	# Filter to only last 3 months
-	train_df = hist_df %>% filter(., date >= add_with_rollback(vdate, months(-3)))
+	train_df = hist_df %>% filter(., date >= add_with_rollback(vdate, months(-4)))
 
 	#' Calculate DNS fit
 	#'
@@ -1294,10 +1295,12 @@ local({
 		ggplot(.) +
 		geom_line(aes(x = date, y = value, color = type)) +
 		facet_wrap(vars(varname))
-	
-	# Take same-month t01m forecasts and merge due to instability 
+
+	# Take same-month t01m forecasts and merge with last historical period
 	# at the short end during financial risk periods
-	filter(merged_forecasts, floor_date(vdate, 'month') == date & varname == 't01m') %>%
+	# Weight of last period is .5 at start of month and decreases to 0 at end of month
+	final_forecasts =
+		filter(merged_forecasts, floor_date(vdate, 'month') == date & varname == 't01m') %>%
 		left_join(
 			hist_df_unagg %>%
 				group_by(., vdate, varname) %>%
@@ -1306,35 +1309,38 @@ local({
 				transmute(., vdate, varname, last_date = date, last_value = value),
 			 by = c('varname', 'vdate'),
 			 relationship = 'one-to-one'
-		) %>% 
+		) %>%
+		mutate(., hist_weight = .5 - .5/30 * ifelse(day(vdate) >= 30, 30, day(vdate))) %>%
+		mutate(., weighted_value = hist_weight * last_value + (1 - hist_weight) * value) %>%
 		transmute(
 			.,
 			vdate,
-			varname, 
+			varname,
 			freq,
 			date,
-			lv = 1/4 * last_value + 3/4 * value
+			value = weighted_value
 			) %>%
-		arrange(., vdate)
+		arrange(., vdate) %>%
+		{bind_rows(., anti_join(merged_forecasts, ., by = c('vdate', 'varname', 'freq', 'date')))}
 
 	tdns <<- list(
 		dns_coefs_hist = dns_coefs_hist,
 		dns_coefs_forecast = dns_coefs_forecast
 		)
 
-	submodels$tdns <<- merged_forecasts
+	submodels$tdns <<- final_forecasts
 })
 
 
 ## TFUT: Smoothed DNS + Futures ----------------------------------------------------------
 #' Temporarily disabled - since currently all these are merged into a single INT model
 # local({
-# 
+#
 # 	"
 # 	Fit splines on both temporal dimension, ttm dimension, and their tensor product
 # 	https://www.math3ma.com/blog/the-tensor-product-demystified
 # 	"
-# 
+#
 # 	# Match each varname x forecast date from TDNS to the closest futures vdate (within 7 day range)
 # 	futures_df =
 # 		submodels$tdns %>%
@@ -1357,15 +1363,15 @@ local({
 # 			months_out = interval(floor_date(vdate, 'month'), floor_date(date, 'month')) %/% months(1)
 # 		) %>%
 # 		mutate(., mod_value = ifelse(!is.na(futures_value), futures_value, value))
-# 
+#
 # 	# Can use furrr for speed issues
 # 	# plan(multisession, workers = parallel::detectCores() - 2, gc = TRUE)
-# 
+#
 # 	future_forecasts =
 # 		futures_df %>%
 # 		group_split(., vdate) %>%
 # 		map(., .progress = T, function(df, i) {
-# 
+#
 # 			fit = gam(
 # 				mod_value ~
 # 					s(months_out, bs = 'tp', fx = F, k = -1) +
@@ -1374,9 +1380,9 @@ local({
 # 				data = df,
 # 				method = 'ML'
 # 				)
-# 
+#
 # 			final_df = mutate(df, gam_fit = fit$fitted.values, final_value = .5 * value + .5 * gam_fit)
-# 
+#
 # 			plot =
 # 				final_df %>%
 # 				filter(., varname == 't10y') %>%
@@ -1387,23 +1393,23 @@ local({
 # 				geom_line(aes(x = date, y = mod_value), color = 'red') +
 # 				geom_line(aes(x = date, y = gam_fit), color = 'pink') +
 # 				geom_line(aes(x = date, y = final_value), color = 'blue')
-# 
+#
 # 			list(
 # 				final_df = final_df,
 # 				plot = plot
 # 				)
 # 			})
-# 
+#
 # 	# future:::ClusterRegistry("stop")
-# 	
+#
 # 	forecasts_df =
 # 		map_dfr(future_forecasts, \(x) x$final_df) %>%
 # 		transmute(., vdate, varname, freq = 'm', date, value)
-# 	
+#
 # 	forecasts_df %>%
 # 		count(., vdate) %>%
 # 		arrange(., vdate)
-# 
+#
 # 	submodels$tfut <<- forecasts_df
 # })
 
@@ -1649,16 +1655,14 @@ local({
 		) %>%
 		transmute(., forecast = 'int', form = 'd1', vdate, freq, varname, date, value)
 
-	rows_added_v1 = store_forecast_values_v1(pg, submodel_values, .verbose = T)
-	rows_added_v2 = store_forecast_values_v2(pg, submodel_values, .verbose = T)
+	rows_added = store_forecast_values_v2(pg, submodel_values, .store_new_only = STORE_NEW_ONLY, .verbose = T)
 
 	# Log
-	validation_log$rows_added <<- rows_added_v2
+	validation_log$store_new_only <<- STORE_NEW_ONLY
+	validation_log$rows_added <<- rows_added
 	validation_log$last_vdate <<- max(submodel_values$vdate)
-	
+
+	disconnect_db(pg)
+
 	submodel_values <<- submodel_values
 })
-
-
-## Close Connections ----------------------------------------------------------
-dbDisconnect(pg)
