@@ -198,3 +198,122 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 		) %>%
 		return(.)
 }
+
+
+#' Returns last available observations from St. Louis Federal Reserve Economic Database (FRED)
+#'
+#' @param pull_ids A vector of FRED series IDs to pull from such as `c(id1, id2, ...)`;
+#'  alternatively, a list of FRED series IDs and corresponding frequencies: `list(c(id1, d), (id2, w), ..)`.
+#' @param api_key A valid FRED API key.
+#' @param .obs_start The default start date of results to return.
+#' @param .verbose If TRUE, echoes error messages.
+#'
+#' @return A data frame of data
+#'
+#' @description
+#' Get latest observations for multiple data series from FRED.
+#'  Note that since FRED returns weekly data in the form of week-ending dates, we subtract 7 days off the date to
+#'  convert them into week beginning dates.
+#'
+#' @import dplyr purrr httr2
+#' @importFrom lubridate with_tz now as_date is.Date
+#' @importFrom purrr every is_list is_scalar_character is_character is_scalar_logical
+#'
+#' @examples \dontrun{
+#'  get_fred_obs_async(list(c('GDP', 'a'), c('PCE', 'a')), api_key)
+#'  get_fred_obs_async(c('GDP', 'PCE'), api_key)
+#' }
+#'
+#' @export
+get_fred_obs_async = function(pull_ids, api_key, .obs_start = '2000-01-01', .verbose = F)  {
+
+	stopifnot(
+		(is_list(pull_ids) & every(pull_ids, \(x) length(x) == 2 && is_character(x))) || is_character(pull_ids),
+		is.Date(.obs_start) || is_scalar_character(.obs_start),
+		is_scalar_logical(.verbose)
+		)
+
+	today = as_date(with_tz(now(), tz = 'America/Chicago'))
+
+	# Build hashmap of inputs per series
+	reqs_named = {
+		if (is_list(pull_ids)) map(pull_ids, \(x) list(series_id = x[1], freq = x[2]))
+		else map(pull_ids, \(x) list(series_id = x, freq = NA))
+		} %>%
+		setNames(., paste0('c', 1:length(.)))
+
+	requests = map(reqs_named, \(x)
+		request(paste0(
+			'https://api.stlouisfed.org/fred/series/observations?',
+			'series_id=', x$series_id,
+			'&api_key=', api_key,
+			'&file_type=json',
+			'&realtime_start=', today, '&realtime_end=', today,
+			'&observation_start=', .obs_start, '&observation_end=', today,
+			{if (is.na(x$freq)) '' else paste0('&frequency=', x$freq)},
+			'&aggregation_method=avg'
+			)) %>%
+			req_timeout(., 8000)
+	)
+
+	retry_requests = function(requests_to_send, .retries = 0, .pool = curl::new_pool(total_con = 4, host_con = 4, multiplex = T)) {
+
+		if (.retries > 9) stop('Requests failed')
+		if (.retries > 0) {
+			message('Retry ', .retries, ' for ', length(requests_to_send), ' failed requests ')
+			Sys.sleep(2 * 1.8 ^ .retries)
+		}
+
+		responses = setNames(
+			multi_req_perform(reqs = requests_to_send, pool = .pool, cancel_on_error = F),
+			names(requests_to_send)
+		)
+
+		success_response_ids = names(keep(responses, \(x) 'httr2_response' %in% class(x)))
+		failure_response_ids = names(keep(responses, \(x) !'httr2_response' %in% class(x)))
+
+		if (length(requests[failure_response_ids]) > 0) {
+
+			if (.verbose) {
+				print('Failed requests!')
+				print(requests[failure_response_ids])
+			}
+			retry_responses = retry_requests(requests[failure_response_ids], .retries = .retries + 1, .pool = .pool)
+
+		} else {
+
+			retry_responses = list()
+		}
+
+		all_responses = c(responses[success_response_ids], retry_responses)
+
+		return(all_responses)
+	}
+
+	# Send 500 requests at a time
+	parsed_responses = map(split(requests, (1:length(requests) - 1) %/% 500), .progress = T, function(requests_chunk) {
+		http_responses = retry_requests(requests_chunk)
+		parsed_results = imap(http_responses, \(r, i)
+			resp_body_json(r)$observations %>%
+				map(., as_tibble) %>%
+				list_rbind %>%
+				filter(., value != '.') %>%
+				na.omit %>%
+				transmute(
+					.,
+					date = as_date(date) - days({if (!is.na(reqs_named[[i]]$freq) && reqs_named[[i]]$freq == 'w') 7 else 0}),
+					varname = reqs_named[[i]]$series_id,
+					value = as.numeric(value)
+				)
+			)
+		return(parsed_results)
+	})
+
+	# Collapse and order by c1, c2, ...
+	res_collapsed = unlist(unname(parsed_responses), recursive = F)[names(reqs_named)]
+
+	if(length(res_collapsed) != length(pull_ids)) stop('Error: length output not same as input!')
+
+	return(list_rbind(res_collapsed))
+}
+
