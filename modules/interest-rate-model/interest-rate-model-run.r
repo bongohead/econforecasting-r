@@ -54,12 +54,15 @@ local({
 		input_sources %>%
 		df_to_list	%>%
 		keep(., \(x) x$hist_source == 'fred') %>%
-		imap(., function(x, i) {
-			message(str_glue('Pull {i}: {x$varname}'))
-			get_fred_obs(x$hist_source_key, api_key, .freq = x$hist_source_freq, .obs_start = '2010-01-01', .verbose = F) %>%
-				transmute(., varname = x$varname, freq = x$hist_source_freq, date, value)
-			}) %>%
-		list_rbind %>%
+		map(., \(x) c(x$hist_source_key, x$hist_source_freq)) %>%
+		get_fred_obs_async(., api_key, .obs_start = '2010-01-01', .verbose = T) %>%
+		left_join(
+			.,
+			select(input_sources, 'varname', 'hist_source_key'),
+			by = c('series_id' = 'hist_source_key'),
+			relationship = 'many-to-one'
+			) %>%
+		select(., -series_id) %>%
 		# For simplicity, assume all data with daily frequency is released the same day.
 		# Only weekly/monthly data keeps the true vintage date.
 		mutate(., vdate = case_when(

@@ -302,8 +302,9 @@ get_fred_obs_async = function(pull_ids, api_key, .obs_start = '2000-01-01', .ver
 				transmute(
 					.,
 					date = as_date(date) - days({if (!is.na(reqs_named[[i]]$freq) && reqs_named[[i]]$freq == 'w') 7 else 0}),
-					varname = reqs_named[[i]]$series_id,
-					value = as.numeric(value)
+					series_id = reqs_named[[i]]$series_id,
+					value = as.numeric(value),
+					freq = {if (!is.na(reqs_named[[i]]$freq)) reqs_named[[i]]$freq else NA}
 				)
 			)
 		return(parsed_results)

@@ -216,8 +216,10 @@ store_forecast_values_v2 = function(db, df, .store_new_only = F, .verbose = F) {
 
 	today_string = today('US/Eastern')
 
-	existing_forecast_combinations = get_query(db, paste0("SELECT forecast, vdate FROM forecast_values_v2 GROUP BY forecast, vdate"))
-	store_df = anti_join(df, existing_forecast_combinations, by = c('forecast', 'vdate'))
+	# Time misalignment issue - bneed to use forecast x vdate x varname combination instead of forecast x vdate,
+	# due to some variables coming in later for the same forecast
+	existing_forecast_combinations = get_query(db, sql("SELECT forecast, varname, vdate FROM forecast_values_v2 GROUP BY 1, 2, 3"))
+	store_df = anti_join(df, existing_forecast_combinations, by = c('forecast', 'varname', 'vdate'))
 
 	if (nrow(store_df) > 0) {
 
