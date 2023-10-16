@@ -1,3 +1,11 @@
+#' This controller handles running all modules. It adds logging and passing command line arguments
+#' from calling Rscript into the module script.
+#'
+#' The command line args include:
+#' - -d: The directory to /econforecasting project folder
+#' - -j: The name of the job to use for logging.
+#' - -f: The filename to call to run the module.
+
 # Load Libs ---------------------------------------------------------------
 library(optparse)
 library(jsonlite)

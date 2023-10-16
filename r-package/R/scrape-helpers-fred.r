@@ -14,7 +14,7 @@
 #' @importFrom lubridate with_tz now as_date
 #'
 #' @export
-get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FALSE, .vintage_date = NULL, .obs_start = '2000-01-01', .verbose = FALSE) {
+get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = F, .vintage_date = NULL, .obs_start = '2000-01-01', .verbose = F) {
 
 	today = as_date(with_tz(now(), tz = 'America/Chicago'))
 
@@ -23,8 +23,8 @@ get_fred_data = function(series_id, api_key, .freq = NULL, .return_vintages = FA
 		'series_id=', series_id,
 		'&api_key=', api_key,
 		'&file_type=json',
-		'&realtime_start=', if (.return_vintages == TRUE & is.null(.vintage_date)) .obs_start else if (.return_vintages == TRUE & !is.null(.vintage_date)) .vintage_date else today,
-		'&realtime_end=', if (.return_vintages == TRUE & !is.null(.vintage_date)) .vintage_date else today,
+		'&realtime_start=', if (.return_vintages == T & is.null(.vintage_date)) .obs_start else if (.return_vintages == T & !is.null(.vintage_date)) .vintage_date else today,
+		'&realtime_end=', if (.return_vintages == T & !is.null(.vintage_date)) .vintage_date else today,
 		'&observation_start=', .obs_start,
 		'&observation_end=', today,
 		if(!is.null(.freq)) paste0('&frequency=', .freq) else '',
@@ -200,6 +200,57 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 }
 
 
+#' Helper to resend a batch of requests, used for async request functions
+#'
+#' @param requests_to_send A list of `httr2` request objects to send.
+#' @param .retries The number of retry attempts before failing.
+#' @param .pool A pool object returns by `curl:::new_pool`.
+#' @param .verbose If TRUE, outputs error statuses.
+#'
+#' @import dplyr purrr httr2
+#' @importFrom purrr every is_list is_scalar_character is_character is_scalar_logical
+#'
+retry_requests = function(requests_to_send, .retries = 0, .pool = curl::new_pool(total_con = 4, host_con = 4, multiplex = T), .verbose = T) {
+
+	stopifnot(
+		is_list(requests_to_send),
+		is_scalar_integer(.retries),
+		is_scalar_logical(.verbose)
+	)
+
+	if (.retries > 9) stop('Requests failed')
+	if (.retries > 0) {
+		message('Retry ', .retries, ' for ', length(requests_to_send), ' failed requests ')
+		Sys.sleep(2 * 1.8 ^ .retries)
+	}
+
+	responses = setNames(
+		multi_req_perform(reqs = requests_to_send, pool = .pool, cancel_on_error = F),
+		names(requests_to_send)
+	)
+
+	success_response_ids = names(keep(responses, \(x) 'httr2_response' %in% class(x)))
+	failure_response_ids = names(keep(responses, \(x) !'httr2_response' %in% class(x)))
+
+	if (length(requests[failure_response_ids]) > 0) {
+
+		if (.verbose) {
+			print('Failed requests!')
+			print(requests[failure_response_ids])
+		}
+		retry_responses = retry_requests(requests[failure_response_ids], .retries = .retries + 1, .pool = .pool)
+
+	} else {
+
+		retry_responses = list()
+	}
+
+	all_responses = c(responses[success_response_ids], retry_responses)
+
+	return(all_responses)
+}
+
+
 #' Returns last available observations from St. Louis Federal Reserve Economic Database (FRED)
 #'
 #' @param pull_ids A vector of FRED series IDs to pull from such as `c(id1, id2, ...)`;
@@ -256,43 +307,9 @@ get_fred_obs_async = function(pull_ids, api_key, .obs_start = '2000-01-01', .ver
 			req_timeout(., 8000)
 	)
 
-	retry_requests = function(requests_to_send, .retries = 0, .pool = curl::new_pool(total_con = 4, host_con = 4, multiplex = T)) {
-
-		if (.retries > 9) stop('Requests failed')
-		if (.retries > 0) {
-			message('Retry ', .retries, ' for ', length(requests_to_send), ' failed requests ')
-			Sys.sleep(2 * 1.8 ^ .retries)
-		}
-
-		responses = setNames(
-			multi_req_perform(reqs = requests_to_send, pool = .pool, cancel_on_error = F),
-			names(requests_to_send)
-		)
-
-		success_response_ids = names(keep(responses, \(x) 'httr2_response' %in% class(x)))
-		failure_response_ids = names(keep(responses, \(x) !'httr2_response' %in% class(x)))
-
-		if (length(requests[failure_response_ids]) > 0) {
-
-			if (.verbose) {
-				print('Failed requests!')
-				print(requests[failure_response_ids])
-			}
-			retry_responses = retry_requests(requests[failure_response_ids], .retries = .retries + 1, .pool = .pool)
-
-		} else {
-
-			retry_responses = list()
-		}
-
-		all_responses = c(responses[success_response_ids], retry_responses)
-
-		return(all_responses)
-	}
-
 	# Send 500 requests at a time
-	parsed_responses = map(split(requests, (1:length(requests) - 1) %/% 500), .progress = T, function(requests_chunk) {
-		http_responses = retry_requests(requests_chunk)
+	parsed_responses = map(split(requests, (1:length(requests) - 1) %/% 10), .progress = T, function(requests_chunk) {
+		http_responses = retry_requests(requests_chunk, .verbose = .verbose)
 		parsed_results = imap(http_responses, \(r, i)
 			resp_body_json(r)$observations %>%
 				map(., as_tibble) %>%

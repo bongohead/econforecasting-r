@@ -4,15 +4,13 @@ This project contains the code for data scraping, data cleaning, and modeling us
 # RUN
 This code is developed locally on a Windows machine and deployed locally to an Ubuntu VPS. The modeling code is primarily run in R (>=4.1.2) but some scraping scripts make calls to Python (=3.8.7). Modules are imported wholesale using the `reticulate` package. Data and model features are stored in a Postgres/TimescaleDB server hosted on the VPS.
 
-1. Set EF_DIR path in system environment.
-2. Create a .env file in the main project directory.
-3. 
-
 # DB Structure 
 ![PostgreSQL SQL Structure](https://raw.githubusercontent.com/bongohead/econforecasting-r/master/docs/sql-structure.png)
 
 
 # CHANGELOG
+
+## [v3.00]
 
 ## [v2.01]
 - Added FNMA fixes 

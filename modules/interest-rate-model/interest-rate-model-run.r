@@ -1,8 +1,8 @@
-#'  Run this script on scheduler at noon Eastern daily
-#'  - Last values to run are FFR/SOFR (1 day lag, 9am ET)
-#'  - Treasury data releases on day of
-#'  - Bloomberg data releases on day of
-#'  - AFX data releases with 1 day lag (8am)
+#' Historical data lags:
+#' - FFR/SOFR: 1 day lag (9am ET)
+#' - Treasury data: day of
+#' - Bloomberg indices: day of
+#' - AFX indices: 1 day lag (8am ET)
 #' Historical vintage dates are assigned given these assumptions!
 #'
 #' TBD:
@@ -35,7 +35,7 @@ pg = connect_pg()
 hist = list()
 submodels = list()
 
-## Load Variable Defs ----------------------------------------------------------'
+## Load Variable Defs ----------------------------------------------------------
 input_sources = get_query(pg, 'SELECT * FROM interest_rate_model_variables')
 
 # Historical Data ----------------------------------------------------------

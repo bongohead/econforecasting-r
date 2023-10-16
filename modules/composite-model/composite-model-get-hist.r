@@ -1,16 +1,21 @@
 #' This gets historical data for website.
-#' Recommend: run daily after noon.
-
-#' Note: Table rebuild and full audit on 1/6/23.
-#' - The final structure is same as before but two rate variables where vdate significantly after date have
-#'   lost some data. Notably aaa and baa are now truncated at 2017.
-#' - BSBY has lost some data due to the 5 year pull range.
-#' - Weekly data has been correctly moved to 6 days preceding since FRED uses week-end data.
+#'
+#' Run info:
+#' - Called automatically with controller.r for full job logging.
+#' - Can be run interactively instead for debugging.
+#' - Recommend: run daily after noon.
+#'
+#' Updates
+#' - Table rebuild and full audit on 1/6/23.
+#'   - The final structure is same as before but two rate variables where vdate significantly after date have
+#'     lost some data. Notably aaa and baa are now truncated at 2017.
+#'   - BSBY has lost some data due to the 5 year pull range.
+#'   - Weekly data has been correctly moved to 6 days preceding since FRED uses week-end data.
 
 # Initialize ----------------------------------------------------------
-IMPORT_DATE_START = '2007-01-01' #'2007-01-01' Reduced 7/6/22 due to vintage date limit on ALFRED
-validation_log <<- list()
-data_dump <<- list()
+IMPORT_DATE_START = '2007-01-01'
+validation_log <<- list() # Stores logging data when called via controller.r
+data_dump <<- list() # Stores logging data when called via controller.r
 
 ## Load Libs ----------------------------------------------------------'
 library(econforecasting)
@@ -38,7 +43,7 @@ release_params = get_query(pg, 'SELECT * FROM forecast_hist_releases')
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
 
-	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
+	message(str_glue('+++ Getting Releases History | {format(now(), "%H:%M")}'))
 	api_key = Sys.getenv('FRED_API_KEY')
 
 	fred_releases = list_rbind(map(df_to_list(filter(release_params, source == 'fred')), function(x) {
@@ -48,13 +53,10 @@ local({
 			'&include_release_dates_with_no_data=true&api_key={api_key}&file_type=json'
 			)) %>%
 			req_retry(max_tries = 10) %>%
-			req_perform %>%
-			resp_body_json %>%
+			req_perform() %>%
+			resp_body_json() %>%
 			.$release_dates %>%
-			{tibble(
-				release = x$id,
-				date = sapply(., function(y) y$date)
-			)}
+			{tibble(release = x$id, date = sapply(., function(y) y$date))}
 	}))
 
 	releases$raw$fred <<- fred_releases
@@ -92,7 +94,7 @@ local({
 ## 1. FRED ----------------------------------------------------------
 local({
 
-	message('*** Importing FRED Data')
+	message('+++ Importing FRED Data')
 	api_key = Sys.getenv('FRED_API_KEY')
 
 	fred_data = list_rbind(imap(df_to_list(filter(variable_params, hist_source == 'fred')), function(x, i) {
@@ -204,10 +206,11 @@ local({
 				'https://www.bloomberg.com/markets2/api/history/', x$hist_source_key, '%3AIND/PX_LAST?',
 				'timeframe=5_YEAR&period=daily&volumePeriod=daily'
 			)) %>%
-			add_standard_headers %>%
+			# add_standard_headers %>%
 			list_merge(., headers = list(
 				'Host' = 'www.bloomberg.com',
-				'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND')
+				'Referer' = str_glue('https://www.bloomberg.com/quote/{x$source_key}:IND'),
+				'User-Agent' = 'PostmanRuntime/7.32.2'
 				)) %>%
 			req_perform %>%
 			resp_body_json %>%

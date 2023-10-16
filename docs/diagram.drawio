@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e" pages="5">
     <diagram id="fmKDFD1o7MwxVLsBdMy5" name="sql-structure">
-        <mxGraphModel dx="1643" dy="826" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+        <mxGraphModel dx="1150" dy="792" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
             <root>
                 <mxCell id="Cf6UX8D4QVb32xjDKQT0-0"/>
                 <mxCell id="Cf6UX8D4QVb32xjDKQT0-1" parent="Cf6UX8D4QVb32xjDKQT0-0"/>
@@ -140,7 +140,7 @@
                 <mxCell id="QRxN1dF-z2wzpEu5Powq-13" value="&lt;b&gt;&lt;font style=&quot;font-size: 24px&quot;&gt;SQL Structure&lt;/font&gt;&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" parent="Cf6UX8D4QVb32xjDKQT0-1" vertex="1">
                     <mxGeometry x="611" y="20" width="180" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="LiHC8JmTG9Uw9_XcXLYk-0" value="Updated 5/2/23" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" parent="Cf6UX8D4QVb32xjDKQT0-1" vertex="1">
+                <mxCell id="LiHC8JmTG9Uw9_XcXLYk-0" value="Updated 8/11/23" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=12;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" parent="Cf6UX8D4QVb32xjDKQT0-1" vertex="1">
                     <mxGeometry x="641" y="50" width="120" height="30" as="geometry"/>
                 </mxCell>
                 <mxCell id="Yktkts1AGWyO3nEfBsnC-0" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.167;exitDx=0;exitDy=0;startArrow=none;startFill=0;endArrow=block;endFill=1;curved=1;dashed=1;fillColor=#008a00;strokeColor=#005700;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;exitPerimeter=0;entryX=-0.006;entryY=0.43;entryDx=0;entryDy=0;entryPerimeter=0;" parent="Cf6UX8D4QVb32xjDKQT0-1" source="3-ZTnkCWrhlHVKZbNQng-7" target="G1YM0whupxtLq1lWn_vy-0" edge="1">
@@ -161,13 +161,13 @@
                         </Array>
                     </mxGeometry>
                 </mxCell>
-                <mxCell id="G1YM0whupxtLq1lWn_vy-0" value="&lt;u&gt;forecast_values_v2_latest&lt;/u&gt;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;- Gets the forecasts corresponding to the last vdate for each (forecast, freq, varname) -&amp;gt; so latest mdates can cause multiple runs!&lt;br&gt;- Unique on (forecast, freq, varname, date)&lt;br&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;glass=0;shadow=0;sketch=0;fontStyle=1;align=center;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" vertex="1" parent="Cf6UX8D4QVb32xjDKQT0-1">
+                <mxCell id="G1YM0whupxtLq1lWn_vy-0" value="&lt;u&gt;forecast_values_v2_latest&lt;/u&gt;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;- Gets the forecasts corresponding to the last vdate for each (forecast, freq, varname) -&amp;gt; so latest mdates can cause multiple runs!&lt;br&gt;- Unique on (forecast, freq, varname, date)&lt;br&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;glass=0;shadow=0;sketch=0;fontStyle=1;align=center;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" parent="Cf6UX8D4QVb32xjDKQT0-1" vertex="1">
                     <mxGeometry x="1110" y="160" width="260" height="110" as="geometry"/>
                 </mxCell>
-                <mxCell id="UROjGkMkR3BltAXOLuoT-3" value="&lt;span&gt;materialized view&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;glass=0;shadow=0;sketch=0;fontStyle=5;align=center;strokeColor=#82b366;fillColor=#d5e8d4;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" vertex="1" parent="Cf6UX8D4QVb32xjDKQT0-1">
+                <mxCell id="UROjGkMkR3BltAXOLuoT-3" value="&lt;span&gt;materialized view&lt;/span&gt;" style="rounded=0;whiteSpace=wrap;html=1;glass=0;shadow=0;sketch=0;fontStyle=5;align=center;strokeColor=#82b366;fillColor=#d5e8d4;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" parent="Cf6UX8D4QVb32xjDKQT0-1" vertex="1">
                     <mxGeometry x="1100" y="20" width="155" height="30" as="geometry"/>
                 </mxCell>
-                <mxCell id="UROjGkMkR3BltAXOLuoT-4" value="&lt;u&gt;forecast_values_v2_all&lt;/u&gt;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;- Aggregates out mdates by selecting the first mdate for each (forecast, vdate, form, freq, varname)&lt;br&gt;- Pivots out d1 and d2&lt;br&gt;- Unique on (forecast, vdate, freq, varname), date&amp;nbsp;&lt;br&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;glass=0;shadow=0;sketch=0;fontStyle=1;align=center;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" vertex="1" parent="Cf6UX8D4QVb32xjDKQT0-1">
+                <mxCell id="UROjGkMkR3BltAXOLuoT-4" value="&lt;u&gt;forecast_values_v2_all&lt;/u&gt;&lt;br&gt;&lt;br&gt;&lt;span style=&quot;font-weight: normal;&quot;&gt;- Aggregates out mdates by selecting the first mdate for each (forecast, vdate, form, freq, varname)&lt;br&gt;- Pivots out d1 and d2&lt;br&gt;- Unique on (forecast, vdate, freq, varname), date&amp;nbsp;&lt;br&gt;&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;glass=0;shadow=0;sketch=0;fontStyle=1;align=center;fillColor=#d5e8d4;strokeColor=#82b366;fontFamily=Nunito Sans;fontSource=https%3A%2F%2Ffonts.googleapis.com%2Fcss%3Ffamily%3DNunito%2BSans;" parent="Cf6UX8D4QVb32xjDKQT0-1" vertex="1">
                     <mxGeometry x="1110" y="305" width="260" height="130" as="geometry"/>
                 </mxCell>
             </root>
