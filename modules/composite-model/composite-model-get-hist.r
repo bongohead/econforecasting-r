@@ -43,7 +43,7 @@ release_params = get_query(pg, 'SELECT * FROM forecast_hist_releases')
 ## 1. Get Data Releases ----------------------------------------------------------
 local({
 
-	message(str_glue('+++ Getting Releases History | {format(now(), "%H:%M")}'))
+	message(str_glue('*** Getting Releases History | {format(now(), "%H:%M")}'))
 	api_key = Sys.getenv('FRED_API_KEY')
 
 	fred_releases = list_rbind(map(df_to_list(filter(release_params, source == 'fred')), function(x) {
@@ -94,7 +94,7 @@ local({
 ## 1. FRED ----------------------------------------------------------
 local({
 
-	message('+++ Importing FRED Data')
+	message(str_glue('*** Importing FRED Data | {format(now(), "%H:%M")}'))
 	api_key = Sys.getenv('FRED_API_KEY')
 
 	fred_data = list_rbind(imap(df_to_list(filter(variable_params, hist_source == 'fred')), function(x, i) {
@@ -267,19 +267,19 @@ local({
 ## 6. ECB ---------------------------------------------------------------------
 local({
 
-	# Migrated to ECBESTRVOLWGTTRMDMNRT!
-	# Note 2022-07-22: deprecated!
-	# https://sdw.ecb.europa.eu/quickview.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR
-	estr_data = read_csv(
-		'https://sdw.ecb.europa.eu/quickviewexport.do?SERIES_KEY=438.EST.B.EU000A2QQF16.CR&type=csv',
-		skip = 6,
-		col_names = c('date', 'value', 'obs', 'calc1', 'calc2'),
-		col_types = 'DdcDD'
-		) %>%
+	estr_data =
+		request('https://data.ecb.europa.eu/data-detail-api/EST.B.EU000A2X2A25.WT') %>%
+		req_perform %>%
+		resp_body_json %>%
+		map(., \(x) {if (is.null(x$OBS)) NULL else tibble(date = as_date(x$PERIOD), value = as.numeric(x$OBS))}) %>%
+		compact %>%
+		list_rbind %>%
 		transmute(., varname = 'estr', freq = 'd', date, vdate = date, value)
 
 	hist$raw$ecb <<- estr_data
 })
+
+
 
 ## 7. BOE ---------------------------------------------------------------------
 local({
