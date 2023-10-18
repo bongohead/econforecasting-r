@@ -32,8 +32,8 @@ library(forecast, include.only = c('forecast', 'Arima'))
 load_env(Sys.getenv('EF_DIR'))
 pg = connect_pg()
 
-hist = list()
-submodels = list()
+hist <- list()
+submodels <- list()
 
 ## Load Variable Defs ----------------------------------------------------------
 input_sources = get_query(pg, 'SELECT * FROM interest_rate_model_variables')
