@@ -210,6 +210,7 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 #' @import dplyr purrr httr2
 #' @importFrom purrr every is_list is_scalar_character is_character is_scalar_logical
 #'
+#' @noRd
 retry_requests = function(requests_to_send, .retries = 0, .pool = curl::new_pool(total_con = 4, host_con = 4, multiplex = T), .verbose = T) {
 
 	stopifnot(
@@ -307,7 +308,7 @@ get_fred_obs_async = function(pull_ids, api_key, .obs_start = '2000-01-01', .ver
 			req_timeout(., 8000)
 	)
 
-	# Send 500 requests at a time
+	# Send 10 requests at a time
 	parsed_responses = map(split(requests, (1:length(requests) - 1) %/% 10), .progress = T, function(requests_chunk) {
 		http_responses = retry_requests(requests_chunk, .verbose = .verbose)
 		parsed_results = imap(http_responses, \(r, i)
