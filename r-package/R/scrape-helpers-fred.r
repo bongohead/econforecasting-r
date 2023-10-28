@@ -208,14 +208,14 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 #' @param .verbose If TRUE, outputs error statuses.
 #'
 #' @import dplyr purrr httr2
-#' @importFrom purrr every is_list is_scalar_character is_character is_scalar_logical
+#' @importFrom purrr every is_list is_scalar_character is_character is_scalar_logical is_scalar_double is_scalar_integer
 #'
 #' @noRd
-retry_requests = function(requests_to_send, .retries = 0, .pool = curl::new_pool(total_con = 4, host_con = 4, multiplex = T), .verbose = T) {
+retry_requests = function(requests_to_send, .retries = 0L, .pool = curl::new_pool(total_con = 4, host_con = 4, multiplex = T), .verbose = T) {
 
 	stopifnot(
 		is_list(requests_to_send),
-		is_scalar_integer(.retries),
+		is_scalar_integer(.retries) | is_scalar_double(.retries),
 		is_scalar_logical(.verbose)
 	)
 
@@ -233,13 +233,13 @@ retry_requests = function(requests_to_send, .retries = 0, .pool = curl::new_pool
 	success_response_ids = names(keep(responses, \(x) 'httr2_response' %in% class(x)))
 	failure_response_ids = names(keep(responses, \(x) !'httr2_response' %in% class(x)))
 
-	if (length(requests[failure_response_ids]) > 0) {
+	if (length(requests_to_send[failure_response_ids]) > 0) {
 
 		if (.verbose) {
 			print('Failed requests!')
-			print(requests[failure_response_ids])
+			print(requests_to_send[failure_response_ids])
 		}
-		retry_responses = retry_requests(requests[failure_response_ids], .retries = .retries + 1, .pool = .pool)
+		retry_responses = retry_requests(requests_to_send[failure_response_ids], .retries = .retries + 1, .pool = .pool)
 
 	} else {
 

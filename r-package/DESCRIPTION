@@ -6,7 +6,7 @@ Authors@R:
     c(person(given = "Charles",
              family = "Y",
              role = c("aut", "cre"),
-             email = "charles@econforecasting.com"))
+             email = "charles@macropredictions.com"))
 Description: Provides miscellaneous functions for forecasting and analysis of economic time series. 
 License: GPL (>= 3)
 Imports:
