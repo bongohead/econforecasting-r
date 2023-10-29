@@ -200,56 +200,6 @@ get_fred_obs = function(series_id, api_key, .freq, .obs_start = '2000-01-01', .v
 }
 
 
-#' Helper to resend a batch of requests, used for async request functions
-#'
-#' @param requests_to_send A list of `httr2` request objects to send.
-#' @param .retries The number of retry attempts before failing.
-#' @param .pool A pool object returns by `curl:::new_pool`.
-#' @param .verbose If TRUE, outputs error statuses.
-#'
-#' @import dplyr purrr httr2
-#' @importFrom purrr every is_list is_scalar_character is_character is_scalar_logical is_scalar_double is_scalar_integer
-#'
-#' @noRd
-retry_requests = function(requests_to_send, .retries = 0L, .pool = curl::new_pool(total_con = 4, host_con = 4, multiplex = T), .verbose = T) {
-
-	stopifnot(
-		is_list(requests_to_send),
-		is_scalar_integer(.retries) | is_scalar_double(.retries),
-		is_scalar_logical(.verbose)
-	)
-
-	if (.retries > 9) stop('Requests failed')
-	if (.retries > 0) {
-		message('Retry ', .retries, ' for ', length(requests_to_send), ' failed requests ')
-		Sys.sleep(2 * 1.8 ^ .retries)
-	}
-
-	responses = setNames(
-		multi_req_perform(reqs = requests_to_send, pool = .pool, cancel_on_error = F),
-		names(requests_to_send)
-	)
-
-	success_response_ids = names(keep(responses, \(x) 'httr2_response' %in% class(x)))
-	failure_response_ids = names(keep(responses, \(x) !'httr2_response' %in% class(x)))
-
-	if (length(requests_to_send[failure_response_ids]) > 0) {
-
-		if (.verbose) {
-			print('Failed requests!')
-			print(requests_to_send[failure_response_ids])
-		}
-		retry_responses = retry_requests(requests_to_send[failure_response_ids], .retries = .retries + 1, .pool = .pool)
-
-	} else {
-
-		retry_responses = list()
-	}
-
-	all_responses = c(responses[success_response_ids], retry_responses)
-
-	return(all_responses)
-}
 
 
 #' Returns last available observations from St. Louis Federal Reserve Economic Database (FRED)
@@ -260,7 +210,7 @@ retry_requests = function(requests_to_send, .retries = 0L, .pool = curl::new_poo
 #' @param .obs_start The default start date of results to return.
 #' @param .verbose If TRUE, echoes error messages.
 #'
-#' @return A data frame of data
+#' @return A data frame of data with each observation corresponding to a unique date/series_id/value.
 #'
 #' @description
 #' Get latest observations for multiple data series from FRED.
@@ -288,13 +238,12 @@ get_fred_obs_async = function(pull_ids, api_key, .obs_start = '2000-01-01', .ver
 	today = as_date(with_tz(now(), tz = 'America/Chicago'))
 
 	# Build hashmap of inputs per series
-	reqs_named = {
+	reqs_map = {
 		if (is_list(pull_ids)) map(pull_ids, \(x) list(series_id = x[1], freq = x[2]))
 		else map(pull_ids, \(x) list(series_id = x, freq = NA))
-		} %>%
-		setNames(., paste0('c', 1:length(.)))
+		}
 
-	requests = map(reqs_named, \(x)
+	requests = map(reqs_map, \(x)
 		request(paste0(
 			'https://api.stlouisfed.org/fred/series/observations?',
 			'series_id=', x$series_id,
@@ -308,31 +257,23 @@ get_fred_obs_async = function(pull_ids, api_key, .obs_start = '2000-01-01', .ver
 			req_timeout(., 8000)
 	)
 
-	# Send 10 requests at a time
-	parsed_responses = map(split(requests, (1:length(requests) - 1) %/% 10), .progress = T, function(requests_chunk) {
-		http_responses = retry_requests(requests_chunk, .verbose = .verbose)
-		parsed_results = imap(http_responses, \(r, i)
-			resp_body_json(r)$observations %>%
-				map(., as_tibble) %>%
-				list_rbind %>%
-				filter(., value != '.') %>%
-				na.omit %>%
-				transmute(
-					.,
-					date = as_date(date) - days({if (!is.na(reqs_named[[i]]$freq) && reqs_named[[i]]$freq == 'w') 7 else 0}),
-					series_id = reqs_named[[i]]$series_id,
-					value = as.numeric(value),
-					freq = {if (!is.na(reqs_named[[i]]$freq)) reqs_named[[i]]$freq else NA}
-				)
-			)
-		return(parsed_results)
-	})
+	http_responses = send_async_requests(requests, .chunk_size = 1, .max_retries = 10, .verbose = .verbose)
+	parsed_results = imap(http_responses, \(r, i)
+	  resp_body_json(r)$observations %>%
+	  	map(., as_tibble) %>%
+	  	list_rbind %>%
+	  	filter(., value != '.') %>%
+	  	na.omit %>%
+	  	transmute(
+	  		.,
+	  		date = as_date(date) - days({if (!is.na(reqs_map[[i]]$freq) && reqs_map[[i]]$freq == 'w') 7 else 0}),
+	  		series_id = reqs_map[[i]]$series_id,
+	  		value = as.numeric(value),
+	  		freq = {if (!is.na(reqs_map[[i]]$freq)) reqs_map[[i]]$freq else NA}
+	  	)
+	)
 
-	# Collapse and order by c1, c2, ...
-	res_collapsed = unlist(unname(parsed_responses), recursive = F)[names(reqs_named)]
 
-	if(length(res_collapsed) != length(pull_ids)) stop('Error: length output not same as input!')
-
-	return(list_rbind(res_collapsed))
+	return(list_rbind(parsed_results))
 }
 
