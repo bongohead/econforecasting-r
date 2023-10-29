@@ -1,0 +1,1 @@
+This module is for scraping text for use in sentiment analysis and recession probability indicators.
