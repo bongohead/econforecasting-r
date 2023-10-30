@@ -137,7 +137,13 @@ retry_requests = function(requests_to_send, .retries = 0L, .max_retries = 5L, .p
 			print('Failed requests!')
 			print(requests_to_send[failure_response_ids])
 		}
-		retry_responses = retry_requests(requests_to_send[failure_response_ids], .retries = .retries + 1, .pool = .pool)
+		retry_responses = retry_requests(
+			requests_to_send[failure_response_ids],
+			.retries = .retries + 1,
+			.max_retries = .max_retries,
+			.pool = .pool,
+			.verbose = .verbose
+			)
 
 	} else {
 
@@ -189,10 +195,10 @@ send_async_requests = function(reqs_list, .chunk_size = 10, .max_conn = .chunk_s
 	parsed_responses = map(reqs_chunked, .progress = .verbose, function(requests_chunk) {
 		return(retry_requests(
 			requests_chunk,
-			.verbose = .verbose,
 			.retries = 0,
 			.max_retries = .max_retries,
-			.pool = new_pool(total_con = .max_conn, host_con = .max_conn, multiplex = T)
+			.pool = new_pool(total_con = .max_conn, host_con = .max_conn, multiplex = T),
+			.verbose = .verbose
 			))
 	})
 
