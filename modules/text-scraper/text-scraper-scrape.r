@@ -35,7 +35,7 @@ local({
 	reddit_token =
 		request('https://www.reddit.com/api/v1/access_token') %>%
 		req_headers(
-			'User-Agent' = reddit_ua,
+			'User-Agent' = Sys.getenv('REDDIT_UA'),
 			'Authorization' = paste0(
 				'Basic ',
 				base64(
@@ -180,90 +180,66 @@ local({
 		.verbose = T
 		)
 
-	cleaned_responses = map(http_responses, function(x) {
+	cleaned_responses = imap(http_responses, .progress = F, function(x, i) {
 
-		resp_body_html(x) %>%
-			html_node(., 'div.column1')
-		tibble(
-			page = page,
-			title = html_text(html_nodes(page_content, 'h3.story-title'), trim = TRUE),
-			description = html_text(html_nodes(page_content, 'div.story-content > p'), trim = TRUE),
-			created = html_text(html_nodes(page_content, 'span.timestamp'), trim = TRUE)
-		) %>%
-		mutate(
-			.,
-			created = ifelse(str_detect(created, 'am |pm '), format(today(), '%b %d %Y'), created),
-			created = as_date(parse_date_time2(created, '%b %d %Y'))
-		)
+		page_content = html_node(resp_body_html(x), 'div.column1')
+
+		res =
+			tibble(
+				page = pages[i],
+				title = html_text(html_nodes(page_content, 'h3.story-title'), trim = TRUE),
+				description = html_text(html_nodes(page_content, 'div.story-content > p'), trim = TRUE),
+				link = html_attr(html_nodes(page_content, 'div.story-content > a'), 'href'),
+				created = html_text(html_nodes(page_content, 'span.timestamp'), trim = TRUE)
+			) %>%
+			mutate(
+				.,
+				created = ifelse(str_detect(created, 'am |pm '), format(today(), '%b %d %Y'), created),
+				created = as_date(parse_date_time2(created, '%b %d %Y'))
+			)
 	})
 
-
 	reuters_data =
-		reduce(1:page_to, function(accum, page) {
-
-			if (page %% 10 == 1) message('***** Downloading data for page ', page)
-
-			page_content =
-				request(paste0(
-					'https://www.reuters.com/news/archive/businessnews?view=page&page=',
-					page, '&pageSize=10'
-					)) %>%
-				req_retry() %>%
-				req_perform() %>%
-				resp_body_html() %>%
-				html_node(., 'div.column1')
-
-			res =
-				tibble(
-					page = page,
-					title = html_text(html_nodes(page_content, 'h3.story-title'), trim = TRUE),
-					description = html_text(html_nodes(page_content, 'div.story-content > p'), trim = TRUE),
-					created = html_text(html_nodes(page_content, 'span.timestamp'), trim = TRUE)
-				) %>%
-				mutate(
-					.,
-					created = ifelse(str_detect(created, 'am |pm '), format(today(), '%b %d %Y'), created),
-					created = as_date(parse_date_time2(created, '%b %d %Y'))
-				) %>%
-				bind_rows(accum, .)
-
-			return(res)
-		}, .init = tibble()) %>%
+		bind_rows(cleaned_responses) %>%
 		transmute(
 			.,
 			source = 'reuters',
-			method = 'business',
-			title, created_dt = created, description, scraped_dttm = now('US/Eastern')
+			subsource = 'business',
+			title,
+			link,
+			description,
+			created_dt = created,
+			scraped_dttm = now('US/Eastern')
 		) %>%
 		# Duplicates can be caused by shifting pages
 		distinct(., title, created_dt, .keep_all = T)
 
-	media <<- list()
-	media$data$reuters <<- reuters_data
+	scrape_data$reuters <<- reuters_data
 })
 
 
 ## Pull FT --------------------------------------------------------
 local({
 
-	# Note 4/17/22: To test this, must
 	message(str_glue('*** Pulling FT Data: {format(now(), "%H:%M")}'))
 
 	method_map = tribble(
-		~ method, ~ ft_key,
-		'economics', 'ec4ffdac-4f55-4b7a-b529-7d1e3e9f150c'
+		~ subsource, ~ ft_key,
+		'economics', 'ec4ffdac-4f55-4b7a-b529-7d1e3e9f150c',
+		'US economy', '6aa143a2-7a0c-4a20-ae90-ca0a46f36f92'
 	)
 
-	existing_pulls = as_tibble(dbGetQuery(db, str_glue(
-		"SELECT created_dt, method, COUNT(*) as count
-		FROM sentiment_analysis_media_scrape
+	existing_pulls = as_tibble(get_query(
+		pg,
+		"SELECT created_dt, subsource, COUNT(*) as count
+		FROM text_scraper_media_scrape
 		WHERE source = 'ft'
-		GROUP BY created_dt, method"
-	)))
+		GROUP BY created_dt, subsource"
+		))
 
 	possible_pulls = expand_grid(
 		created_dt = seq(from = as_date('2020-01-01'), to = today() + days(1), by = '1 day'),
-		method = method_map$method
+		subsource = method_map$subsource
 	)
 
 	new_pulls =
@@ -271,77 +247,130 @@ local({
 			possible_pulls,
 			# Always pull last week articles
 			existing_pulls %>% filter(., created_dt <= today() - days(7)),
-			by = c('created_dt', 'method')
+			by = c('created_dt', 'subsource')
 		) %>%
-		left_join(., method_map, by = 'method')
+		left_join(., method_map, by = 'subsource')
 
-	message('*** New Pulls')
+	message('***** New Pulls')
 	print(new_pulls)
 
+
+	ft_data_raw = imap(df_to_list(new_pulls), .progress = T, function(x, i) {
+
+		# message(str_glue('***** Pulling data for {i} of {nrow(new_pulls)}'))
+		url = str_glue(
+			'https://www.ft.com/search?',
+			'&q=the',
+			'&dateFrom={as_date(x$created_dt)}&dateTo={as_date(x$created_dt) + days(1)}',
+			'&sort=date&expandRefinements=true&contentType=article',
+			'&concept={x$ft_key}'
+		)
+		# message(url)
+
+		page1 =
+			request(url) %>%
+			add_standard_headers() %>%
+			req_retry(max_tries = 10, backoff = \(j) 2 * 2^j) %>%
+			req_perform() %>%
+			resp_body_html()
+
+		pages =
+			page1 %>%
+			html_node(., 'div.search-results__heading-title > h2') %>%
+			html_text(.) %>%
+			str_replace_all(., coll('Powered By Algolia'), '') %>%
+			str_extract(., '(?<=of ).*') %>%
+			as.numeric(.) %>%
+			{(. - 1) %/% 25 + 1}
+
+		if (is.na(pages)) return(NULL)
+
+		list_rbind(map(1:pages, function(page) {
+
+			this_page = {
+				if (page == 1) page1
+				else
+					request(paste0(url, '&page=',page)) %>%
+					req_retry(max_tries = 10, backoff = \(j) 2 * 2^j) %>%
+					req_perform() %>%
+					resp_body_html()
+			}
+
+			search_results =
+				this_page %>%
+				html_nodes(., '.search-results__list-item .o-teaser__content') %>%
+				map(., function(z) tibble(
+					title = z %>% html_nodes('.o-teaser__heading') %>% html_text(.),
+					description = z %>% html_nodes('.o-teaser__standfirst') %>% html_text,
+					link = z %>% html_nodes('.o-teaser__standfirst > a') %>% html_attr(., 'href')
+				)) %>%
+				list_rbind()
+			})) %>%
+			mutate(., subsource = x$subsource, created_dt = as_date(x$created_dt))
+	})
+
+
 	ft_data =
-		new_pulls %>%
-		purrr::transpose(.) %>%
-		imap(., function(x, i) {
-
-			message(str_glue('***** Pulling data for {i} of {nrow(new_pulls)}'))
-			url = str_glue(
-				'https://www.ft.com/search?',
-				'&q=-010101010101',
-				'&dateFrom={as_date(x$created_dt)}&dateTo={as_date(x$created_dt) + days(1)}',
-				'&sort=date&expandRefinements=true&contentType=article',
-				'&concept={x$ft_key}'
-			)
-			message(url)
-
-			page1 =
-				RETRY(
-					'GET',
-					url,
-					add_headers(c(
-						'User-Agent' = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:99.0) Gecko/20100101 Firefox/99.0'
-					))
-				) %>%
-				content(.)
-
-			pages =
-				page1 %>%
-				html_node(., 'div.search-results__heading-title > h2') %>%
-				html_text(.) %>%
-				str_replace_all(., coll('Powered By Algolia'), '') %>%
-				str_extract(., '(?<=of ).*') %>%
-				as.numeric(.) %>%
-				{(. - 1) %/% 25 + 1}
-
-			message('get_dta')
-			if (is.na(pages)) return(NULL)
-
-			map_dfr(1:pages, function(page) {
-
-				this_page = {if(page == 1) page1 else content(RETRY('GET', paste0(url, '&page=',page)))}
-				search_results =
-					this_page %>%
-					html_nodes(., '.search-results__list-item .o-teaser__content') %>%
-					map_dfr(., function(z) tibble(
-						title = z %>% html_nodes('.o-teaser__heading') %>% html_text(.),
-						description = z %>% html_nodes('.o-teaser__standfirst') %>% html_text(.)
-					))
-			}) %>%
-				mutate(., method = x$method, created_dt = as_date(x$created_dt))
-		}) %>%
-		keep(., ~ !is.null(.) & is_tibble(.)) %>%
+		ft_data_raw %>%
+		compact(.) %>%
+		keep(., is_tibble) %>%
 		{
 			if (length(.) >= 1)
 				bind_rows(.) %>%
 				transmute(
 					.,
 					source = 'ft',
-					method,
-					title, created_dt, description, scraped_dttm = now('US/Eastern')
+					subsource,
+					title,
+					link,
+					description,
+					created_dt,
+					scraped_dttm = now('US/Eastern')
 				)
 			else tibble()
 		}
 
-	media$data$ft <<- ft_data
+	scrape_data$ft <<- ft_data
 })
 
+## Store --------------------------------------------------------
+local({
+
+	message(str_glue('*** Sending Media Data to SQL: {format(now(), "%H:%M")}'))
+
+	initial_count = get_rowcount(pg, 'text_scraper_media_scrape')
+	message('***** Initial Count: ', initial_count)
+
+	insert_groups =
+		bind_rows(scrape_data$ft, scrape_data$reuters) %>%
+		# Format into SQL Standard style https://www.postgresql.org/docs/9.1/datatype-datetime.html
+		mutate(
+			.,
+			across(c(created_dttm, scraped_dttm), \(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
+			across(where(is.character), function(x) ifelse(str_length(x) == 0, NA, x)),
+			split = ceiling((1:nrow(.))/5000)
+		) %>%
+		group_split(., split, .keep = F)
+
+	insert_result = map_dbl(insert_groups, .progress = F, function(x)
+		dbExecute(pg, create_insert_query(
+			x,
+			'text_scraper_media_scrape',
+			'ON CONFLICT (source, subsource, title, created_dt) DO UPDATE SET
+				link=EXCLUDED.link,
+				description=EXCLUDED.description,
+				scraped_dttm=EXCLUDED.scraped_dttm'
+		))
+	)
+
+	insert_result = {if (any(is.null(insert_result))) stop('SQL Error!') else sum(insert_result)}
+
+	final_count = get_rowcount(pg, 'text_scraper_media_scrape')
+	rows_added = final_count - initial_count
+	message('***** Rows Added: ', rows_added)
+
+	disconnect_db(pg)
+
+	validation_log$media_rows_added <<- rows_added
+})
 
