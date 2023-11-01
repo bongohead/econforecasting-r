@@ -2,7 +2,7 @@
 #' See text-scraper-gtrain-py.py
 
 # Initialize ----------------------------------------------------------
-SAMPLE_SIZE = 100
+SAMPLE_SIZE = 2000
 PROMPT_VERSION = 1
 
 validation_log <<- list()
@@ -24,32 +24,35 @@ pg = connect_pg()
 
 ## Pull Samples  --------------------------------------------------------
 local({
+
+	# Only score each post from the source table once, even if duplicated in source table (across methods)
+	# Anti join with existing scores on post_id to prevent re-scoring the same post_ids
 	jobs_data =
 		get_query(pg, str_glue(
-			"SELECT
-				a.post_id,
-				a.title,
-				a.selftext,
-				a.created_dttm,
-				ARRAY_LENGTH(REGEXP_SPLIT_TO_ARRAY(TRIM(a.selftext), '\\s+'), 1) AS word_length
-			FROM text_scraper_reddit_scrape a
-			LEFT JOIN text_scraper_reddit_llm_scores b
-				ON a.post_id = b.post_id
-				AND b.prompt_version = {PROMPT_VERSION}
-			WHERE
-				b.id IS NULL
-				AND a.source_board = 'jobs'
-				AND a.ups >= 10
-				AND a.scrape_method IN ('top_200_today', 'top_1000_today', 'top_1000_week', 'top_1000_month', 'top_1000_year')
-				AND a.selftext NOT IN ('', '[deleted]')
-				AND ARRAY_LENGTH(REGEXP_SPLIT_TO_ARRAY(TRIM(a.selftext), '\\s+'), 1) <= 1000"
-		)) %>%
-		group_by(., post_id) %>%
-		slice_head(., n = 1) %>%
-		ungroup(.) %>%
-		# Average of 80 tokens per response
-		mutate(., n_tokens = (str_count(str_squish(selftext), coll(' ')) + 1) * 1.5 + 100) %>%
-		sample_n(., SAMPLE_SIZE, replace = FALSE)
+			"WITH t0 AS (
+				SELECT
+					a.post_id,
+					a.id AS scrape_id,
+					a.title,
+					a.selftext,
+					a.created_dttm,
+					ARRAY_LENGTH(REGEXP_SPLIT_TO_ARRAY(TRIM(a.selftext), '\\s+'), 1) * 1.5 + 100 AS n_tokens,
+					ROW_NUMBER() OVER (PARTITION BY a.post_id ORDER BY a.created_dttm DESC) AS rn
+				FROM text_scraper_reddit_scrape a
+				LEFT JOIN text_scraper_reddit_llm_scores b
+					ON a.post_id = b.post_id
+					AND b.prompt_version = {PROMPT_VERSION}
+				WHERE
+					b.id IS NULL
+					AND a.source_board = 'jobs'
+					AND a.ups >= 10
+					AND a.scrape_method IN ('top_200_today', 'top_1000_today', 'top_1000_week', 'top_1000_month', 'top_1000_year')
+					AND a.selftext NOT IN ('', '[deleted]')
+					AND ARRAY_LENGTH(REGEXP_SPLIT_TO_ARRAY(TRIM(a.selftext), '\\s+'), 1) <= 1000
+			)
+			SELECT * FROM t0 WHERE rn = 1 ORDER BY random() LIMIT {SAMPLE_SIZE}
+			"
+		))
 
 	jobs_data %>%
 		count(., date = date(created_dttm)) %>%
@@ -96,7 +99,7 @@ local({
 		"Given a list of posts made on the job advice board of a social media site, return an array of objects in JSON format.
 	    Each object should correspond to a single post. The keys to each object and their possible values should be:
 		{opts_text}
-		Return a rationale for each value."
+		You may ONLY use these values. Return a rationale for each value as well."
 		),
 		user = list(
 			"Started a new job and a company I applied to before just reached out and gave me an offer for 3 times my salary
@@ -252,6 +255,7 @@ local({
 		group_split(., score_group) %>%
 		imap(., \(x, i) list(
 			score_group = unique(x$score_group),
+			scrape_ids = x$scrape_id,
 			post_ids = x$post_id,
 			user_message = toJSON(x$user_message, auto_unbox = T)
 		))
@@ -272,62 +276,71 @@ local({
 			req_timeout(60 * 10)
 		})
 
-	http_responses = send_async_requests(requests, .chunk_size = 20, .max_retries = 3, .verbose = T)
+	http_responses = send_async_requests(requests, .chunk_size = 40, .max_retries = 4, .verbose = T)
 
 	res = list_rbind(imap(http_responses, function(r, i) {
 
-		response_content =
-			resp_body_json(r) %>%
-			.$choices %>%
-			.[[1]] %>%
-			.$message %>%
-			.$content
+		response_content = resp_body_json(r)$choices[[1]]$message$content
 
+		# Throw non-JSON outputs
 		if (validate(response_content) == F) return(NULL)
 
 		post_ids = user_prompts[[i]]$post_ids
+		scrape_ids = user_prompts[[i]]$scrape_ids
 		json_parsed = fromJSON(response_content, simplifyVector = F)
 
+		# Throw out incorrect counts, since uncertain which one corresponds to what
 		if (length(json_parsed) != length(post_ids)) return(NULL)
 
-		group_gpt_results =
-			imap(json_parsed, function(poster_res, j) {
+		# Iterate through each and check keys, pivot longer
+		group_gpt_results = list_rbind(compact(imap(json_parsed, function(poster_res, j) {
 
-				if (length(unique(label_options$key)) != length(names(poster_res))) return(NULL)
+			if (length(unique(label_options$key)) != length(names(poster_res))) return(NULL)
 
-				if (!all(sort(unique(label_options$key)) == sort(unique(names(poster_res))))) return(NULL)
+			if (!all(sort(unique(label_options$key)) == sort(unique(names(poster_res))))) return(NULL)
 
-				if (!all(map(poster_res, \(k) length(k)) == 2)) return(NULL)
+			if (!all(map(poster_res, \(k) length(k)) == 2)) return(NULL)
 
-				list_rbind(imap(poster_res, \(k, name) tibble(key = name, value = k[[1]], rationale = k[[2]]))) %>%
-					bind_cols(post_id = post_ids[[j]], .)
-			}) %>%
-			compact() %>%
-			list_rbind()
+			list_rbind(imap(poster_res, \(k, name) tibble(key = name, value = k[[1]], rationale = k[[2]]))) %>%
+				bind_cols(scrape_id = scrape_ids[[j]], post_id = post_ids[[j]], .)
+
+			})))
 
 		return(group_gpt_results)
 	}))
 
-	message('***** Unique post IDs returned: ', length(unique(res$post_id)))
+	# Remove any post_ids where *any* of the label keys or values are invalid
+	filtered_res =
+		res %>%
+		left_join(., transmute(label_options, key, value, label_encode = int_encode), by = c('key', 'value')) %>%
+		mutate(., is_na = ifelse(is.na(label_encode), 1, 0)) %>%
+		mutate(., post_invalid_keys_or_values = sum(is_na), .by = post_id) %>%
+		filter(., post_invalid_keys_or_values == 0) %>%
+		select(., -is_na, -post_invalid_keys_or_values)
+
+
+	message('***** Unique post IDs returned: ', length(unique(filtered_res$post_id)))
 	message('***** Unique post IDs desired: ', sum(map_int(user_prompts, \(x) length(x$post_ids))))
 
-	llm_res <<- res
+	llm_res <<- filtered_res
 })
 
 # Finalize --------------------------------------------------------
 
-## Write to SQL  --------------------------------------------------------
+## Write Scores to SQL  --------------------------------------------------------
 local({
 
 	data_to_sql =
 		llm_res %>%
 		transmute(
 			.,
+			scrape_id,
 			post_id,
 			prompt_version = PROMPT_VERSION,
 			label_key = key,
 			label_value = value,
-			label_rationale = rationale
+			label_rationale = rationale,
+			label_encode
 		)
 
 	message(str_glue('*** Sending Media Data to SQL: {format(now(), "%H:%M")}'))
@@ -345,8 +358,10 @@ local({
 			x,
 			'text_scraper_reddit_llm_scores',
 			'ON CONFLICT (post_id, prompt_version, label_key) DO UPDATE SET
+				scrape_id=EXCLUDED.scrape_id,
 				label_value=EXCLUDED.label_value,
-				label_rationale=EXCLUDED.label_rationale'
+				label_rationale=EXCLUDED.label_rationale,
+				label_encode=EXCLUDED.label_encode'
 		))
 	)
 
@@ -360,5 +375,3 @@ local({
 
 	validation_log$post_label_combinations <<- rows_added
 })
-
-
