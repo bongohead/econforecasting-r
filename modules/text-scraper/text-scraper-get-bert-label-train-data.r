@@ -44,7 +44,7 @@ local({
 					AND b.prompt_version = {PROMPT_VERSION}
 				WHERE
 					b.id IS NULL
-					AND a.source_board = 'jobs'
+					AND a.source_board IN ('jobs', 'careerguidance')
 					AND a.ups >= 10
 					AND a.scrape_method IN ('top_200_today', 'top_1000_today', 'top_1000_week', 'top_1000_month', 'top_1000_year')
 					AND a.selftext NOT IN ('', '[deleted]')

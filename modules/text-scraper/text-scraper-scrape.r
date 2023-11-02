@@ -168,7 +168,7 @@ local({
 
 	message(str_glue('*** Pulling Reuters Data: {format(now(), "%H:%M")}'))
 
-	pages = 1:3000 #100 normally, 3000 for backfill
+	pages = 1:100 #100 normally, 3000 for backfill
 
 	http_responses = send_async_requests(
 		map(paste0(
@@ -346,7 +346,7 @@ local({
 		# Format into SQL Standard style https://www.postgresql.org/docs/9.1/datatype-datetime.html
 		mutate(
 			.,
-			across(c(created_dttm, scraped_dttm), \(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
+			across(c(created_dt, scraped_dttm), \(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
 			across(where(is.character), function(x) ifelse(str_length(x) == 0, NA, x)),
 			split = ceiling((1:nrow(.))/5000)
 		) %>%
