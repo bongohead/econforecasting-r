@@ -84,7 +84,7 @@ local({
 				scrape_board = subreddit,
 				source_board = subreddit,
 				title, selftext,
-				upvote_ratio = replace_na(upvote_ratio, 0),
+				upvote_ratio,
 				ups = score, is_self, domain, url = url_overridden_by_dest,
 				created_dttm = with_tz(as_datetime(created_utc, tz = 'UTC'), 'US/Eastern'),
 				scraped_dttm = now('US/Eastern')
@@ -117,7 +117,6 @@ local({
 		mutate(
 			.,
 			across(c(created_dttm, scraped_dttm), \(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
-			across(where(is.character), function(x) ifelse(str_length(x) == 0, NA, x)),
 			split = ceiling((1:nrow(.))/10000)
 		) %>%
 		group_split(., split, .keep = F)

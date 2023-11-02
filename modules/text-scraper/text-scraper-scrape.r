@@ -212,7 +212,7 @@ local({
 			scraped_dttm = now('US/Eastern')
 		) %>%
 		# Duplicates can be caused by shifting pages
-		distinct(., title, created_dt, .keep_all = T)
+		distinct(., title, created_dt, .keep_all = F)
 
 	scrape_data$reuters <<- reuters_data
 })
@@ -328,7 +328,8 @@ local({
 					scraped_dttm = now('US/Eastern')
 				)
 			else tibble()
-		}
+		} %>%
+		distinct(., title, created_dt, .keep_all = F)
 
 	scrape_data$ft <<- ft_data
 })
