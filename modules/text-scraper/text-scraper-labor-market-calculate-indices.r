@@ -80,14 +80,29 @@ local({
 			) %>%
 		mutate(., n = replace_na(n, 0)) %>%
 		arrange(., created_dt) %>%
-		mutate(., n_roll = zoo::rollsum(n, 60, fill = NA, align = 'right'), .by = c('label_key', 'label_value')) %>%
+		mutate(
+			.,
+			n_roll = zoo::rollapply(
+				n, width = 90,
+				FUN = function(x) sum(1:90 * x),
+				fill = NA,
+				align = 'right'
+				),
+			.by = c('label_key', 'label_value')
+			) %>%
 		left_join(
 			.,
 			input_data %>%
 				group_by(., created_dt) %>%
 				summarize(., created_dt_count = n_distinct(post_id)) %>%
 				arrange(., created_dt) %>%
-				mutate(., created_dt_count = zoo::rollsum(created_dt_count, 60, fill = NA, align = 'right')),
+				mutate(., created_dt_count = zoo::rollapply(
+					created_dt_count,
+					90,
+					\(x) sum(1:90 * x),
+					fill = NA,
+					align = 'right'
+					)),
 			by = 'created_dt'
 		)
 
@@ -112,13 +127,15 @@ local({
 			neg_ratio = (`employment_status_unemployed` + `recently_seperated_fired/laid off`)/(created_dt_count*2),
 			pos_ratio = (
 				2 * `recently_received_pay_increase_yes - significant off` +
-				2 * `job_search_status_received offer/started new job` +
-				1 * `employment_status_employed` +
-				-1 * `employment_status_unemployed` +
-				-2 * `recently_seperated_fired/laid off`
-				)/(created_dt_count*4),
+				1 * `job_search_status_received offer/started new job` +
+				.5 * `employment_status_employed` +
+				-.5 * `employment_status_unemployed` +
+				-2 * `recently_seperated_fired/laid off` +
+				2 * `recently_seperated_resigned`
+				)/(created_dt_count*5),
 			) %>%
 		transmute(., date = created_dt, pos_ratio) %>%
+		arrange(., date) %>%
 		pivot_longer(., cols = -date, names_to = 'varname', values_to = 'value') %>%
 		filter(., !is.na(value))
 
