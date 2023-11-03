@@ -18,7 +18,7 @@ pg = connect_pg()
 hist_data =
 	get_query(pg, sql(
 		"SELECT val.varname, val.vdate, val.date, val.value
-		FROM forecast_hist_values val
+		FROM forecast_hist_values_v2 val
 		INNER JOIN forecast_variables v ON v.varname = val.varname
 		WHERE form = 'd1' AND  v.varname = 'gdp'"
 		)) %>%

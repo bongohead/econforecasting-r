@@ -180,6 +180,13 @@ local({
 ## Join Data ------------------------------------------------------------------
 local({
 
+	## Add Old Recession Data
+	# Pre-4/2021 recession data, created by wsj-backfill-raw-html
+	old_recess_data = read_csv(
+		file.path(Sys.getenv('EF_DIR'), 'modules', 'external-import', 'wsj-backfill-cleaned-recess.csv'),
+		col_types = 'ccccDDd'
+	)
+
 	joined_data =
 		bind_rows(old_data, pulled_data, old_recess_data) %>%
 		# Inner join WSJ params
@@ -209,13 +216,6 @@ local({
 			date,
 			value
 			)
-
-	## Add Old Recession Data
-	# Pre-4/2021 recession data, created by wsj-backfill-raw-html
-	old_recess_data = read_csv(
-		file.path(Sys.getenv('EF_DIR'), 'modules', 'external-import', 'wsj-backfill-cleaned-recess.csv'),
-		col_types = 'ccccDDd'
-	)
 
 	raw_data = bind_rows(joined_data, old_recess_data)
 
