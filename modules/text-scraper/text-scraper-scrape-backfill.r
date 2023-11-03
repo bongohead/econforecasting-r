@@ -33,7 +33,7 @@ local({
 		df_to_list()
 
 
-	get_start_line = function(file, start, end, target_date = as_date('2020-01-01')) {
+	get_start_line = function(file, start, end, target_date = as_date('2019-01-01')) {
 
 		partition_at = floor((end + start)/2)
 
@@ -108,7 +108,7 @@ local({
 
 	message(str_glue('*** Sending Reddit Data to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = get_rowcount(pg, 'text_scraper_reddit_scrape')
+	initial_count = get_rowcount(pg, 'text_scraper_reddit_scrapes')
 	message('***** Initial Count: ', initial_count)
 
 	insert_groups =
@@ -124,7 +124,7 @@ local({
 	insert_result = map_dbl(insert_groups, .progress = F, function(x)
 		dbExecute(pg, create_insert_query(
 			x,
-			'text_scraper_reddit_scrape',
+			'text_scraper_reddit_scrapes',
 			'ON CONFLICT (scrape_method, post_id, scrape_board) DO UPDATE SET
 				source_board=EXCLUDED.source_board,
 				title=EXCLUDED.title,
@@ -141,7 +141,7 @@ local({
 
 	insert_result = {if (any(is.null(insert_result))) stop('SQL Error!') else sum(insert_result)}
 
-	final_count = get_rowcount(pg, 'text_scraper_reddit_scrape')
+	final_count = get_rowcount(pg, 'text_scraper_reddit_scrapes')
 	rows_added = final_count - initial_count
 
 	message('***** Rows Added: ', rows_added)

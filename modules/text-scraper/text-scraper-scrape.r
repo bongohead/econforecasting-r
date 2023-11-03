@@ -116,7 +116,7 @@ local({
 
 	message(str_glue('*** Sending Reddit Data to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = get_rowcount(pg, 'text_scraper_reddit_scrape')
+	initial_count = get_rowcount(pg, 'text_scraper_reddit_scrapes')
 	message('***** Initial Count: ', initial_count)
 
 	insert_groups =
@@ -126,7 +126,6 @@ local({
 		mutate(
 			.,
 			across(c(created_dttm, scraped_dttm), \(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
-			across(where(is.character), function(x) ifelse(str_length(x) == 0, NA, x)),
 			split = ceiling((1:nrow(.))/10000)
 			) %>%
 		group_split(., split, .keep = F)
@@ -134,7 +133,7 @@ local({
 	insert_result = map_dbl(insert_groups, .progress = F, function(x)
 		dbExecute(pg, create_insert_query(
 			x,
-			'text_scraper_reddit_scrape',
+			'text_scraper_reddit_scrapes',
 			'ON CONFLICT (scrape_method, post_id, scrape_board) DO UPDATE SET
 				source_board=EXCLUDED.source_board,
 				title=EXCLUDED.title,
@@ -151,7 +150,7 @@ local({
 
 	insert_result = {if (any(is.null(insert_result))) stop('SQL Error!') else sum(insert_result)}
 
-	final_count = get_rowcount(pg, 'text_scraper_reddit_scrape')
+	final_count = get_rowcount(pg, 'text_scraper_reddit_scrapes')
 	rows_added = final_count - initial_count
 
 
@@ -203,8 +202,8 @@ local({
 		bind_rows(cleaned_responses) %>%
 		transmute(
 			.,
-			source = 'reuters',
-			subsource = 'business',
+			scrape_source = 'reuters',
+			scrape_subsource = 'business',
 			title,
 			link,
 			description,
@@ -212,7 +211,7 @@ local({
 			scraped_dttm = now('US/Eastern')
 		) %>%
 		# Duplicates can be caused by shifting pages
-		distinct(., title, created_dt, .keep_all = F)
+		distinct(., title, created_dt, .keep_all = T)
 
 	scrape_data$reuters <<- reuters_data
 })
@@ -224,22 +223,22 @@ local({
 	message(str_glue('*** Pulling FT Data: {format(now(), "%H:%M")}'))
 
 	method_map = tribble(
-		~ subsource, ~ ft_key,
+		~ scrape_subsource, ~ ft_key,
 		'economics', 'ec4ffdac-4f55-4b7a-b529-7d1e3e9f150c',
 		'US economy', '6aa143a2-7a0c-4a20-ae90-ca0a46f36f92'
 	)
 
 	existing_pulls = as_tibble(get_query(
 		pg,
-		"SELECT created_dt, subsource, COUNT(*) as count
-		FROM text_scraper_media_scrape
-		WHERE source = 'ft'
-		GROUP BY created_dt, subsource"
+		"SELECT created_dt, scrape_subsource, COUNT(*) as count
+		FROM text_scraper_media_scrapes
+		WHERE scrape_source = 'ft'
+		GROUP BY created_dt, scrape_subsource"
 		))
 
 	possible_pulls = expand_grid(
 		created_dt = seq(from = as_date('2020-01-01'), to = today() + days(1), by = '1 day'),
-		subsource = method_map$subsource
+		scrape_subsource = method_map$scrape_subsource
 	)
 
 	new_pulls =
@@ -247,9 +246,9 @@ local({
 			possible_pulls,
 			# Always pull last week articles
 			existing_pulls %>% filter(., created_dt <= today() - days(7)),
-			by = c('created_dt', 'subsource')
+			by = c('created_dt', 'scrape_subsource')
 		) %>%
-		left_join(., method_map, by = 'subsource')
+		left_join(., method_map, by = 'scrape_subsource')
 
 	message('***** New Pulls')
 	print(new_pulls)
@@ -306,7 +305,7 @@ local({
 				)) %>%
 				list_rbind()
 			})) %>%
-			mutate(., subsource = x$subsource, created_dt = as_date(x$created_dt))
+			mutate(., scrape_subsource = x$scrape_subsource, created_dt = as_date(x$created_dt))
 	})
 
 
@@ -319,8 +318,8 @@ local({
 				bind_rows(.) %>%
 				transmute(
 					.,
-					source = 'ft',
-					subsource,
+					scrape_source = 'ft',
+					scrape_subsource,
 					title,
 					link,
 					description,
@@ -329,7 +328,7 @@ local({
 				)
 			else tibble()
 		} %>%
-		distinct(., title, created_dt, .keep_all = F)
+		distinct(., title, created_dt, .keep_all = T)
 
 	scrape_data$ft <<- ft_data
 })
@@ -339,7 +338,7 @@ local({
 
 	message(str_glue('*** Sending Media Data to SQL: {format(now(), "%H:%M")}'))
 
-	initial_count = get_rowcount(pg, 'text_scraper_media_scrape')
+	initial_count = get_rowcount(pg, 'text_scraper_media_scrapes')
 	message('***** Initial Count: ', initial_count)
 
 	insert_groups =
@@ -347,8 +346,7 @@ local({
 		# Format into SQL Standard style https://www.postgresql.org/docs/9.1/datatype-datetime.html
 		mutate(
 			.,
-			across(c(created_dt, scraped_dttm), \(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
-			across(where(is.character), function(x) ifelse(str_length(x) == 0, NA, x)),
+			across(c(scraped_dttm), \(x) format(x, '%Y-%m-%d %H:%M:%S %Z')),
 			split = ceiling((1:nrow(.))/5000)
 		) %>%
 		group_split(., split, .keep = F)
@@ -356,8 +354,8 @@ local({
 	insert_result = map_dbl(insert_groups, .progress = F, function(x)
 		dbExecute(pg, create_insert_query(
 			x,
-			'text_scraper_media_scrape',
-			'ON CONFLICT (source, subsource, title, created_dt) DO UPDATE SET
+			'text_scraper_media_scrapes',
+			'ON CONFLICT (scrape_source, scrape_subsource, title, created_dt) DO UPDATE SET
 				link=EXCLUDED.link,
 				description=EXCLUDED.description,
 				scraped_dttm=EXCLUDED.scraped_dttm'
@@ -366,7 +364,7 @@ local({
 
 	insert_result = {if (any(is.null(insert_result))) stop('SQL Error!') else sum(insert_result)}
 
-	final_count = get_rowcount(pg, 'text_scraper_media_scrape')
+	final_count = get_rowcount(pg, 'text_scraper_media_scrapes')
 	rows_added = final_count - initial_count
 	message('***** Rows Added: ', rows_added)
 
