@@ -27,7 +27,8 @@ local({
 		'ics', 'w', 'ICNSA',
 		'ccs', 'w', 'CCNSA',
 		'kclf', 'm', 'FRBKCLMCILA',
-		'sent', 'm', 'UMCSENT'
+		'sent', 'm', 'UMCSENT',
+		'sp500', 'd', 'SP500'
 	)
 
 	fred_data =
@@ -56,8 +57,7 @@ local({
 	    FROM text_scraper_reddit_llm_scores_v2 a
 	    INNER JOIN text_scraper_reddit_scrapes b
 	        ON a.scrape_id = b.scrape_id
-	        AND b.source_board IN ('careerguidance')
-	        AND b.scrape_method IN ('pushshift_backfill', 'top_1000_month', 'top_1000_year', 'top_1000_week')
+	        AND b.source_board IN ('careerguidance', 'jobs')
 	    WHERE a.prompt_id = 'labor_market_v1'"
 	))
 
@@ -80,7 +80,16 @@ local({
 			) %>%
 		mutate(., n = replace_na(n, 0)) %>%
 		arrange(., created_dt) %>%
-		mutate(., n_roll = zoo::rollsum(n, 28, fill = NA, align = 'right'), .by = c('label_key', 'label_value'))
+		mutate(., n_roll = zoo::rollsum(n, 60, fill = NA, align = 'right'), .by = c('label_key', 'label_value')) %>%
+		left_join(
+			.,
+			input_data %>%
+				group_by(., created_dt) %>%
+				summarize(., created_dt_count = n_distinct(post_id)) %>%
+				arrange(., created_dt) %>%
+				mutate(., created_dt_count = zoo::rollsum(created_dt_count, 60, fill = NA, align = 'right')),
+			by = 'created_dt'
+		)
 
 	smoothed_values %>%
 		ggplot() +
@@ -89,23 +98,27 @@ local({
 
 	raw_vals =
 		smoothed_values %>%
-		pivot_wider(., names_from = c(label_key, label_value), values_from = n_roll, id_cols = created_dt) %>%
+		pivot_wider(
+			.,
+			names_from = c(label_key, label_value), values_from = n_roll,
+			id_cols = c(created_dt, created_dt_count), values_fill = 0
+			) %>%
 		mutate(
 			.,
-			emp_denom = employment_status_employed + employment_status_unknown + employment_status_unemployed,
-			emp_ratio = employment_status_employed/emp_denom,
-			resign_denom = `recently_seperated_resigned` + `recently_seperated_considering seperation` + `recently_seperated_fired/laid off` + `recently_seperated_no/unknown`,
-			resign_ratio = recently_seperated_resigned/resign_denom,
-			recently_seperated_denom = `recently_seperated_fired/laid off` + `recently_seperated_resigned` + `recently_seperated_considering seperation` + `recently_seperated_no/unknown`,
-			fire_ratio = `recently_seperated_fired/laid off`/(recently_seperated_denom),
-			ue_ratio = employment_status_unemployed/emp_denom,
-			neg_ratio = (`employment_status_unemployed` + `recently_seperated_fired/laid off`)/(emp_denom + recently_seperated_denom),
-			search_ratio = `job_search_status_received offer/started new job`/
-				(`job_search_status_searching/considering search` + `job_search_status_received offer/started new job` + `job_search_status_not searching/unknown`)
-			# pay_ratio = `includes_pay_complaint_yes`/
-			# 	(`includes_pay_complaint_yes` + `includes_pay_complaint_no`)
+			emp_ratio = employment_status_employed/created_dt_count,
+			resign_ratio = recently_seperated_resigned/created_dt_count,
+			fire_ratio = `recently_seperated_fired/laid off`/created_dt_count,
+			ue_ratio = employment_status_unemployed/employment_status_employed,
+			neg_ratio = (`employment_status_unemployed` + `recently_seperated_fired/laid off`)/(created_dt_count*2),
+			pos_ratio = (
+				2 * `recently_received_pay_increase_yes - significant off` +
+				2 * `job_search_status_received offer/started new job` +
+				1 * `employment_status_employed` +
+				-1 * `employment_status_unemployed` +
+				-2 * `recently_seperated_fired/laid off`
+				)/(created_dt_count*4),
 			) %>%
-		transmute(., date = created_dt, neg_ratio) %>%
+		transmute(., date = created_dt, pos_ratio) %>%
 		pivot_longer(., cols = -date, names_to = 'varname', values_to = 'value') %>%
 		filter(., !is.na(value))
 
@@ -114,14 +127,130 @@ local({
 		bind_rows(
 			.,
 			select(benchmarks, date, varname, value) %>%
-				filter(., varname %in% c('ccs', 'ics', 'unemp'))
-				) %>%
+				filter(., varname %in% c('kclf')) %>%
+				mutate(., value = 1 * (value - min(value))),
+			# select(benchmarks, date, varname, value) %>%
+			# 	filter(., varname %in% c('ccs', 'ics')) %>%
+			# 	mutate(., value = (1/value)),
+			select(benchmarks, date, varname, value) %>%
+				filter(., varname %in% c('sp500')),
+			# select(benchmarks, date, varname, value) %>%
+			# 	filter(., varname %in% c('unemp')) %>%
+			# 	mutate(., value = log(value, 10)),
+			# select(benchmarks, date, varname, value) %>%
+			# 	filter(., varname %in% c('sent'))
+			) %>%
 		group_split(., varname) %>%
-		map(., \(x) mutate(x, value = value/filter(x, date == '2022-01-01')$value)) %>%
+		map(., \(x) mutate(x, value = value/head(filter(x, date >= '2022-01-01'), 1)$value)) %>%
 		list_rbind() %>%
-		filter(., date >= as_date('2021-01-01')) %>%
+		filter(., date >= as_date('2019-01-01')) %>%
 		ggplot() +
 		geom_line(aes(x = date, y = value, color = varname))
 
 })
 
+samples = get_query(pg, str_glue(
+	"WITH t0 AS (
+			SELECT
+				a.scrape_id, a.post_id, a.title, a.selftext, a.created_dttm,
+				ROW_NUMBER() OVER (PARTITION BY a.post_id ORDER BY a.created_dttm DESC) AS rn
+			FROM text_scraper_reddit_scrapes a
+			WHERE
+				a.scrape_board IN ('jobs', 'careerguidance')
+				AND a.ups >= 10
+		)
+		SELECT * FROM t0 WHERE rn = 1 ORDER BY random() --LIMIT {general_sentiment_sample_size}"
+)) %>%
+	mutate(., text = paste0(title, '\n', selftext))
+
+# df =
+# 	samples %>%
+# 	mutate(., title = str_to_lower(title), created_dt = as_date(created_dttm)) %>%
+# 	mutate(., label = case_when(
+# 		str_detect(text, 'layoff|laid off|fired|unemployed|lost( my|) job') ~ 'layoff',
+# 		str_detect(text, 'quit|resign|weeks notice|(leave|leaving)( a| my|)( job)') ~ 'quit',
+# 		# str_detect(text, 'quit|resign|leave (a|my|) job'), 'quit',
+# 		# One critical verb & then more tokenized
+# 		str_detect(
+# 			text,
+# 			paste0(
+# 				'hired|new job|background check|job offer|',
+# 				'(found|got|landed|accepted|starting)( the| a|)( new|)( job| offer)',
+# 				collapse = ''
+# 			)
+# 		) ~ 'hired',
+# 		str_detect(text, 'job search|application|applying|rejected|interview|hunting') ~ 'searching'
+# 	)) %>%
+# 	group_by(., created_dt, label) %>%
+# 	summarize(., n = n(), .groups = 'drop') %>%
+# 	right_join(
+# 		.,
+# 		expand_grid(
+# 			label = unique(.$label),
+# 			created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day'),
+# 		),
+# 		by = c('created_dt', 'label')
+# 	) %>%
+# 	mutate(., n = replace_na(n, 0)) %>%
+# 	arrange(., created_dt) %>%
+# 	mutate(., n_roll = zoo::rollsum(n, 30, fill = NA, align = 'right'), .by = c('label'))
+#
+# df %>%
+# 	mutate(., label = replace_na(label, 'na')) %>%
+# 	mutate(., total = sum(n_roll), .by = 'created_dt') %>%
+# 	pivot_wider(., id_cols = c(created_dt, total), names_from = label, values_from = n_roll, values_fill = 0) %>%
+# 	tail(., -60) %>%
+# 	mutate(across(c(layoff, quit, hired, searching), \(x) x/total)) %>%
+# 	select(., -total, -na) %>%
+# 	pivot_longer(., cols = c(layoff, quit, hired, searching)) %>%
+# 	ggplot +
+# 	geom_line(aes(x = created_dt, y = value, color = name))
+
+
+# samples = get_query(pg, str_glue(
+# 	"WITH t0 AS (
+# 			SELECT
+# 				a.scrape_id, a.post_id, a.title, a.created_dttm,
+# 				ROW_NUMBER() OVER (PARTITION BY a.post_id ORDER BY a.created_dttm DESC) AS rn
+# 			FROM text_scraper_reddit_scrapes a
+# 			WHERE
+# 				a.scrape_board IN ('Economics')
+# 				AND a.ups >= 10
+# 		)
+# 		SELECT * FROM t0 WHERE rn = 1 ORDER BY random() --LIMIT {general_sentiment_sample_size}"
+# ))
+
+# df =
+# 	samples %>%
+# 	mutate(., title = str_to_lower(title), created_dt = as_date(created_dttm)) %>%
+# 	mutate(., label = case_when(
+# 		str_detect(title, 'house|real_estate') ~ 'housing',
+# 		str_detect(title, 'expensive|inflation|cost of living|afford') ~ 'inflation',
+# 		str_detect(title, 'stocks|stock market') ~ 'market',
+# 		str_detect(title, 'unemploy|job') ~ 'labor_market',
+# 	)) %>%
+# 	group_by(., created_dt, label) %>%
+# 	summarize(., n = n(), .groups = 'drop') %>%
+# 	right_join(
+# 		.,
+# 		expand_grid(
+# 			label = unique(.$label),
+# 			created_dt = seq(min(.$created_dt), to = max(.$created_dt), by = '1 day'),
+# 		),
+# 		by = c('created_dt', 'label')
+# 	) %>%
+# 	mutate(., n = replace_na(n, 0)) %>%
+# 	arrange(., created_dt) %>%
+# 	mutate(., n_roll = zoo::rollsum(n, 60, fill = NA, align = 'right'), .by = c('label'))
+#
+# df %>%
+# 	mutate(., label = replace_na(label, 'na')) %>%
+# 	mutate(., total = sum(n_roll), .by = 'created_dt') %>%
+# 	pivot_wider(., id_cols = c(created_dt, total), names_from = label, values_from = n_roll, values_fill = 0) %>%
+# 	tail(., -60) %>%
+# 	mutate(across(c(housing, labor_market, market, inflation), \(x) x/total)) %>%
+# 	select(., -total, -na) %>%
+# 	pivot_longer(., cols = c(housing, labor_market, market, inflation)) %>%
+# 	ggplot +
+# 	geom_line(aes(x = created_dt, y = value, color = name))
+#

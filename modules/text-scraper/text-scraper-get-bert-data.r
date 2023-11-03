@@ -19,7 +19,6 @@ library(DBI, include.only = 'dbExecute')
 load_env(Sys.getenv('EF_DIR'))
 pg = connect_pg()
 
-
 # Labor Market Data --------------------------------------------------------
 
 ## Constants ---------------------------------------------------------------
@@ -66,6 +65,12 @@ local({
 
 ## Prompts -----------------------------------------------------------------
 local({
+
+	# label_options = list(
+	# 	employment_status = c('employed', 'unemployed', 'unknown'),
+	# 	recently_seperated = c('resigned', 'fired/laid off', 'considering resigning', 'no', 'unknown'),
+	# 	considering_seperation = c('considering', 'not considering', 'no')
+	# )
 
 	label_options = tribble(
 		~ key, ~ value,
@@ -364,182 +369,16 @@ local({
 # 				AND b.prompt_id = '{general_sentiment_prompt_id}'
 # 			WHERE
 # 				b.score_id IS NULL
-# 				AND a.scrape_board IN ('all', 'economics')
+# 				AND a.scrape_board IN ('Economics', 'all')
 # 				AND a.ups >= 10
 # 		)
-# 		SELECT * FROM t0 WHERE rn = 1 ORDER BY random() LIMIT {general_sentiment_sample_size}"
+# 		SELECT * FROM t0 WHERE rn = 1 ORDER BY random() --LIMIT {general_sentiment_sample_size}"
 # 	))
 #
 # 	samples %>% count(., date = date(created_dttm)) %>% ggplot + geom_line(aes(x = date, y = n))
 #
 # 	general_sentiment_samples <<- samples
 # })
-
-## Prompts -----------------------------------------------------------------
-# local({
-#
-# 	label_options = tribble(
-# 		~ key, ~ value,
-# 		'', 'employed',
-# 		'employment_status', 'unemployed',
-# 		'employment_status', 'unknown',
-# 		'recently_seperated', 'resigned',
-# 		'recently_seperated', 'fired/laid off',
-# 		'recently_seperated', 'considering seperation',
-# 		'recently_seperated', 'no/unknown',
-# 		'job_search_status', 'received offer/started new job',
-# 		'job_search_status', 'searching/considering search',
-# 		'job_search_status', 'not searching/unknown',
-# 		'recently_received_pay_increase', 'yes - significant off',
-# 		'recently_received_pay_increase', 'yes - small/unknown size',
-# 		'recently_received_pay_increase', 'no/unknown',
-# 		'includes_pay_complaint', 'yes',
-# 		'includes_pay_complaint', 'no',
-# 	) %>%
-# 		mutate(., key_order = consecutive_id(key))
-#
-# 	opts_text =
-# 		label_options %>%
-# 		group_by(., key) %>%
-# 		summarize(., key_order = unique(key_order), values = paste0(value, collapse = ', ')) %>%
-# 		arrange(., key_order) %>%
-# 		{paste0('- ', .$key, ': ', .$values)} %>%
-# 		paste0(., collapse = '\n')
-#
-# 	base_prompts = list(
-# 		system = str_glue(
-# 			"Given a list of posts made on the job advice board of a social media site, return an array of objects in JSON format.
-# 	    Each object should correspond to a single post. The keys to each object and their possible values should be:
-# 		{opts_text}
-# 		You may ONLY use these values. Return a rationale for each value as well."
-# 		),
-# 		user = list(
-# 			"Started a new job and a company I applied to before just reached out and gave me an offer for 3 times my salary
-#
-# 			My current job is fine, but I'm underpaid. I like my boss and team, but I probably won't ever come back to the company.
-# 			How should I approach leaving? I don't start the new job for another month, and I've accepted an offer at my new job.
-# 			Do I tell my boss and team now?",
-# 			"I basically went to college for nothing - Unemployed and Depressed.
-#
-# 			I got a Bachelors in Business Administration in Marketing a few years ago.
-# 			I didn’t really take full advantage of being in school and preparing for the real world. Since graduating,
-# 			I’ve submitted over 1300 applications to white collar jobs with multiple iterations of a resume, and have gotten
-# 			only one offer at McDonald's but got fired.
-# 			I usually apply to Marketing Coordinator roles or anything entry-level. At this point, I’m at a loss.",
-# 			"Can someone explain what’s going on with the market?
-#
-# 			A few years ago, with less experience, I applied for a few jobs and got offers to 2 and they paid me to relocate.
-# 			Now, I apply to 100 jobs to get a handful of first round interviews. Is the market really so horrible?",
-# 			"Would I be absolutely stupid to quit my high paying job?
-#
-# 			I have a well paying job (low six figures) and I’ve been at my company almost a decade, but I'm burnt out from the politics.
-# 			Why am I so terrified to quit? I feel like I’ve put so much time and energy into climbing high in the pay scale and wherever
-# 			I end up is going to be just as bad."
-# 		),
-# 		assistant = list(
-# 			list(
-# 				employment_status = list('employed',  'The user states they have a "current job".'),
-# 				recently_seperated = list('resigned',  'The user is resigning from their current job for a higher paying job.'),
-# 				job_search_status = list('received offer/started new job',  'The user has received "an offer" at a new job.'),
-# 				recently_received_pay_increase = list('yes - significant',  'The user accepted an offer for "3 times" their previous salary.'),
-# 				includes_pay_complaint = list('yes',  'The user mentions they\'re currently "underpaid".')
-# 			),
-# 			list(
-# 				employment_status = list('unemployed',  'The user states they are "Unemployed and Depressed".'),
-# 				recently_seperated = list('fired/laid off',  'The user was laid off at McDonald\'s.'),
-# 				job_search_status = list('searching/considering search',  'The user has submitted "over 1300 applications".'),
-# 				recently_received_pay_increase = list('no/unknown',  'The user is unemployed and has no pay.'),
-# 				includes_pay_complaint = list('no',  'The user makes no mention of pay or salary.')
-# 			),
-# 			list(
-# 				employment_status = list('unknown',  'It is unclear whether the user is currently employed.'),
-# 				recently_seperated = list('no/unknown',  'It is unclear whether the user recently left a job.'),
-# 				job_search_status = list('searching/considering search',  'The user mentions applying to "100 jobs".'),
-# 				recently_received_pay_increase = list('no/unknown',  'It is unclear whether the user recently received any pay increases.'),
-# 				includes_pay_complaint = list('no',  'The user makes no mention of pay or salary.')
-# 			),
-# 			list(
-# 				employment_status = list('employed', 'The user mentions currently having a "well paying job".'),
-# 				recently_seperated = list('considering seperation', 'The user is considering leaving their current job.'),
-# 				job_search_status = list('searching/considering search', 'The user is considering the possibility of getting a "job in a different field".'),
-# 				recently_received_pay_increase = list('no/unknown', 'It is unclear whether the user recently received any pay increases.'),
-# 				includes_pay_complaint = list('no', 'The user seems satisfied with their current pay.')
-# 			)
-# 		),
-# 		user = list(
-# 			"I'm burnt out but I need a new job
-#
-# 			This job search has got me on edge. I started applying in October with no offers from the 12+ places
-# 			that I've interviewed for. I'm tired and taking a much-needed short vacation this week although I
-# 			don't actually have the time. I currently have 10 tasks (reports, etc) on
-# 			my plate. I got a measly raise which is truly a slap in the face for all the work that is currently on my shoulders.",
-# 			"Job asked me to come back 3 months after layoff
-#
-# 			Yesterday, I got a call from the head of my old company asking if I would be interested in coming back. This was honestly the last thing I expected.
-# 			I mentioned pay would be a big factor and they said they would be open to better compensation.
-# 			They would also benefit from not having to train a new employee. Should I go back until I find something better?
-# 			It would bring money while I have no income so Im leaning towards accepting."
-# 		),
-# 		assistant = list(
-# 			list(
-# 				employment_status = list('employed', 'The user is currently employed, as indicated by their mention of "10 tasks".'),
-# 				recently_seperated = list('considering seperation', 'The user wants to leave their current job.'),
-# 				job_search_status = list('searching/considering search', 'The user mentions they "started applying in October".'),
-# 				recently_received_pay_increase = list('yes - small/unknown size', 'The user mentions they "got a measly raise".'),
-# 				includes_pay_complaint = list('no', 'The user is dissatisfied with their pay, as they complained about "a measly raise".')
-# 			),
-# 			list(
-# 				employment_status = list('unemployed', 'The user is unemployed and has "no income".'),
-# 				recently_seperated = list('fired/laid off', 'The user was laid off 3 months ago.'),
-# 				job_search_status = list('searching/considering search', 'The user seems to have been searching for jobs until they received this offer.'),
-# 				recently_received_pay_increase = list('yes - small/unknown size',  'The user mentions the possibility of "better compensation", but does not specify how large it is.'),
-# 				includes_pay_complaint = list('no', 'The user discusses compensation, but does not complain about it.')
-# 			)
-# 		)
-# 	) %>%
-# 		imap(., \(x, i) list(
-# 			role = i,
-# 			content = {
-# 				if (i == 'system') str_replace_all(x, '\\t', '')
-# 				else if (i == 'user') toJSON(
-# 					map_chr(x, \(m)
-# 							m %>%
-# 								str_replace_all(., '\\t', '') %>%
-# 								# Remove all linebreaks except double linebreaks
-# 								str_replace_all(., '\n(?!\\n)', '_PLACEHOLDER_') %>%
-# 								str_replace_all(., '\n\n', '\n') %>%
-# 								str_replace_all(., '_PLACEHOLDER_', '')
-# 					),
-# 					auto_unbox = T
-# 				)
-# 				else toJSON(x, auto_unbox = T)
-# 			}
-# 		)) %>%
-# 		unname(.)
-#
-# 	# Validate prompts
-# 	validate_df =
-# 		base_prompts %>%
-# 		keep(\(x) x$role == 'assistant') %>%
-# 		map(\(x) fromJSON(x$content, simplifyVector  = F)) %>%
-# 		unlist(., recursive = F) %>%
-# 		imap(., \(example, example_idx)
-# 			 list_rbind(imap(example, \(m, j) tibble(idx = example_idx, key = j, value = m[[1]], rationale = m[[2]])))
-# 		) %>%
-# 		list_rbind(.)
-#
-# 	# Verify no NAs
-# 	validate_df %>%
-# 		count(., key, value) %>%
-# 		inner_join(., label_options, by = c('key', 'value')) %>%
-# 		print()
-#
-# 	labor_market_base_prompts <<- base_prompts
-# 	labor_market_label_options <<- label_options
-# })
-
-
-
 
 
 
