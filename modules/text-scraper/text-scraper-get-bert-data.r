@@ -19,6 +19,321 @@ library(DBI, include.only = 'dbExecute')
 load_env(Sys.getenv('EF_DIR'))
 pg = connect_pg()
 
+
+# Personal Finance ------------------------------------------------------
+
+## Constants ---------------------------------------------------------------
+local({
+	financial_health_prompt_id <<- 'financial_health_v1'
+	financial_health_sample_size <<- 1000000
+})
+
+## Pull Samples  --------------------------------------------------------
+local({
+
+	# Only score each post from the source table once, even if duplicated in source table (across methods)
+	# Anti join with existing scores on post_id to prevent re-scoring the same post_ids
+	samples = get_query(pg, str_glue(
+		"WITH t0 AS (
+			SELECT
+				a.scrape_id, a.post_id,
+				a.source_board, a.scrape_method,
+				a.title, a.selftext,
+				DATE(a.created_dttm) AS created_dt,
+				ARRAY_LENGTH(REGEXP_SPLIT_TO_ARRAY(TRIM(a.selftext), '\\s+'), 1) * 1.5 + 100 AS n_tokens,
+				ROW_NUMBER() OVER (PARTITION BY a.post_id ORDER BY a.created_dttm DESC) AS rn
+			FROM text_scraper_reddit_scrapes a
+			LEFT JOIN text_scraper_reddit_llm_scores_v2 b
+				ON a.post_id = b.post_id
+				AND b.prompt_id = '{financial_health_prompt_id}'
+			WHERE
+				b.score_id IS NULL
+				AND a.source_board IN ('jobs', 'careerguidance', 'personalfinance')
+				AND ARRAY_LENGTH(REGEXP_SPLIT_TO_ARRAY(TRIM(a.selftext), '\\s+'), 1) BETWEEN 10 AND 1000
+		)
+		SELECT * FROM t0 WHERE rn = 1 ORDER BY random() 
+		LIMIT {financial_health_sample_size}"
+	))
+
+	samples %>% count(., date = created_dt) %>% ggplot + geom_line(aes(x = date, y = n))
+	
+	regex_res = 
+		samples %>%
+		mutate(
+			., 
+			text = paste0('TITLE: ', title, '\nPOST: ', str_replace_all(selftext, "\\t|\\n", " ")),
+			is_layoff = ifelse(str_detect(text, 'layoff|laid off|fired|unemployed|lost( my|) job|laying off'), 1, 0),
+			is_resign = ifelse(str_detect(text, 'quit|resign|weeks notice|(leave|leaving)( a| my|)( job)'), 1, 0),
+			is_new_job = ifelse(str_detect(text, 'hired|new job|background check|job offer|(found|got|landed|accepted|starting)( the| a|)( new|)( job| offer)'), 1, 0),
+			is_searching = ifelse(str_detect(text, 'job search|application|applying|rejected|interview|hunting'), 1, 0),
+			is_inflation = ifelse(str_detect(text, 'inflation|cost-of-living|cost of living|expensive'), 1, 0)
+			# is_housing = ifelse(str_detect(text, 'housing|home|rent'), 1, 0)
+			) %>%
+		group_by(., created_dt) %>%
+		summarize(
+			., 
+			across(starts_with('is_'), sum),
+			count = n(),
+			.groups = 'drop'
+			) %>%
+		arrange(., created_dt)
+	
+	regex_res %>%
+		mutate(across(c(starts_with('is_'), count), function(x)
+			zoo::rollapply(
+				x, width = 360,
+				FUN = function(x) sum(.99^((length(x) - 1):0) * x),
+				fill = NA, align = 'right'
+				)
+			)) %>%
+		pivot_longer(., -c(created_dt, count), names_to = 'name', values_to = 'value', values_drop_na = T) %>%
+		mutate(., ratio = value/count) %>%
+		ggplot() +
+		geom_line(aes(x = created_dt, y = ratio, color = name, group = name))
+
+	financial_health_samples <<- samples
+})
+
+## Prompts -----------------------------------------------------------------
+local({
+	
+	# label_options = list(
+	# 	employment_status = c('employed', 'unemployed', 'unknown'),
+	# 	recently_seperated = c('resigned', 'fired/laid off', 'considering resigning', 'no', 'unknown'),
+	# 	considering_seperation = c('considering', 'not considering', 'no')
+	# )
+	
+	custom_function = '[
+  {
+    "name": "classify_posts",
+    "description": "Classifies content and sentiment of a variety of society media posts for a personal finance forum",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "posts": {
+          "type": "array",
+          "description": "An array of objects representing posts",
+          "items": {
+            "financially_distressed": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family is financially stressed (e.g. struggling with debt or bills, bankruptcy)"
+            },
+            "financially_strong": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family is financially strong OR improving (e.g. pay raise, large gift)"
+            },
+            "income_increase": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family recently received an increase in income (e.g. pay raise, higher-paying job)"
+            },
+            "struggling_with_debt": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family is struggling with their debt load (e.g. credit cards, mortgages)"
+            },
+            "recently_terminated": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family recently was laid off or fired"
+            },
+            "recently_resigned": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family recently left a job voluntarily (not including retirement)"
+            },
+            "inflation": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family is thinking about or is concerned with inflation or cost of living"
+            },
+            "housing": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family is thinking about or is concerned with housing or renting"
+            },
+            "salary": {
+              "type": "boolean",
+              "description": "Does the post indicate the user or their family is thinking about or is concerned with pay or salary"
+            }
+          }
+        }
+      }
+    }
+  }]' 
+	
+	list(
+		financial_distressed = F, financially_strong = F, 
+		income_increase = F, struggling_with_debt = F,
+		recently_terminated = F, recently_resigned = F,
+		inflation = F, housing = F, salary = F
+	)
+	
+	user_prompts =
+		financial_health_samples %>%
+		sample_n(., 5) %>%
+		mutate(., user_message = paste0('*POST #', 1:nrow(.), '*\nTITLE: ', title, '\nPOST: ', str_replace_all(selftext, "\\t|\\n", " "))) %>%
+		mutate(., score_group = 1) %>%
+		group_split(., score_group) %>%
+		imap(., \(x, i) list(
+			score_group = unique(x$score_group),
+			scrape_ids = x$scrape_id,
+			post_ids = x$post_id,
+			user_message = paste0(x$user_message, collapse = '\n\n')
+		))
+	
+	requests = map(user_prompts, \(p) {
+		request('https://api.openai.com/v1/chat/completions') %>%
+			req_headers(
+				'Authorization' = paste0('Bearer ', Sys.getenv('OPENAI_API_KEY')),
+				'Content-Type' = 'application/json'
+			) %>%
+			req_body_raw(str_glue(
+			'{{
+				"model": "gpt-3.5-turbo",
+				"messages": {messages_list},
+				"temperature": 0.2,
+				"functions": {functions},
+				"function_call": "auto"
+			}}', 
+			messages_list = jsonlite::toJSON(list(list(role = 'user', content = p$user_message)), auto_unbox = T), 
+			functions = str_replace_all(custom_function, '\\t|\\n', '')
+			)) %>%
+			req_timeout(60 * 2)
+	})
+	
+	http_responses = send_async_requests(requests, .chunk_size = 40, .max_retries = 4, .verbose = T)
+	
+	res = list_rbind(imap(http_responses, function(r, i) {
+		
+		response_content = resp_body_json(r)$choices[[1]]$message$content
+		
+		# Throw non-JSON outputs
+		if (validate(response_content) == F) return(NULL)
+		
+		post_ids = user_prompts[[i]]$post_ids
+		scrape_ids = user_prompts[[i]]$scrape_ids
+		json_parsed = fromJSON(response_content, simplifyVector = F)
+		
+		# Throw out incorrect counts, since uncertain which one corresponds to what
+		if (length(json_parsed) != length(post_ids)) return(NULL)
+		
+		# Iterate through each and check keys, pivot longer
+		group_gpt_results = list_rbind(compact(imap(json_parsed, function(poster_res, j) {
+			
+			if (length(unique(labor_market_label_options$key)) != length(names(poster_res))) return(NULL)
+			
+			if (!all(sort(unique(labor_market_label_options$key)) == sort(unique(names(poster_res))))) return(NULL)
+			
+			if (!all(map(poster_res, \(k) length(k)) == 2)) return(NULL)
+			
+			list_rbind(imap(poster_res, \(k, name) tibble(key = name, value = k[[1]], rationale = k[[2]]))) %>%
+				bind_cols(scrape_id = scrape_ids[[j]], post_id = post_ids[[j]], .)
+			
+		})))
+		
+		return(group_gpt_results)
+	}))
+	
+	
+
+	base_prompts = list(
+		system = str_glue(
+			"Given a list of posts made on the job advice board of a social media site, return an array of objects in JSON format.
+	    Each object should correspond to a single post. The keys to each object and their possible values should be:
+		{opts_text}
+		You may ONLY use these values. Return a rationale for each value as well."
+		),
+		user = 
+"*POST #1*
+TITLE: Word Of Warning
+POST: So this post is not to garner sympathy or anything like that, I've learned from my mistake I'm just hoping others can learn as well. I was in a bad place emotionally and financially, I took a Payday loan for 150 dollars, now I could have paid it off from my first paycheck but I didn't I let payments get made instead. But then I checked my loan account and I was paying 500 dollars on a 150 dollar loan. I lost my job couldn't pay the rest off so just let the payments come.
+
+*POST #2*
+TITLE: Company offering promotion with no raise
+POST: Hey everyone,  I am being offered a promotion however the hiring manager said they cannot do anything for me salary wise.  However, the catch is in a year they will promote me to a supervisor once I've gotten comfortable in the position then we can discuss compensation then.  So all I get is this hypothetical Carrot being dangled in front of me. My question is can I ask for some kind of clause in my contract or whatever I sign that 1 year from date of start I will be given a 20% raise with the duties of XYZ position blah blah blah?
+
+*POST #3*
+TITLE: I was recently given $14k. Pay off my car or invest?
+POST: I make 74k a year before taxes  I had 18k in my checking account. I recently inherited 14k from a generous relative passing away, bringing me to 32k. I have 16k left on my car at something like 2.8 API. This is my only debt. Should I put that money into stocks or some kind of investing account? or just pay off my car loan?
+
+*POST #4*
+TITLE: Looking for an app to track my funds and budget
+POST: Hello, I am looking for an easy to use app to track all my funds and budget. Primarily, I do not want to link any of my bank or investment accounts to it and am okay with entering them in manually. 
+
+*POST #5*
+TITLE: [US] I've been living paycheck-to-paycheck all of my life. How can I stop living like this?
+POST: Let me provide some background on me:  I earn $65k/yr &amp; I of course have bills including a lot of credit card debt. The way I've always functioned is I split my bills in 1/2 to pay them when I get paid &amp; then whatever's leftover is spending $ for the week. I do have difficulty saving &amp; I was told it's probably due to my ADHD. I have no idea how to stop this living from paycheck-to-paycheck life &amp; was looking for advice on how to do so.
+",
+		assistant = list(
+			list(
+				financial_distressed = T, financially_strong = F, 
+				income_increase = F, struggling_with_debt = T,
+				recently_terminated = T, recently_resigned = F,
+				inflation = F, housing = F, salary = F
+			),
+			list(
+				financial_distressed = F, financially_strong = F, 
+				income_increase = F, struggling_with_debt = F,
+				recently_terminated = F, recently_resigned = F,
+				inflation = F, housing = F, salary = T
+			),
+			list(
+				financial_distressed = F, financially_strong = T, 
+				income_increase = F, struggling_with_debt = F,
+				recently_terminated = F, recently_resigned = F,
+				inflation = F, housing = F, salary = F
+			),
+			list(
+				financial_distressed = F, financially_strong = F, 
+				income_increase = F, struggling_with_debt = F,
+				recently_terminated = F, recently_resigned = F,
+				inflation = F, housing = F, salary = F
+			),
+			list(
+				financial_distressed = T, financially_strong = F, 
+				income_increase = F, struggling_with_debt = T,
+				recently_terminated = F, recently_resigned = F,
+				inflation = F, housing = F, salary = F
+			),
+
+		)
+	) %>%
+		imap(., \(x, i) list(
+			role = i,
+			content = {
+				if (i == 'system') str_replace_all(x, '\\t', '')
+				else if (i == 'user') toJSON(
+					map_chr(x, \(m)
+									m %>%
+										str_replace_all(., '\\t', '') %>%
+										# Remove all linebreaks except double linebreaks
+										str_replace_all(., '\n(?!\\n)', '_PLACEHOLDER_') %>%
+										str_replace_all(., '\n\n', '\n') %>%
+										str_replace_all(., '_PLACEHOLDER_', '')
+					),
+					auto_unbox = T
+				)
+				else toJSON(x, auto_unbox = T)
+			}
+		)) %>%
+		unname(.)
+	
+	# Validate prompts
+	validate_df =
+		base_prompts %>%
+		keep(\(x) x$role == 'assistant') %>%
+		map(\(x) fromJSON(x$content, simplifyVector  = F)) %>%
+		unlist(., recursive = F) %>%
+		imap(., \(example, example_idx)
+				 list_rbind(imap(example, \(m, j) tibble(idx = example_idx, key = j, value = m[[1]], rationale = m[[2]])))
+		) %>%
+		list_rbind(.)
+	
+	# Verify no NAs
+	validate_df %>%
+		count(., key, value) %>%
+		inner_join(., label_options, by = c('key', 'value')) %>%
+		print()
+	
+	labor_market_base_prompts <<- base_prompts
+	labor_market_label_options <<- label_options
+})
+
 # Labor Market Data --------------------------------------------------------
 
 ## Constants ---------------------------------------------------------------
@@ -46,7 +361,8 @@ local({
 				AND b.prompt_id = '{labor_market_prompt_id}'
 			WHERE
 				b.score_id IS NULL
-				AND a.source_board IN ('jobs', 'careerguidance')
+				AND a.source_board IN ('jobs', 'careerguidance', 'personalfinance')
+				AND a.selftext IS NOT NULL
 				AND a.ups >= 10
 				AND a.scrape_method IN (
 					'pushshift_backfill', 'top_200_today', 'top_1000_today',
@@ -62,6 +378,7 @@ local({
 
 	labor_market_samples <<- samples
 })
+
 
 ## Prompts -----------------------------------------------------------------
 local({
@@ -345,40 +662,6 @@ local({
 	llm_outputs$labor_market <<- filtered_res
 })
 
-# General Complaints ------------------------------------------------------
-
-## Constants ---------------------------------------------------------------
-# local({
-# 	general_sentiment_prompt_id <<- 'general_sentiment_v1'
-# 	general_sentiment_sample_size <<- 2000
-# })
-
-## Pull Samples  --------------------------------------------------------
-# local({
-#
-# 	# Only score each post from the source table once, even if duplicated in source table (across methods)
-# 	# Anti join with existing scores on post_id to prevent re-scoring the same post_ids
-# 	samples = get_query(pg, str_glue(
-# 		"WITH t0 AS (
-# 			SELECT
-# 				a.scrape_id, a.post_id, a.title, a.created_dttm,
-# 				ROW_NUMBER() OVER (PARTITION BY a.post_id ORDER BY a.created_dttm DESC) AS rn
-# 			FROM text_scraper_reddit_scrapes a
-# 			LEFT JOIN text_scraper_reddit_llm_scores_v2 b
-# 				ON a.post_id = b.post_id
-# 				AND b.prompt_id = '{general_sentiment_prompt_id}'
-# 			WHERE
-# 				b.score_id IS NULL
-# 				AND a.scrape_board IN ('Economics', 'all')
-# 				AND a.ups >= 10
-# 		)
-# 		SELECT * FROM t0 WHERE rn = 1 ORDER BY random() --LIMIT {general_sentiment_sample_size}"
-# 	))
-#
-# 	samples %>% count(., date = date(created_dttm)) %>% ggplot + geom_line(aes(x = date, y = n))
-#
-# 	general_sentiment_samples <<- samples
-# })
 
 
 
