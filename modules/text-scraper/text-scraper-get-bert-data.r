@@ -24,7 +24,7 @@ pg = connect_pg()
 ## Constants ---------------------------------------------------------------
 local({
 	financial_health_prompt_id <<- 'financial_health_v1'
-	financial_health_sample_size <<- 10000
+	financial_health_sample_size <<- 5000
 })
 
 ## Pull Samples  --------------------------------------------------------
@@ -97,35 +97,35 @@ local({
 			
 			Think carefully, step by step, and try your best to provide accurate explanations.",
 		user =
-			"*POST #1*
+			"*ID: 1*
 			TITLE: Word Of Warning
 			POST: So this post is not to garner sympathy, I've learned from my mistake just hoping others can learn as well. I was in a bad place emotionally and financially, I took a Payday loan for 150 dollars, now I could have paid it off from my first paycheck but I didn't let payments get made instead. But then I checked my loan account and I was paying 500 dollars on a 150 dollar loan. I lost my job couldn't pay the rest off so just let the payments come.
 
-			*POST #2*
+			*ID: 2*
 			TITLE: I was recently given $14k. Pay off my car or invest?
 			POST: I make 74k a year before taxes I had 18k in my checking account. I recently inherited 14k from a generous relative passing away, bringing me to 32k. I have 16k left on my car at something like 2.8 API. This is my only debt. Should I put that money into stocks? or just pay off my car loan?
 
-			*POST #3*
+			*ID: 3*
 			TITLE: Looking for an app to track my funds and budget
 			POST: Hello, I am looking for an easy to use app to track all my funds and budget. I do not want to link any of my bank or investment accounts to it and am okay with entering them in manually.
 
-			*POST #4*
+			*ID: 4*
 			TITLE: [US] I've been living paycheck-to-paycheck all of my life. How can I stop living like this?
 			POST: Let me provide some background on me:  I earn $65k/yr & I of course have bills including a lot of credit card debt. The way I've always functioned is I split my bills in 1/2 to pay them when I get paid; then whatever's leftover is spending $ for the week. I do have difficulty saving & I was told it's probably due to my ADHD. I have no idea how to stop this living from paycheck-to-paycheck life &amp; was looking for advice on how to do so.
 
-			*POST #5*
+			*ID: 5*
 			TITLE: I basically went to college for nothing - Unemployed and Depressed.
 			POST: I got a Bachelors in Marketing a few years ago. I didn’t really take full advantage of being in school and preparing for the real world. Since graduating, I’ve submitted over 1300 applications to white collar jobs with multiple iterations of a resume. I usually apply to Marketing Coordinator roles or anything entry-level. At this point, I’m at a loss.
 
-			*POST #6*
+			*ID: 6*
 			TITLE: Started a new job and a company I applied to before just reached out and gave me an offer for 3 times my salary
 			POST: I'm underpaid at my current job. I like my boss and team, but I probably won't ever come back to the company. How should I approach leaving? I don't start the new job for another month, and I've accepted an offer at my new job. Do I tell my boss and team now?
 
-			*POST #7*
+			*ID: 7*
 			TITLE: Would I be absolutely stupid to quit my high paying job?
 			POST: I have a well paying job (low six figures) and I’ve been at my company almost a decade, but I'm burnt out from the politics. Why am I so terrified to quit? I feel like I’ve put so much time and energy into climbing high in the pay scale and wherever I end up is going to be just as bad
 
-			*POST #8*
+			*ID: 8*
 			TITLE: Anyone else ever been in this predicament?
 			POST: I am poor. I mean dead broke. I got a job at Wendy's today and I start a week from Monday. She said I had to have black pants and black no skid shoes. I didn’t tell her but there’s no way I can afford to get those by Monday. I’m living off or ramen right now. Should I just show up Monday in some dark blue pants?"
 		,
@@ -188,25 +188,21 @@ local({
 			)
 			)),
 		user =
-			"*POST #1*
+			"*ID: 1*
 			TITLE: Advice Wanted, Can I Afford 1200/month Rent?
 			POST: I make $21 an hour and am wondering if I could afford $1200/month rent. Found a great large studio with a reverse commute and will let me bring my dog, and I have scheduled a tour and am considering in applying for the place. My monthly income is about $2500 after taxes (this is my 90 day average income), and my current expenses are around $650 a month.
 
-			*POST #2*
+			*ID: 2*
 			TITLE: How do I find a career if my degree is vague?
 			POST: Which job boards are the best? What are some free online resume resources? I was fired last week (completely bs, incompetent management) I can get unemployment but I would rather find a job ASAP. Its always really hard for me bc i have a weird degree (psych and cj, wanted to be a cop not anymore) degree and no hard technical skills to market.
 
-			*POST #3*
+			*ID: 3*
 			TITLE: Career change after 20 years; impossible?
 			POST: I work as a manager at a convenient store. While I like it and it's good money, I want a change. Are there any programs or resources I should be looking into that can help me?
 		
-			*POST #3*
-			TITLE: Career change after 20 years; impossible?
-			POST: I work as a manager at a convenient store. While I like it and it's good money, I want a change. Are there any programs or resources I should be looking into that can help me?
-
-			*POST #4*
+			*ID: 4*
 			TITLE: 52 and Have No Retirement. NONE
-			POST: I have worked as a veterinary technician (we don't make much), and in media, and in some other fields. I have a master's degree and loans and about 20K in credit card debt. I secured a really nice paying job for the first time in my life and have about 10k in my bank account. I am scared to do anything with that money. As someone who had to live check to check, investing or paying off my cards seeing a low balance again gives me anxiety. I know I should do this but I just don't know where to begin. Help!",
+			POST: I have worked as a veterinary technician (we don't make much). I have a master's degree and loans and about 20K in credit card debt. I secured a really nice paying job for the first time in my life and have about 10k in my bank account. I am scared to do anything with that money. As someone who had to live check to check, investing or paying off my cards seeing a low balance again gives me anxiety. I know I should do this but I just don't know where to begin. Help!",
 		assistant = list(posts = list(
 			list(
 				id = 1,
@@ -247,11 +243,11 @@ local({
 			}
 		)) %>% unname(.)
 
-	user_prompts =
+	input_data =
 		financial_health_samples %>%
 		mutate(., score_group = ceiling((1:nrow(.))/20)) %>%
 		mutate(., user_message = paste0(
-			'*POST #', 1:n(), 
+			'*ID: ', 1:n(), 
 			'*\nTITLE: ', title,
 			'\nPOST: ', str_squish(str_replace_all(selftext, "\\t|\\n", " "))
 			), .by = score_group) %>%
@@ -266,8 +262,9 @@ local({
 			scrape_methods = x$scrape_method
 		))
 
-	requests = map(user_prompts, \(p) {
-		req = 
+	input_requests =
+		map(input_data, \(p) p$user_message)  %>%
+		map(., \(m) {
 			request('https://api.openai.com/v1/chat/completions') %>%
 			req_headers(
 				'Authorization' = paste0('Bearer ', Sys.getenv('OPENAI_API_KEY')),
@@ -281,71 +278,96 @@ local({
 				"temperature": 0.2
 			}}',
 			messages_list = toJSON(
-				c(base_prompts, list(list(role = 'user', content = p$user_message))),
+				c(base_prompts, list(list(role = 'user', content = m))),
 				auto_unbox = T
 				)
 			)) %>%
 			req_timeout(60 * 3)
+		})
+
+	clean_responses = function(data_with_responses, .echo = T) {
 		
-		return(req)
+		list_rbind(map(data_with_responses, function(r) {
+
+			response_json = resp_body_json(r$response)
+			response_content = response_json$choices[[1]]$message$content
+
+			# Throw non-JSON outputs
+			if (validate(response_content) == F) return(NULL)
+			json_parsed = fromJSON(response_content, simplifyVector = F)
+	
+			# Throw out incorrect counts, since uncertain which one corresponds to what
+			if (!'posts' %in% names(json_parsed)) return(NULL)
+			if (length(json_parsed$posts) != length(r$post_ids)) return(NULL)
+	
+			# Iterate through each and validate keys, result types
+			group_gpt_results = list_rbind(compact(imap(json_parsed$posts, function(poster_res, j) {
+	
+				if (length(unique(keys)) != length(names(poster_res))) return(NULL)
+				if (!all(sort(unique(keys)) == sort(unique(names(poster_res))))) return(NULL)
+	
+				post_no_key = poster_res[names(poster_res) != 'id']
+				
+				if (!all(map_lgl(post_no_key, \(v) is_scalar_character(v) | is_null(v)))) return(NULL)
+				if (!poster_res['id'] %in% 1:length(r$post_ids)) return(NULL)
+				query_id = as.integer(poster_res['id'])
+				
+				imap(post_no_key, \(v, name) tibble(key = name, value = coalesce(v, NA_character_))) %>%
+					list_rbind() %>%
+					bind_cols(scrape_id = r$scrape_ids[[query_id]], post_id = r$post_ids[[query_id]], query_id = query_id, .)
+			})))
+			
+			if (nrow(group_gpt_results) > 0 && .echo == T) {
+				message('Total token length: ', response_json$usage$total_tokens)
+				sample_id = sample(1:length(r$post_ids), size = 1)
+				message('\n\nSample: ', r$source_boards[sample_id], ' | ', r$scrape_methods[sample_id])
+				cat(r$user_messages[sample_id])
+				message('\n------\n')
+				print(select(filter(group_gpt_results, post_id == r$post_ids[sample_id]), query_id, key, value))
+			}
+		
+			return(group_gpt_results)
+		}))
+		
+	}
+	
+	# Send double requests
+	multi_res = map(1:2, \(s) {
+		http_responses = send_async_requests(input_requests, .chunk_size = 20, .max_retries = 5, .verbose = T)
+		data_with_responses = imap(http_responses, \(r, i) c(input_data[[i]], list(response = r)))
+		clean_responses(data_with_responses) %>% mutate(., s = s)
 	})
-
-	http_responses = send_async_requests(requests, .chunk_size = 20, .max_retries = 4, .verbose = T)
-	http_responses <<- http_responses
 	
-	cleaned_res = list_rbind(imap(http_responses, function(r, i) {
+	# Retain post IDs where both responses are identical across all key/values
+	accurate_post_ids =
+		multi_res %>%
+		bind_rows(.) %>%
+		pivot_wider(
+			.,
+			id_cols = c(scrape_id, post_id, query_id, key), 
+			names_from = s, 
+			values_from = value,
+			names_prefix = 'value_'
+			) %>%
+		filter(., !str_detect(key, '_rationale')) %>%
+		mutate(., is_mismatch = case_when(
+			is.na(value_1) & is.na(value_2) ~ 0,
+			is.na(value_1) & !is.na(value_2) ~ 1,
+			!is.na(value_1) & is.na(value_2) ~ 1,
+			value_1 == value_2 ~ 0,
+			TRUE ~ 1
+		)) %>%
+		group_by(., post_id) %>%
+		summarize(., mismatch = sum(is_mismatch), .groups = 'drop') %>%
+		filter(., mismatch == 0) %>% 
+		.$post_id
 
-		response_json = resp_body_json(r)
-		response_content = response_json$choices[[1]]$message$content
-
-		prompt_settings = user_prompts[[i]]
-		post_ids = prompt_settings$post_ids
-		scrape_ids = prompt_settings$scrape_ids
-		source_boards = prompt_settings$source_boards
-		scrape_methods = prompt_settings$scrape_methods
-		user_messages = prompt_settings$user_messages
-		
-		# Throw non-JSON outputs
-		if (validate(response_content) == F) return(NULL)
-		json_parsed = fromJSON(response_content, simplifyVector = F)
-
-		# Throw out incorrect counts, since uncertain which one corresponds to what
-		if (!'posts' %in% names(json_parsed)) return(NULL)
-		if (length(json_parsed$posts) != length(post_ids)) return(NULL)
-
-		# Iterate through each and validate keys, result types
-		group_gpt_results = list_rbind(compact(imap(json_parsed$posts, function(poster_res, j) {
-
-			if (length(unique(keys)) != length(names(poster_res))) return(NULL)
-			if (!all(sort(unique(keys)) == sort(unique(names(poster_res))))) return(NULL)
-
-			post_no_key = poster_res[names(poster_res) != 'id']
-			
-			if (!all(map_lgl(post_no_key, \(v) is_scalar_character(v) | is_null(v)))) return(NULL)
-			if (!poster_res['id'] %in% 1:length(post_ids)) return(NULL)
-			query_id = as.integer(poster_res['id'])
-			
-			imap(post_no_key, \(v, name) tibble(key = name, value = coalesce(v, NA_character_))) %>%
-				list_rbind() %>%
-				bind_cols(scrape_id = scrape_ids[[query_id]], post_id = post_ids[[query_id]], query_id = query_id, .)
-		})))
-		
-		if (nrow(group_gpt_results) > 0) {
-			message('Total token length: ', response_json$usage$total_tokens)
-			sample_id = sample(1:length(post_ids), size = 1)
-			message('\n\nSample: ', source_boards[sample_id], ' | ', scrape_methods[sample_id])
-			cat(user_messages[sample_id])
-			message('\n------\n')
-			print(select(filter(group_gpt_results, post_id == post_ids[sample_id]), query_id, key, value))
-		}
-	
-		return(group_gpt_results)
-	}))
+	filtered_res = filter(multi_res[[1]], post_id %in% accurate_post_ids)
 	
 	final_res =
 		bind_rows(
-				mutate(filter(cleaned_res, str_detect(key, '_rationale') == T), type = 'rationale'),
-				mutate(filter(cleaned_res, str_detect(key, '_rationale') == F), type = 'value')
+				mutate(filter(filtered_res, str_detect(key, '_rationale') == T), type = 'rationale'),
+				mutate(filter(filtered_res, str_detect(key, '_rationale') == F), type = 'value')
 		) %>%
 		mutate(., key = str_replace_all(key, '_rationale|_value', '')) %>%
 		pivot_wider(., id_cols = c(scrape_id, post_id, key), names_from = type, values_from = value) %>%
@@ -358,10 +380,9 @@ local({
 			label_value = value,
 			label_rationale = rationale
 		)
-		
 	
 	message('***** Unique post IDs returned: ', length(unique(final_res$post_id)))
-	message('***** Unique post IDs desired: ', sum(map_int(user_prompts, \(x) length(x$post_ids))))
+	message('***** Unique post IDs desired: ', sum(map_int(input_data, \(x) length(x$post_ids))))
 
 	llm_outputs$financial_health <<- final_res
 })
@@ -1040,8 +1061,6 @@ local({
 # 
 # 	llm_outputs$labor_market <<- filtered_res
 # })
-
-
 
 
 # Finalize --------------------------------------------------------
