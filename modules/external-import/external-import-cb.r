@@ -39,17 +39,40 @@ local({
 		req_perform %>%
 		resp_body_html
 
-	vintage_date =
-		html_content %>%
-		html_element(., '#productTypeText') %>%
-		html_text %>%
-		str_extract(., '[^|]+') %>%
-		str_trim %>%
-		fast_strptime(., format = '%B %d, %Y') %>%
-		as_date
+	vintage_date = {
+		if (
+			html_attr(html_element(html_content, '#chConferences iframe'), 'title')
+			== 'The Conference Board US Economic Outlook, 2020-2023 (Oct)'
+		) {
+			as_date('2023-10-12')
+		} else {
+			stop('Get vintage date calculation manually')
+		}
+	}
+		# html_content %>%
+		# html_element(., '#productTypeText') %>%
+		# html_text %>%
+		# str_extract(., '[^|]+') %>%
+		# str_trim %>%
+		# fast_strptime(., format = '%B %d, %Y') %>%
+		# as_date
 
-	iframe_src = html_content %>% html_element(., '#chConferences iframe') %>% html_attr(., 'src')
-	table_content = paste0(iframe_src, 'dataset.csv') %>% read_tsv(., col_names = F)
+	iframe_src =
+		html_content %>%
+		html_element(., '#chConferences iframe') %>%
+		html_attr(., 'src') %>%
+		str_extract(., "https://datawrapper.dwcdn.net/(.*?)/") # strip off version numbers
+
+	# Redirect page
+	redirect_src =
+		request(iframe_src) %>%
+		req_perform() %>%
+		resp_body_html() %>%
+		as.character() %>%
+		str_match(., "window.location.href='(.*?)'+") %>%
+		.[1, 2]
+
+	table_content = paste0(redirect_src, 'dataset.csv') %>% read_tsv(., col_names = F)
 
 	# First two rows are headers
 	headers_fixed =
