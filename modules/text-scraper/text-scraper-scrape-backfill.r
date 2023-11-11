@@ -7,6 +7,7 @@ library(econforecasting)
 library(tidyverse)
 library(httr2)
 library(data.table)
+library(DBI)
 
 ## Load Connection Info ----------------------------------------------------------
 load_env(Sys.getenv('EF_DIR'))
@@ -18,15 +19,21 @@ pg = connect_pg()
 reddit_boards = get_query(pg, sql(
 	"SELECT scrape_board, scrape_ups_floor
 	FROM text_scraper_reddit_boards
-	WHERE scrape_active = true"
+	WHERE 
+		scrape_active = true 
+		AND scrape_board IN (
+		'personalfinance'
+		,'jobs'
+		,'careerguidance'
+	)"
 ))
 
-## Backfill ------------------------------------------------------
+## 1/1/2017-12/31/2022 Backfill ------------------------------------------------------
 local({
 
 	# reddit-top20k.cworld.ai
 	#  wget https://reddit-archive.cworld.ai/careerguidance_submissions.zst && zstd --decompress careerguidance_submissions
-	get_start_line = function(file, start, end, target_date = as_date('2019-01-01')) {
+	get_start_line = function(file, start, end, target_date = as_date('2017-01-01')) {
 		
 		partition_at = floor((end + start)/2)
 		
@@ -44,14 +51,12 @@ local({
 	
 	backfill_boards =
 		reddit_boards %>%
-		filter(., scrape_board %in% c('personalfinance')) %>%
 		mutate(., file = file.path(fs::path_home(), paste0(scrape_board, '_submissions'))) %>%
 		rowwise(.) %>%
 		mutate(
 			., 
 			lines_count = as.integer(system(str_glue('wc -l {file} | awk \'{{ print $1 }}\''), intern = T)),
-			start_line = get_start_line(file, 1, lines_count),
-			total_lines = lines_count - start_line
+			start_line = get_start_line(file, 1, lines_count)
 			) %>%
 		ungroup(.)
 	
@@ -60,7 +65,7 @@ local({
 		backfill_boards %>%
 		group_split(., scrape_board, scrape_ups_floor, file) %>%
 		map(., \(x)
-			tibble(line = b$start_line:b$lines_count) %>%
+			tibble(line = x$start_line:x$lines_count) %>%
 				mutate(., line_group = ceiling(line/50000)) %>%
 				group_by(., line_group) %>% 
 				summarize(., start = min(line), end = max(line), .groups = 'drop') %>%
@@ -70,8 +75,9 @@ local({
 		list_rbind()
 		
 
-	board_res = list_rbind(map(df_to_list(scrape_groups), .progress = T, function(b) {
+	board_res = list_rbind(imap(df_to_list(scrape_groups), .progress = T, function(b, i) {
 		
+		message(i, ' of ', nrow(scrape_groups))
 		raw_json = read_lines(b$file, skip = b$start, progress = T, n_max = b$lines_to_read)
 		
 		parsed_json =
@@ -120,7 +126,8 @@ local({
 				ups, is_self, domain, url,
 				created_dttm,
 				scraped_dttm
-			)
+			) %>%
+			as_tibble()
 		
 		return(parsed_json)
 
@@ -168,6 +175,73 @@ local({
 })
 
 
+## 1/1/2023-8/20/2023 --------------------------------------------------------
+local({
+	
+	# Data fails after 8/20/23
+	refill = 
+		expand_grid(
+			reddit_boards,
+			tibble(start_dt = seq(from = as_date('2023-01-01'), to = as_date('2023-08-20'), by = '1 day'))
+		) %>% 
+		mutate(
+			.,
+			start_ts = as.integer(as_datetime(start_dt)), 
+			end_ts = as.integer(as_datetime(start_dt + days(1)) - 1)
+			)
+	
+	results = list_rbind(compact(map(df_to_list(refill), .progress = T, function(b) {
+		
+		response =
+			request(str_glue(
+				'https://api.pullpush.io/reddit/search/submission?',
+				'subreddit={b$scrape_board}',
+				'&after={b$start_ts}&before={b$end_ts}',
+				'&score=>{b$scrape_ups_floor}',
+				'&locked=false&sticked=false'
+				))  %>%
+			req_perform() %>%
+			resp_body_json()
+		
+		if (length(response$data) == 0) {
+			message('Warning: 0 rows returned!')
+			return(NULL)	
+		}
+		
+		cleaned = 
+			map(response$data, \(post) as_tibble(compact(keep(post, \(z) !is.list(z))))) %>%
+			list_rbind() %>%
+			select(., any_of(c(
+				'name', 'subreddit', 'title', 'created_utc',
+				'selftext', 'upvote_ratio', 'score', 'is_self', 'domain', 'url'
+			))) %>%
+			transmute(
+				.,
+				scrape_method = 'pullpush_backfill',
+				post_id = name,
+				scrape_board = subreddit,
+				source_board = subreddit,
+				title, selftext, upvote_ratio, ups = score, is_self, domain, url,
+				created_dttm = with_tz(as_datetime(created_utc, tz = 'UTC'), 'US/Eastern'),
+				scraped_dttm = now('US/Eastern')
+			) %>%
+			filter(
+				.,
+				!is.na(post_id),
+				is_self == T & !selftext %in% c('[deleted]', '[removed]', ''),
+				ups >= b$scrape_ups_floor
+			)
+		
+		if (length(response$data) == 0) {
+			message('Warning: 0 rows returned!')
+			return(NULL)	
+		}
+		return(cleaned)
+	})))
+			
+	pullpush_backfill <<- results
+})
+
 ## Store --------------------------------------------------------
 local({
 
@@ -177,7 +251,10 @@ local({
 	message('***** Initial Count: ', initial_count)
 
 	insert_groups =
-		board_res %>%
+		bind_rows(
+			board_res,
+			pullpush_backfill
+		) %>%
 		# Format into SQL Standard style https://www.postgresql.org/docs/9.1/datatype-datetime.html
 		mutate(
 			.,

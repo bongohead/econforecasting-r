@@ -24,7 +24,7 @@ pg = connect_pg()
 ## Constants ---------------------------------------------------------------
 local({
 	financial_health_prompt_id <<- 'financial_health_v1'
-	financial_health_sample_size <<- 5000
+	financial_health_sample_size <<- 10000
 })
 
 ## Pull Samples  --------------------------------------------------------
@@ -1061,6 +1061,23 @@ local({
 # 
 # 	llm_outputs$labor_market <<- filtered_res
 # })
+
+"Is the user feeling financially stressed or worried? If yes, respond with a list of reasons why"
+"
+YES:
+	- Inflation: the user is financially stressed due to high cost of living or rising prices. 
+	- Unemployment: the user is financially stressed due to not having a job
+	- Layoff: the user is financially stressed due to have been laid off
+	- Credit: the user is financially stressed due to high debt servicing costs, such as credit card debt, student loans, etc.
+	- Housing: The user is financially stressed due to housing costs (), or due to worry about not being able to afford a house.
+	- Financial markets: the user is financially stressed due to performance of financial assets, such as stocks, cryptocurrency, etc.
+	- FOMO: the user feels like they\'re being left behind by others or peers, in terms of income, life experiences, etc.
+	- Politics: the user feels financially stressed due to political reasons.
+NO:
+  - 
+
+NEUTRAL: [reason]
+"
 
 
 # Finalize --------------------------------------------------------
