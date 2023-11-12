@@ -23,8 +23,8 @@ pg = connect_pg()
 
 ## Constants ---------------------------------------------------------------
 local({
-	financial_health_prompt_id <<- 'financial_health_v1'
-	financial_health_sample_size <<- 10000
+	financial_health_prompt_id <<- 'financial_health_v2'
+	financial_health_sample_size <<- 100
 })
 
 ## Pull Samples  --------------------------------------------------------
@@ -79,68 +79,77 @@ local({
 	base_prompts = list(
 		system =
 			"You will be given a list of posts made by users on the career/finance board of a social media website.
-			Please identify whether each user is financially doing well or struggling, based off the content of their post.
+			Please identify the financial well-being of each user, based off the content of their post.
 
 			Return a JSON containing an array of objects, where each object should correspond to one post. 
+			Each object should have 9 keys; each key and their possible values are given below.
 			
-			The object keys are as follows:
 			
 			1. id: The post ID provided.
-			1. financial_sentiment: How financially healthy does the user feel? Choose between 'neutral', 'weak', or 'strong'. If no indication is given, choose 'neutral'. Use both the content of the user's post as well as the mood of the post to make this decision. For example, things that could indicate 'strong' could be a pay raise, saving a large amount of money for retirement, or a general celebratory mood.
-			2. financial_sentiment_rationale: An explanation of the choice for financial_sentiment.
-			3. employment_status: Is the user currently employed or unemployed? Choose between 'unemployed', 'employed', or 'unknown'.
-			4. employment_status_rationale: An explanation of the choice for employment_status.
-			5. unemployment_reason: If employment_status == 'unemployed', what was the cause? Choose between 'fired_or_laid_off', 'never_employed', 'resigned', or 'unknown'. Set to null IF AND ONLY IF employment_status != 'unemployed'.
-			6. unemployment_reason_rationale: An explanation of the choice for unemployment_reason. Set to null if and only if employment_status != 'unemployed'.
-			7. employment_satisfaction: If employment status == 'employed', how does the user feel about their current job? Choose between 'satisfied', 'unsatisfied', or 'unknown'. Set to null IF AND ONLY IF employment_status != 'employed'.
-			8. employment_satisfaction_rationale: An explanation of the choice for employment_satisfaction. Set to null if and only if employment_status != 'employed'.
-			
-			Think carefully, step by step, and try your best to provide accurate explanations.",
-		user =
-			"*ID: 1*
-			TITLE: Word Of Warning
-			POST: So this post is not to garner sympathy, I've learned from my mistake just hoping others can learn as well. I was in a bad place emotionally and financially, I took a Payday loan for 150 dollars, now I could have paid it off from my first paycheck but I didn't let payments get made instead. But then I checked my loan account and I was paying 500 dollars on a 150 dollar loan. I lost my job couldn't pay the rest off so just let the payments come.
-
-			*ID: 2*
-			TITLE: I was recently given $14k. Pay off my car or invest?
-			POST: I make 74k a year before taxes I had 18k in my checking account. I recently inherited 14k from a generous relative passing away, bringing me to 32k. I have 16k left on my car at something like 2.8 API. This is my only debt. Should I put that money into stocks? or just pay off my car loan?
-
-			*ID: 3*
-			TITLE: Looking for an app to track my funds and budget
-			POST: Hello, I am looking for an easy to use app to track all my funds and budget. I do not want to link any of my bank or investment accounts to it and am okay with entering them in manually.
-
-			*ID: 4*
-			TITLE: [US] I've been living paycheck-to-paycheck all of my life. How can I stop living like this?
-			POST: Let me provide some background on me:  I earn $65k/yr & I of course have bills including a lot of credit card debt. The way I've always functioned is I split my bills in 1/2 to pay them when I get paid; then whatever's leftover is spending $ for the week. I do have difficulty saving & I was told it's probably due to my ADHD. I have no idea how to stop this living from paycheck-to-paycheck life &amp; was looking for advice on how to do so.
-
-			*ID: 5*
-			TITLE: I basically went to college for nothing - Unemployed and Depressed.
-			POST: I got a Bachelors in Marketing a few years ago. I didn’t really take full advantage of being in school and preparing for the real world. Since graduating, I’ve submitted over 1300 applications to white collar jobs with multiple iterations of a resume. I usually apply to Marketing Coordinator roles or anything entry-level. At this point, I’m at a loss.
-
-			*ID: 6*
-			TITLE: Started a new job and a company I applied to before just reached out and gave me an offer for 3 times my salary
-			POST: I'm underpaid at my current job. I like my boss and team, but I probably won't ever come back to the company. How should I approach leaving? I don't start the new job for another month, and I've accepted an offer at my new job. Do I tell my boss and team now?
-
-			*ID: 7*
-			TITLE: Would I be absolutely stupid to quit my high paying job?
-			POST: I have a well paying job (low six figures) and I’ve been at my company almost a decade, but I'm burnt out from the politics. Why am I so terrified to quit? I feel like I’ve put so much time and energy into climbing high in the pay scale and wherever I end up is going to be just as bad
-
-			*ID: 8*
-			TITLE: Anyone else ever been in this predicament?
-			POST: I am poor. I mean dead broke. I got a job at Wendy's today and I start a week from Monday. She said I had to have black pants and black no skid shoes. I didn’t tell her but there’s no way I can afford to get those by Monday. I’m living off or ramen right now. Should I just show up Monday in some dark blue pants?"
-		,
+			2. financial_sentiment: How financially strong does the user feel? Choose between 'neutral', 'weak', or 'strong'. If no indication is given, choose 'neutral'. Use both the content of the user's post as well as the mood of the post to make this decision. For example, things that could indicate 'strong' could be a pay raise, saving a large amount of money for retirement, or a general celebratory mood.
+			3. financial_sentiment_rationale: An explanation for the above.
+			4. employment_status: Is the user currently employed or unemployed? Choose between 'unemployed', 'employed', or 'unknown'.
+			5. employment_status_rationale: An explanation for the above.
+			6. unemployment_reason: If employment_status == 'unemployed', what was the cause? Choose between 'fired_or_laid_off', 'never_employed', 'resigned', or 'unknown'. Set to null IF AND ONLY IF employment_status != 'unemployed'.
+			7. unemployment_reason_rationale: An explanation for the above. Set to null if and only if employment_status != 'unemployed'.
+			8. employment_satisfaction: If employment status == 'employed', how does the user feel about their current job? Choose between 'satisfied', 'unsatisfied', or 'unknown'. Set to null IF AND ONLY IF employment_status != 'employed'.
+			9. employment_satisfaction_rationaleAn explanation for the above. Set to null if and only if employment_status != 'employed'.",
+		user = list(
+			list(
+				1,
+				"Word Of Warning",
+				"So this post is not to garner sympathy, I've learned from my mistake just hoping others can learn as well. I was in a bad place emotionally and financially, I took a Payday loan for 150 dollars, now I could have paid it off from my first paycheck but I didn't let payments get made instead. But then I checked my loan account and I was paying 500 dollars on a 150 dollar loan. I lost my job couldn't pay the rest off so just let the payments come."
+			),
+			list(
+				2,
+				"Recently given $14k. Pay off my car or invest?",
+				"I make 74k a year before taxes I had 18k in my checking account. I recently inherited 14k from a generous relative passing away, bringing me to 32k. I have 16k left on my car at something like 2.8 API. This is my only debt. Should I put that money into stocks? or just pay off my car loan?"
+			),
+			list(
+				3,
+				"Looking for an app to track my funds and budget",
+				"Hello, I am looking for an app to track all my funds and budget. I do not want to link any of my bank or investment accounts to it and am okay with entering them in manually."
+			),
+			list(
+				4,
+				"[US] I've been living paycheck-to-paycheck all of my life. How can I stop living like this?",
+				"Let me provide some background on me:  I earn $65k/yr & I of course have bills including a lot of credit card debt. The way I've always functioned is I split my bills in 1/2 to pay them when I get paid; then whatever's leftover is spending $ for the week. I do have difficulty saving & I was told it's probably due to my ADHD. I have no idea how to stop this living from paycheck-to-paycheck life &amp; was looking for advice on how to do so."
+			),
+			list(
+				5,
+				"I basically went to college for nothing - Unemployed and Depressed.",
+				"I got a Bachelors in Marketing a few years ago. I didn’t really take full advantage of being in school and preparing for the real world. Since graduating, I’ve submitted over 1300 applications to white collar jobs with multiple iterations of a resume. I usually apply to Marketing Coordinator roles or anything entry-level. At this point, I’m at a loss."
+			),
+			list(
+				6,
+				"Started a new job and a company I applied to before just reached out and gave me an offer for 3 times my salary",
+				"I'm underpaid at my current job. I like my boss and team, but I probably won't ever come back to the company. How should I approach leaving? I don't start the new job for another month, and I've accepted an offer at my new job. Do I tell my boss and team now?"
+			),
+			list(
+				7,
+				"Would I be absolutely stupid to quit my high paying job?",
+				"I have a well paying job (low six figures) and I’ve been at my company almost a decade, but I'm burnt out from the politics. Why am I so terrified to quit? I feel like I’ve put so much time and energy into climbing high in the pay scale and wherever I end up is going to be just as bad"
+			),
+			list(
+				8,
+				"Anyone else ever been in this predicament?",
+				"I am poor. I mean dead broke. I got a job at Wendy's today and I start a week from Monday. She said I had to have black pants and black no skid shoes. I didn’t tell her but there’s no way I can afford to get those by Monday. I’m living off or ramen right now. Should I just show up Monday in some dark blue pants?"
+			)
+		),
 		assistant = list(posts = list(
 			list(
 				id = 1,
 				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user lost their job and "took a Payday loan".',
-				employment_status = 'unemployed', employment_status_rationale = 'The user states they "lost" their job, showing they\'re unemployed.',
-				unemployment_reason = 'fired_or_laid_off', unemployment_reason_rationale = 'The user states they "lost" their job, suggesting they lost their job involuntarily.',
+				employment_status = 'unemployed', employment_status_rationale = 'The user "lost" their job, showing they\'re unemployed.',
+				# income_direction = 'down', income_direction_rationale = 'The user lost their job.',
+				unemployment_reason = 'fired_or_laid_off', unemployment_reason_rationale = 'The user "lost" their job, suggesting they lost their job involuntarily.',
 				employment_satisfaction = NA, employment_satisfaction_rationale = NA
 				),
 			list(
 				id = 2,
 				financial_sentiment = 'strong', financial_sentiment_rationale = 'The user inherited some money from a "generous relative".',
-				employment_status = 'employed', employment_status_rationale = 'The user states they "make 74k a year", suggesting they have a job.',
+				employment_status = 'employed', employment_status_rationale = 'The user makes "74k a year", suggesting they have a job.',
+				# income_direction = 'up', income_direction_rationale = 'The user received a gift.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = 'unknown', employment_satisfaction_rationale = 'The user doesn\'t give any indication about how they feel about their current job.'
 			),
@@ -148,13 +157,15 @@ local({
 				id = 3,
 				financial_sentiment = 'neutral', financial_sentiment_rationale = 'The user gives no indication of their financial health.',
 				employment_status = 'unknown', employment_status_rationale = 'The user does not indicate whether they have a job.',
+				# income_direction = 'unknown', income_direction_rationale = 'The user gives no indication of whether their income changed.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = NA, employment_satisfaction_rationale = NA
 			),
 			list(
 				id = 4,
-				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user says they\'re living "paycheck-to-paycheck" and have a lot of credit card debt.',
-				employment_status = 'employed', employment_status_rationale = 'The user says they earn 65k a year, indicating they have a job.',
+				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user is living "paycheck-to-paycheck" and has a lot of credit card debt.',
+				employment_status = 'employed', employment_status_rationale = 'The user earns 65k a year, indicating they have a job.',
+				# income_direction = 'unknown', income_direction_rationale = 'The user doesn\'t say if their income changed.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = 'unknown', employment_satisfaction_rationale = 'The user doesn\'t mention how they feel about their current job.'
 			),
@@ -162,6 +173,7 @@ local({
 				id = 5,
 				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user is "unemployed and depressed".',
 				employment_status = 'unemployed', employment_status_rationale = 'The user is "unemployed and depressed".',
+				# income_direction = 'flat', income_direction_rationale = 'The user makes no income, same as before.',
 				unemployment_reason = 'never_employed', unemployment_reason_rationale = 'The user seems to be searching for their first job after graduating.',
 				employment_satisfaction = NA, employment_satisfaction_rationale = NA
 			),
@@ -169,45 +181,55 @@ local({
 				id = 6,
 				financial_sentiment = 'strong', financial_sentiment_rationale = 'The user recently received a large pay raise by switching to a higher-paying job."',
 				employment_status = 'employed', employment_status_rationale = 'The user has a current job as well as another job they\'re switching to.',
+				# income_direction = 'up', income_direction_rationale = 'The user received a large pay jump.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = 'unsatisfied', employment_satisfaction_rationale = 'The user states they\'re "underpaid" at their current job.'
 			),
 			list(
 				id = 7,
-				financial_sentiment = 'strong', financial_sentiment_rationale = 'The user mentions they have a "well paying" job".',
+				financial_sentiment = 'strong', financial_sentiment_rationale = 'The user has a "well paying" job".',
 				employment_status = 'employed', employment_status_rationale = 'The user states they\'re currently employed, though they don\'t like their job.',
+				# income_direction = 'unknown', income_direction_rationale = 'There\'s no indication of whether the user\'s pay recently changed.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = 'unsatisfied', employment_satisfaction_rationale = 'The user mentions being "burnt out from the politics" at their current job.'
 			),
 			list(
 				id = 8,
-				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user mentions they are "dead broke".',
-				employment_status = 'employed', employment_status_rationale = 'The user states they "got a job at Wendy\'s".',
+				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user is "dead broke".',
+				employment_status = 'employed', employment_status_rationale = 'The user "got a job at Wendy\'s".',
+				# income_direction = 'up', income_direction_rationale = 'The user got a job after being unemployed.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = 'unknown', employment_satisfaction_rationale = 'The user doesn\'t indicate any particular sentiment about their new job.'
 			)
 			)),
-		user =
-			"*ID: 1*
-			TITLE: Advice Wanted, Can I Afford 1200/month Rent?
-			POST: I make $21 an hour and am wondering if I could afford $1200/month rent. Found a great large studio with a reverse commute and will let me bring my dog, and I have scheduled a tour and am considering in applying for the place. My monthly income is about $2500 after taxes (this is my 90 day average income), and my current expenses are around $650 a month.
-
-			*ID: 2*
-			TITLE: How do I find a career if my degree is vague?
-			POST: Which job boards are the best? What are some free online resume resources? I was fired last week (completely bs, incompetent management) I can get unemployment but I would rather find a job ASAP. Its always really hard for me bc i have a weird degree (psych and cj, wanted to be a cop not anymore) degree and no hard technical skills to market.
-
-			*ID: 3*
-			TITLE: Career change after 20 years; impossible?
-			POST: I work as a manager at a convenient store. While I like it and it's good money, I want a change. Are there any programs or resources I should be looking into that can help me?
-		
-			*ID: 4*
-			TITLE: 52 and Have No Retirement. NONE
-			POST: I have worked as a veterinary technician (we don't make much). I have a master's degree and loans and about 20K in credit card debt. I secured a really nice paying job for the first time in my life and have about 10k in my bank account. I am scared to do anything with that money. As someone who had to live check to check, investing or paying off my cards seeing a low balance again gives me anxiety. I know I should do this but I just don't know where to begin. Help!",
+		user = list(
+			list(
+				1,
+				"Advice Wanted, Can I Afford 1200/month Rent?",
+				"I make $21 an hour and am wondering if I could afford $1200/month rent. Found a great large studio with a reverse commute and will let me bring my dog, and I have scheduled a tour and am considering in applying for the place. My monthly income is about $2500 after taxes (this is my 90 day average income), and my current expenses are around $650 a month."
+			),
+			list(
+				2,
+				"How do I find a career if my degree is vague?",
+				"Which job boards are the best? What are some free online resume resources? I was fired last week (completely bs, incompetent management) I can get unemployment but I would rather find a job ASAP. Its always really hard for me bc i have a weird degree (psych and cj, wanted to be a cop not anymore) degree and no hard technical skills to market."
+			),
+			list(
+				3,
+				"Career change after 20 years; impossible?",
+				"I work as a manager at a convenient store. While I like it and it's good money, I want a change. Are there any programs or resources I should be looking into that can help me?"
+			),
+			list(
+				4,
+				"52 and Have No Retirement. NONE",
+				"I have worked as a veterinary tech (we don't make much). I have a master's degree and loans and about 20K in credit card debt. I secured a really nice paying job for the first time in my life and have about 10k in my bank account. I am scared to do anything with that money. As someone who had to live check to check, investing or paying off my cards seeing a low balance again gives me anxiety. I know I should do this but I just don't know where to begin. Help!"
+			)
+		),
 		assistant = list(posts = list(
 			list(
 				id = 1,
 				financial_sentiment = 'neutral', financial_sentiment_rationale = 'The user is neutral about their financial well-being.',
-				employment_status = 'employed', employment_status_rationale = 'The user states they make "$21 an hour", directly showing they have a job.',
+				employment_status = 'employed', employment_status_rationale = 'The user makes "$21 an hour", directly showing they have a job.',
+				# income_direction = 'unknown', income_direction_rationale = 'There\'s no indication of whether the user\'s pay recently changed.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = 'unknown', employment_satisfaction_rationale = 'The user doesn\'t demonstrate any specific feelings about their job.'
 			),
@@ -215,22 +237,25 @@ local({
 				id = 2,
 				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user was "fired last week" and is having difficulty finding a new job.',
 				employment_status = 'unemployed', employment_status_rationale = 'The user is unemployed and searching for a job.',
+				# income_direction = 'down', income_direction_rationale = 'The user recently lost their job.',
 				unemployment_reason = 'fired_or_laid_off', unemployment_reason_rationale = 'The user states they were "fired last week".',
 				employment_satisfaction = NA, employment_satisfaction_rationale = NA
 			),
 			list(
 				id = 3,
-				financial_sentiment = 'neutral', financial_sentiment_rationale = 'The user is relatively neutral about their financial well-being.',
+				financial_sentiment = 'strong', financial_sentiment_rationale = 'The user makes "good money".',
 				employment_status = 'employed', employment_status_rationale = 'The user works "as a manager at a convenience store".',
+				# income_direction = 'unknown', income_direction_rationale = 'There\'s no indication of whether the user\'s pay recently changed.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
 				employment_satisfaction = 'satisfied', employment_satisfaction_rationale = 'The user states they "like" their job and that it pays "good money".'
 			),
 			list(
 				id = 4,
-				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user is stressed that they "have no retirement" at 52.',
-				employment_status = 'employed', employment_status_rationale = 'The user "secured a really nice paying job".',
+				financial_sentiment = 'weak', financial_sentiment_rationale = 'The user has "no retirement".',
+				employment_status = 'employed', employment_status_rationale = 'The user has a "nice paying job".',
+				# income_direction = 'up', income_direction_rationale = 'The user "secured a really nice paying job" for the first time ever.',
 				unemployment_reason = NA, unemployment_reason_rationale = NA,
-				employment_satisfaction = 'satisfied', employment_satisfaction_rationale = 'The user states they have a "nice paying job".'
+				employment_satisfaction = 'satisfied', employment_satisfaction_rationale = 'The user has a "nice paying job".'
 			)
 		))
 		) %>%
@@ -238,32 +263,47 @@ local({
 			role = i,
 			content = {
 				if (i == 'system') str_replace_all(x, '\\t', '')
-				else if (i == 'user') str_replace_all(x, '\\t', '')
+				else if (i == 'user') toJSON(map(x, \(p) list(id = p[[1]], content = paste0(p[[2]], '\n', p[[3]]))), auto_unbox = T)
 				else if (i == 'assistant') toJSON(x, auto_unbox = T)
 			}
 		)) %>% unname(.)
 
+	# Validate the keys
+	base_prompts %>%
+		keep(., \(x) x$role == 'assistant') %>% 
+		map(., \(x) x$content) %>% 
+		map(., \(x) fromJSON(x, simplifyVector = F)$posts) %>% 
+		unlist(., recursive = F) %>%
+		map_lgl(., \(x) all(names(x) == keys)) %>%
+		all()
+	
 	input_data =
 		financial_health_samples %>%
-		mutate(., score_group = ceiling((1:nrow(.))/20)) %>%
-		mutate(., user_message = paste0(
-			'*ID: ', 1:n(), 
-			'*\nTITLE: ', title,
-			'\nPOST: ', str_squish(str_replace_all(selftext, "\\t|\\n", " "))
-			), .by = score_group) %>%
+		mutate(., score_group = ceiling((1:nrow(.))/25)) %>%
+		mutate(., query_id = 1:n(), .by = score_group) %>%
 		group_split(., score_group) %>%
-		imap(., \(x, i) list(
-			score_group = unique(x$score_group),
-			scrape_ids = x$scrape_id,
-			post_ids = x$post_id,
-			user_message = paste0(x$user_message, collapse = '\n\n'),
-			user_messages = x$user_message,
-			source_boards = x$source_board,
-			scrape_methods = x$scrape_method
-		))
+		imap(., \(x, i) {
+			
+			user_messages = 
+				df_to_list(x) %>%
+				map(., \(p) list(
+					id = p$query_id,
+					content = paste0(str_squish(p$title), '\n', str_replace_all(str_squish(p$selftext), '\\t|\\n', ' '))
+					))
+
+			list(
+				score_group = unique(x$score_group),
+				scrape_ids = x$scrape_id,
+				post_ids = x$post_id,
+				user_message = toJSON(user_messages, auto_unbox = T),
+				user_messages = map_chr(user_messages, function(p) p$content),
+				source_boards = x$source_board,
+				scrape_methods = x$scrape_method
+				)
+		})
 
 	input_requests =
-		map(input_data, \(p) p$user_message)  %>%
+		map(input_data, \(p) p$user_message) %>%
 		map(., \(m) {
 			request('https://api.openai.com/v1/chat/completions') %>%
 			req_headers(
@@ -282,8 +322,11 @@ local({
 				auto_unbox = T
 				)
 			)) %>%
-			req_timeout(60 * 3)
+			req_timeout(60 * 4)
 		})
+
+	http_responses = send_async_requests(input_requests, .chunk_size = 40, .max_retries = 8, .verbose = T)
+	
 
 	clean_responses = function(data_with_responses, .echo = T) {
 		
@@ -333,7 +376,7 @@ local({
 	
 	# Send double requests
 	multi_res = map(1:2, \(s) {
-		http_responses = send_async_requests(input_requests, .chunk_size = 20, .max_retries = 5, .verbose = T)
+		http_responses = send_async_requests(input_requests, .chunk_size = 10, .max_retries = 8, .verbose = T)
 		data_with_responses = imap(http_responses, \(r, i) c(input_data[[i]], list(response = r)))
 		clean_responses(data_with_responses) %>% mutate(., s = s)
 	})
